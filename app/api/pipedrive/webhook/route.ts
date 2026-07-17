@@ -34,11 +34,14 @@ async function getStageName(stageId: number): Promise<string | null> {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { event, data, previous } = body
+  // Pipedrive envía: { event: "updated.deal", current: {...}, previous: {...}, meta: {...} }
+  const event: string = body.event ?? ''
+  const data = body.current ?? body.data ?? {}
+  const previous = body.previous ?? {}
 
   console.log('[webhook] event:', event, 'dealId:', data?.id)
 
-  if (!event?.startsWith('deal.')) return NextResponse.json({ ok: true })
+  if (!event.includes('deal')) return NextResponse.json({ ok: true })
 
   const dealId = String(data?.id ?? '')
   if (!dealId) return NextResponse.json({ ok: true })
@@ -58,14 +61,14 @@ export async function POST(req: NextRequest) {
   if (!quotation) return NextResponse.json({ ok: true, reason: 'not found', dealId })
 
   // Deal ELIMINADO
-  if (event === 'deal.deleted') {
+  if (event === 'deal.deleted' || event === 'deleted.deal') {
     await supabase.from('quotation_items').delete().eq('quotation_id', quotation.id)
     await supabase.from('quotations').delete().eq('id', quotation.id)
     return NextResponse.json({ ok: true, action: 'deleted' })
   }
 
   // Deal ACTUALIZADO — sincronizar todo lo que cambió
-  if (event === 'deal.updated') {
+  if (event === 'deal.updated' || event === 'updated.deal') {
     const updates: Record<string, unknown> = {}
 
     // Estado (ganado/perdido/abierto)
