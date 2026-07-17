@@ -34,18 +34,16 @@ async function getStageName(stageId: number): Promise<string | null> {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  // Pipedrive envía: { event: "updated.deal", current: {...}, previous: {...}, meta: {...} }
-  const event: string = body.event ?? ''
-  const data = body.current ?? body.data ?? {}
+  // Pipedrive envía: { data: {...}, previous: {...}, meta: { action, entity, entity_id } }
+  const meta = body.meta ?? {}
+  const action: string = meta.action ?? ''   // "change", "delete", "add"
+  const entity: string = meta.entity ?? ''   // "deal"
+  const data = body.data ?? {}
   const previous = body.previous ?? {}
 
-  console.log('[webhook] body keys:', Object.keys(body))
-  console.log('[webhook] meta:', JSON.stringify(body.meta))
-  console.log('[webhook] event:', event, 'dealId:', data?.id)
+  if (entity !== 'deal') return NextResponse.json({ ok: true })
 
-  if (!event.includes('deal')) return NextResponse.json({ ok: true })
-
-  const dealId = String(data?.id ?? '')
+  const dealId = String(data?.id ?? meta.entity_id ?? '')
   if (!dealId) return NextResponse.json({ ok: true })
 
   const supabase = getAdminClient()
@@ -63,14 +61,14 @@ export async function POST(req: NextRequest) {
   if (!quotation) return NextResponse.json({ ok: true, reason: 'not found', dealId })
 
   // Deal ELIMINADO
-  if (event === 'deal.deleted' || event === 'deleted.deal') {
+  if (action === 'delete') {
     await supabase.from('quotation_items').delete().eq('quotation_id', quotation.id)
     await supabase.from('quotations').delete().eq('id', quotation.id)
     return NextResponse.json({ ok: true, action: 'deleted' })
   }
 
   // Deal ACTUALIZADO — sincronizar todo lo que cambió
-  if (event === 'deal.updated' || event === 'updated.deal') {
+  if (action === 'change') {
     const updates: Record<string, unknown> = {}
 
     // Estado (ganado/perdido/abierto)
