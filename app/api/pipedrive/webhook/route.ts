@@ -39,6 +39,8 @@ export async function POST(req: NextRequest) {
   const data = body.current ?? body.data ?? {}
   const previous = body.previous ?? {}
 
+  console.log('[webhook] body keys:', Object.keys(body))
+  console.log('[webhook] meta:', JSON.stringify(body.meta))
   console.log('[webhook] event:', event, 'dealId:', data?.id)
 
   if (!event.includes('deal')) return NextResponse.json({ ok: true })
