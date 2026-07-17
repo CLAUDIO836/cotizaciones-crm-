@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  LayoutDashboard, FileText, FileCheck, Users, UserCog, LogOut, Filter, BarChart3
+  LayoutDashboard, FileText, FileCheck, Users, UserCog, LogOut, Filter, BarChart3, CalendarDays
 } from 'lucide-react'
 
 interface Profile {
@@ -16,6 +16,7 @@ interface Profile {
 const navItems = [
   { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
   { href: '/cotizaciones', label: 'Negocios',     icon: FileText },
+  { href: '/agenda',       label: 'Agenda',       icon: CalendarDays },
   { href: '/contratos',    label: 'Contratos',    icon: FileCheck },
   { href: '/clientes',     label: 'Clientes',     icon: Users },
 ]

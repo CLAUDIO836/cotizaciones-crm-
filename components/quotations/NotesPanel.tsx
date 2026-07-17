@@ -29,7 +29,7 @@ export default function NotesPanel({ quotationId, initialNotes, userId }: Props)
     if (!newContent.trim()) return
     setLoading(true)
     const { data, error } = await supabase
-      .from('notes')
+      .from('quotation_notes')
       .insert({ quotation_id: quotationId, user_id: userId, content: newContent.trim() })
       .select('*')
       .single()
@@ -43,8 +43,8 @@ export default function NotesPanel({ quotationId, initialNotes, userId }: Props)
   async function handleEdit(id: string) {
     if (!editContent.trim()) return
     const { error } = await supabase
-      .from('notes')
-      .update({ content: editContent.trim(), updated_at: new Date().toISOString() })
+      .from('quotation_notes')
+      .update({ content: editContent.trim() })
       .eq('id', id)
     if (!error) {
       setNotes(prev => prev.map(n => n.id === id ? { ...n, content: editContent.trim() } : n))
@@ -53,7 +53,7 @@ export default function NotesPanel({ quotationId, initialNotes, userId }: Props)
   }
 
   async function handleDelete(id: string) {
-    const { error } = await supabase.from('notes').delete().eq('id', id)
+    const { error } = await supabase.from('quotation_notes').delete().eq('id', id)
     if (!error) setNotes(prev => prev.filter(n => n.id !== id))
   }
 

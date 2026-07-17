@@ -41,13 +41,13 @@ export default async function CotizacionDetailPage({
   if (!q) notFound()
 
   const { data: activities = [] } = await supabase
-    .from('activities')
+    .from('quotation_activities')
     .select('*, profiles(name)')
     .eq('quotation_id', id)
     .order('created_at', { ascending: false })
 
   const { data: notes = [] } = await supabase
-    .from('notes')
+    .from('quotation_notes')
     .select('*, profiles(name)')
     .eq('quotation_id', id)
     .order('created_at', { ascending: false })
@@ -57,9 +57,9 @@ export default async function CotizacionDetailPage({
   const etapa = ETAPA_LABELS[q.etapa ?? 'lead'] ?? ETAPA_LABELS.lead
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const activitiesWithName = (activities ?? []).map((a: any) => ({ ...a, user_name: a.profiles?.name }))
+  const activitiesWithName = (activities ?? []).map((a: any) => ({ ...a, user_name: a.profiles?.name ?? null }))
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const notesWithName = (notes ?? []).map((n: any) => ({ ...n, user_name: n.profiles?.name }))
+  const notesWithName = (notes ?? []).map((n: any) => ({ ...n, user_name: n.profiles?.name ?? null }))
 
   return (
     <div className="flex flex-col h-full">
