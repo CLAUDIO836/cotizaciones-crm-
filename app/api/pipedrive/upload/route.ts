@@ -90,13 +90,6 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({ title: finalTitle }),
   })
 
-  // Actualizar título del deal en Pipedrive con el número correcto
-  await fetch(`${PIPEDRIVE_API}/deals/${dealId}?api_token=${PIPEDRIVE_TOKEN}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: `COT-${dealId} - ${q.clients?.name ?? 'Sin cliente'}` }),
-  })
-
   const items = (q.quotation_items ?? []).sort(
     (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order
   )
