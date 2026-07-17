@@ -257,7 +257,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], u
           expiry_date: expiryDate || null,
           desde: desde || null,
           hasta: hasta || null,
-          distancia_km: distanciaKm ?? null,
+          ...(distanciaKm !== null ? { distancia_km: distanciaKm } : {}),
           fecha_salida: fechaSalida || null,
           fecha_destino: fechaDestino || null,
           descuento_pct: descuentoPct,
@@ -271,7 +271,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], u
         .select('id')
         .single()
 
-      if (qErr) throw qErr
+      if (qErr) { console.error('Supabase insert error:', JSON.stringify(qErr)); throw qErr }
 
       const itemsToInsert = items.map((item, idx) => ({
         quotation_id: qData.id,
