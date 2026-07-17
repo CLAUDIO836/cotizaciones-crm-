@@ -1,5 +1,13 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+
+function getAdminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  )
+}
 
 const PIPEDRIVE_TOKEN = process.env.PIPEDRIVE_API_TOKEN ?? ''
 const PIPEDRIVE_API = 'https://api.pipedrive.com/v1'
@@ -33,7 +41,7 @@ export async function POST(req: NextRequest) {
   const dealId = String(data?.id ?? '')
   if (!dealId) return NextResponse.json({ ok: true })
 
-  const supabase = await createClient()
+  const supabase = getAdminClient()
 
   const { data: quotation } = await supabase
     .from('quotations')
