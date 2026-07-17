@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
@@ -11,6 +11,81 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCLP } from '@/lib/utils'
 import { Plus, Trash2 } from 'lucide-react'
+
+// ── Nominatim autocomplete ──────────────────────────────────────────────────
+interface NominatimResult { place_id: number; display_name: string; lat: string; lon: string }
+
+function AddressInput({ value, onChange, placeholder }: {
+  value: string
+  onChange: (address: string, lat?: number, lng?: number) => void
+  placeholder?: string
+}) {
+  const [query, setQuery] = useState(value)
+  const [suggestions, setSuggestions] = useState<NominatimResult[]>([])
+  const [open, setOpen] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  useEffect(() => { setQuery(value) }, [value])
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const v = e.target.value
+    setQuery(v)
+    onChange(v)
+    clearTimeout(timer.current)
+    if (v.length < 3) { setSuggestions([]); setOpen(false); return }
+    timer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(v)}&format=json&limit=5&countrycodes=cl`,
+          { headers: { 'Accept-Language': 'es' } }
+        )
+        const data: NominatimResult[] = await res.json()
+        setSuggestions(data)
+        setOpen(data.length > 0)
+      } catch { /* ignore */ }
+    }, 500)
+  }
+
+  function select(r: NominatimResult) {
+    const short = r.display_name.split(',').slice(0, 3).join(',').trim()
+    setQuery(short)
+    onChange(short, parseFloat(r.lat), parseFloat(r.lon))
+    setSuggestions([])
+    setOpen(false)
+  }
+
+  return (
+    <div className="relative">
+      <Input
+        value={query}
+        onChange={handleChange}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder={placeholder}
+      />
+      {open && (
+        <div className="absolute z-50 w-full bg-white border rounded-lg shadow-lg mt-1 max-h-52 overflow-y-auto">
+          {suggestions.map(r => (
+            <button key={r.place_id} type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b last:border-0"
+              onMouseDown={() => select(r)}>
+              {r.display_name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)))
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 
 interface Client {
   id: string; name: string; rut?: string
@@ -76,12 +151,19 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], u
   const [vehicleType, setVehicleType] = useState(quotation?.vehicle_type ?? '')
   const [issueDate, setIssueDate] = useState(quotation?.issue_date ?? new Date().toISOString().split('T')[0])
   const [expiryDate, setExpiryDate] = useState(quotation?.expiry_date ?? '')
-  const [taxPct, setTaxPct] = useState(quotation?.tax_pct ?? 19)
+  const [taxPct, setTaxPct] = useState(quotation?.tax_pct ?? 0)
   const [descuentoPct, setDescuentoPct] = useState(quotation?.descuento_pct ?? 0)
 
   // Ruta / servicio
   const [desde, setDesde] = useState(quotation?.desde ?? '')
   const [hasta, setHasta] = useState(quotation?.hasta ?? '')
+  const [desdeLat, setDesdeLat] = useState<number>()
+  const [desdeLng, setDesdeLng] = useState<number>()
+  const [hastaLat, setHastaLat] = useState<number>()
+  const [hastaLng, setHastaLng] = useState<number>()
+  const distanciaKm = (desdeLat && desdeLng && hastaLat && hastaLng)
+    ? haversineKm(desdeLat, desdeLng, hastaLat, hastaLng)
+    : null
   const [fechaSalida, setFechaSalida] = useState(quotation?.fecha_salida?.slice(0, 16) ?? '')
   const [fechaDestino, setFechaDestino] = useState(quotation?.fecha_destino?.slice(0, 16) ?? '')
 
@@ -94,6 +176,16 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], u
   const [items, setItems] = useState<Item[]>(
     quotation?.items?.length ? quotation.items : [{ ...DEFAULT_ITEM }]
   )
+
+  // Auto-calcular fecha de vencimiento según embudo
+  useEffect(() => {
+    if (!issueDate) return
+    const pipeline = pipelines.find(p => p.id === pipelineId)
+    const days = pipeline?.name?.toLowerCase().includes('traslado diario') ? 15 : 5
+    const d = new Date(issueDate)
+    d.setDate(d.getDate() + days)
+    setExpiryDate(d.toISOString().split('T')[0])
+  }, [pipelineId, issueDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Vendedor — vacío para mostrar placeholder y forzar selección
   const [selectedUserId, setSelectedUserId] = useState('')
@@ -165,6 +257,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], u
           expiry_date: expiryDate || null,
           desde: desde || null,
           hasta: hasta || null,
+          distancia_km: distanciaKm ?? null,
           fecha_salida: fechaSalida || null,
           fecha_destino: fechaDestino || null,
           descuento_pct: descuentoPct,
@@ -384,15 +477,30 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], u
 
       {/* ── RUTA / SERVICIO ── */}
       <div className="bg-white rounded-xl border p-5 space-y-4">
-        <h2 className="font-semibold text-sm uppercase tracking-wide text-gray-500">Ruta / Servicio</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-sm uppercase tracking-wide text-gray-500">Ruta / Servicio</h2>
+          {distanciaKm !== null && (
+            <span className="text-sm font-semibold px-3 py-1 rounded-full" style={{ background: '#e8f5e9', color: '#1B8A4B' }}>
+              ~{distanciaKm} km (línea recta)
+            </span>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>Desde</Label>
-            <Input value={desde} onChange={e => setDesde(e.target.value)} placeholder="Dirección de origen" />
+            <AddressInput
+              value={desde}
+              onChange={(addr, lat, lng) => { setDesde(addr); setDesdeLat(lat); setDesdeLng(lng) }}
+              placeholder="Dirección de origen"
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Hasta</Label>
-            <Input value={hasta} onChange={e => setHasta(e.target.value)} placeholder="Dirección de destino" />
+            <AddressInput
+              value={hasta}
+              onChange={(addr, lat, lng) => { setHasta(addr); setHastaLat(lat); setHastaLng(lng) }}
+              placeholder="Dirección de destino"
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Fecha salida</Label>
