@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCLP } from '@/lib/utils'
 import { Plus, Trash2 } from 'lucide-react'
+import ClientRutSearch from '@/components/clients/ClientRutSearch'
 
 // ── Nominatim autocomplete ──────────────────────────────────────────────────
 interface NominatimResult { place_id: number; display_name: string; lat: string; lon: string }
@@ -180,6 +181,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   )
 
   const [companyId, setCompanyId] = useState('')
+  const [contactId, setContactId] = useState<string | null>(null)
 
   // Auto-calcular fecha de vencimiento según embudo
   useEffect(() => {
@@ -233,18 +235,13 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!clientId && !newClientName) { toast.error('Selecciona o crea un cliente'); return }
+    if (!clientId) { toast.error('Busca y selecciona un cliente por RUT'); return }
     if (!selectedUserId) { toast.error('Selecciona un vendedor'); return }
     if (items.some(i => !i.description.trim())) { toast.error('Completa la descripción de todos los ítems'); return }
 
     setLoading(true)
     try {
-      let finalClientId = clientId
-      if (showNewClient) {
-        const newId = await createNewClient()
-        if (!newId) { setLoading(false); return }
-        finalClientId = newId
-      }
+      const finalClientId = clientId
 
       const number = `TEMP-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
 
@@ -260,6 +257,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           issue_date: issueDate,
           expiry_date: expiryDate || null,
           company_id: companyId || null,
+          contact_id: contactId || null,
           desde: desde || null,
           hasta: hasta || null,
           ...(distanciaKm !== null ? { distancia_km: distanciaKm } : {}),
@@ -357,61 +355,9 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
       {/* ── CLIENTE ── */}
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <h2 className="font-semibold text-gray-900 text-sm uppercase tracking-wide text-gray-500">Cliente</h2>
-
-        {!showNewClient ? (
-          <div className="space-y-1.5">
-            <Label>Empresa</Label>
-            <div className="flex gap-2">
-              <Select value={clientId} onValueChange={v => setClientId(v ?? '')}>
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Seleccionar cliente..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map(c => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}{c.rut ? ` — ${c.rut}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button type="button" variant="outline" onClick={() => { setShowNewClient(true); setClientId('') }}>
-                + Nuevo
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Nombre empresa *</Label>
-              <Input value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder="Empresa S.A." />
-            </div>
-            <div className="space-y-1.5">
-              <Label>RUT</Label>
-              <Input value={newClientRut} onChange={e => setNewClientRut(e.target.value)} placeholder="76.000.000-0" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Nombre contacto</Label>
-              <Input value={newClientContacto} onChange={e => setNewClientContacto(e.target.value)} placeholder="Juan Pérez" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Email</Label>
-              <Input type="email" value={newClientEmail} onChange={e => setNewClientEmail(e.target.value)} placeholder="juan@empresa.cl" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Teléfono fijo</Label>
-              <Input value={newClientTelFijo} onChange={e => setNewClientTelFijo(e.target.value)} placeholder="222 345 678" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Teléfono celular</Label>
-              <Input value={newClientCelular} onChange={e => setNewClientCelular(e.target.value)} placeholder="9 1234 5678" />
-            </div>
-            <div className="col-span-2">
-              <Button type="button" variant="ghost" size="sm" onClick={() => setShowNewClient(false)}>
-                ← Cliente existente
-              </Button>
-            </div>
-          </div>
-        )}
+        <ClientRutSearch
+          onSelect={(cId, ctId) => { setClientId(cId); setContactId(ctId) }}
+        />
 
         {/* Pipeline + Etapa */}
         <div className="grid grid-cols-2 gap-4">
