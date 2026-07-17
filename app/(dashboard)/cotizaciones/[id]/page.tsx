@@ -8,6 +8,7 @@ import QuotationTabs from '@/components/quotations/QuotationTabs'
 import Link from 'next/link'
 import { ArrowLeft, FileDown, Edit, Globe } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import DeleteButton from '@/components/quotations/DeleteButton'
 
 const ETAPA_LABELS: Record<string, { label: string; color: string; bg: string }> = {
   lead:        { label: 'Lead',        color: '#6366f1', bg: '#eef2ff' },
@@ -102,6 +103,9 @@ export default async function CotizacionDetailPage({
               PDF
             </Button>
           </a>
+          {!isReadOnly && (
+            <DeleteButton quotationId={id} />
+          )}
           {!isReadOnly && (
             <Link href={`/cotizaciones/${id}/editar`}>
               <Button variant="outline" size="sm">
