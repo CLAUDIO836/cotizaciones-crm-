@@ -36,20 +36,26 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { event, data, previous } = body
 
+  console.log('[webhook] event:', event, 'dealId:', data?.id)
+
   if (!event?.startsWith('deal.')) return NextResponse.json({ ok: true })
 
   const dealId = String(data?.id ?? '')
   if (!dealId) return NextResponse.json({ ok: true })
 
   const supabase = getAdminClient()
+  console.log('[webhook] supabase url:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+  console.log('[webhook] service key:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET' : 'MISSING')
 
-  const { data: quotation } = await supabase
+  const { data: quotation, error: findError } = await supabase
     .from('quotations')
     .select('id, status')
     .eq('pipedrive_deal_id', dealId)
     .single()
 
-  if (!quotation) return NextResponse.json({ ok: true })
+  console.log('[webhook] quotation:', quotation?.id, 'error:', findError?.message)
+
+  if (!quotation) return NextResponse.json({ ok: true, reason: 'not found', dealId })
 
   // Deal ELIMINADO
   if (event === 'deal.deleted') {
@@ -92,8 +98,10 @@ export async function POST(req: NextRequest) {
       updates.pipeline_id = String(newPipelineId)
     }
 
+    console.log('[webhook] updates:', JSON.stringify(updates))
     if (Object.keys(updates).length > 0) {
-      await supabase.from('quotations').update(updates).eq('id', quotation.id)
+      const { error: updateError } = await supabase.from('quotations').update(updates).eq('id', quotation.id)
+      console.log('[webhook] update error:', updateError?.message)
     }
 
     return NextResponse.json({ ok: true, action: 'updated', updates })
