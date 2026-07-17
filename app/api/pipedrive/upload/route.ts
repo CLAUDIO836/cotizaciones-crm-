@@ -71,6 +71,13 @@ export async function POST(req: NextRequest) {
     number: String(dealId),
   }).eq('id', quotationId)
 
+  // Actualizar título del deal en Pipedrive con el número correcto
+  await fetch(`${PIPEDRIVE_API}/deals/${dealId}?api_token=${PIPEDRIVE_TOKEN}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: `COT-${dealId} - ${q.clients?.name ?? 'Sin cliente'}` }),
+  })
+
   const items = (q.quotation_items ?? []).sort(
     (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order
   )
@@ -78,7 +85,7 @@ export async function POST(req: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pdfElement = React.createElement(QuotationPDF as any, {
     data: {
-      number: q.number,
+      number: String(dealId),
       status: q.status,
       issue_date: q.issue_date,
       expiry_date: q.expiry_date,
@@ -98,7 +105,7 @@ export async function POST(req: NextRequest) {
 
   // Subir archivo a Pipedrive
   const formData = new FormData()
-  formData.append('file', new Blob([new Uint8Array(pdfBuffer)], { type: 'application/pdf' }), `COT-${q.number}.pdf`)
+  formData.append('file', new Blob([new Uint8Array(pdfBuffer)], { type: 'application/pdf' }), `COT-${dealId}.pdf`)
   formData.append('deal_id', String(dealId))
 
   const res = await fetch(`${PIPEDRIVE_API}/files?api_token=${PIPEDRIVE_TOKEN}`, {
