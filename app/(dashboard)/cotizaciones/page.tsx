@@ -15,6 +15,7 @@ export default async function CotizacionesPage({
     month?: string
     vendedor?: string
     pipeline?: string
+    company?: string
     q?: string
     view?: string
   }>
@@ -44,8 +45,10 @@ export default async function CotizacionesPage({
   if (params.q) {
     query = query.or(`number.ilike.%${params.q}%,client_name.ilike.%${params.q}%`)
   }
+  if (params.company) query = query.eq('company_id', params.company)
 
   const { data: quotations = [] } = await query
+  const { data: companies = [] } = await supabase.from('companies').select('id, name').order('name')
   const { data: pipelines = [] } = await supabase
     .from('pipelines').select('id, name, color').eq('active', true).order('sort_order')
   const { data: vendedores = [] } = isAdmin
@@ -111,8 +114,10 @@ export default async function CotizacionesPage({
       <PipelineFilter
         pipelines={pipelines ?? []}
         vendedores={isAdmin ? (vendedores ?? []) : []}
+        companies={companies ?? []}
         currentPipeline={params.pipeline}
         currentVendedor={params.vendedor}
+        currentCompany={params.company}
         currentParams={params}
         isAdmin={isAdmin}
       />

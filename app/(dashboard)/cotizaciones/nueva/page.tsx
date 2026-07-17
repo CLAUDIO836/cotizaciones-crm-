@@ -20,12 +20,13 @@ export default async function NuevaCotizacionPage() {
   const { data: { user } } = await supabase.auth.getUser()
   const { data: clients } = await supabase.from('clients').select('id, name, rut, contacto, telefono_fijo, telefono_celular, email').order('name')
   const { data: sellers } = await supabase.from('profiles').select('id, name, email').order('name')
+  const { data: companies } = await supabase.from('companies').select('id, name').order('name')
   const pipelines = await getPipedrivePipelines()
 
   return (
     <div className="p-6 max-w-4xl">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Nueva cotización</h1>
-      <QuotationForm clients={clients ?? []} pipelines={pipelines} sellers={sellers ?? []} userId={user!.id} />
+      <QuotationForm clients={clients ?? []} pipelines={pipelines} sellers={sellers ?? []} companies={companies ?? []} userId={user!.id} />
     </div>
   )
 }

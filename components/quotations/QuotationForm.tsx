@@ -95,11 +95,13 @@ interface Pipeline { id: string; name: string; color: string }
 interface Item { codigo: string; description: string; quantity: number; unit_price: number }
 
 interface Seller { id: string; name: string; email?: string }
+interface Company { id: string; name: string }
 
 interface Props {
   clients: Client[]
   pipelines?: Pipeline[]
   sellers?: Seller[]
+  companies?: Company[]
   userId: string
   quotation?: {
     id: string
@@ -139,7 +141,7 @@ const ETAPAS = [
 
 const DEFAULT_ITEM: Item = { codigo: '', description: '', quantity: 1, unit_price: 0 }
 
-export default function QuotationForm({ clients, pipelines = [], sellers = [], userId, quotation }: Props) {
+export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const [loading, setLoading] = useState(false)
@@ -176,6 +178,8 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], u
   const [items, setItems] = useState<Item[]>(
     quotation?.items?.length ? quotation.items : [{ ...DEFAULT_ITEM }]
   )
+
+  const [companyId, setCompanyId] = useState('')
 
   // Auto-calcular fecha de vencimiento según embudo
   useEffect(() => {
@@ -255,6 +259,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], u
           vehicle_type: vehicleType || null,
           issue_date: issueDate,
           expiry_date: expiryDate || null,
+          company_id: companyId || null,
           desde: desde || null,
           hasta: hasta || null,
           ...(distanciaKm !== null ? { distancia_km: distanciaKm } : {}),
@@ -312,25 +317,42 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], u
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
 
-      {/* ── VENDEDOR ── */}
-      {sellers.length > 0 && (
-        <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
-          <div className="space-y-1.5">
-            <Label className="text-blue-700 font-semibold">Vendedor *</Label>
-            <Select value={selectedUserId} onValueChange={v => setSelectedUserId(v ?? userId)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccionar vendedor..." />
-              </SelectTrigger>
-              <SelectContent>
-                {sellers.map(s => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-blue-500">Al crear la cotización se generará automáticamente un negocio en Pipedrive.</p>
-          </div>
+      {/* ── EMPRESA + VENDEDOR ── */}
+      <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
+        <div className="grid grid-cols-2 gap-4">
+          {companies.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-blue-700 font-semibold">Empresa *</Label>
+              <Select value={companyId} onValueChange={v => setCompanyId(v ?? '')}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar empresa..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {companies.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {sellers.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-blue-700 font-semibold">Vendedor *</Label>
+              <Select value={selectedUserId} onValueChange={v => setSelectedUserId(v ?? userId)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar vendedor..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {sellers.map(s => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
-      )}
+        <p className="text-xs text-blue-500 mt-2">Al crear la cotización se generará automáticamente un negocio en Pipedrive.</p>
+      </div>
 
       {/* ── CLIENTE ── */}
       <div className="bg-white rounded-xl border p-5 space-y-4">
