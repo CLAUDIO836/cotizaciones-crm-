@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'PIPEDRIVE_API_TOKEN no configurado' }, { status: 500 })
   }
 
-  const { quotationId, pipelineId, fechaSalida } = await req.json()
+  const { quotationId, pipelineId, fechaSalida, companyName, desde, hasta } = await req.json()
   if (!quotationId) {
     return NextResponse.json({ error: 'Falta quotationId' }, { status: 400 })
   }
@@ -43,9 +43,18 @@ export async function POST(req: NextRequest) {
   const vendedorEmail = q.profiles?.email ?? ''
   const pipedriveUserId = PIPEDRIVE_USERS[vendedorEmail]
 
-  // Crear negocio en Pipedrive
+  // Prefijo según empresa
+  const COMPANY_PREFIX: Record<string, string> = {
+    'Transccl': 'CCL',
+    'Transportes TKS': 'TKS',
+    'TrackingCCL': 'TCCL',
+  }
+  const prefix = COMPANY_PREFIX[companyName ?? ''] ?? 'CCL'
+  const ruta = (desde && hasta) ? ` - ${desde.split(',')[0].trim()} / ${hasta.split(',')[0].trim()}` : ''
+
+  // Crear negocio en Pipedrive (título provisional, se actualiza con dealId después)
   const dealBody: Record<string, unknown> = {
-    title: `COT-${q.number} - ${q.clients?.name ?? 'Sin cliente'}`,
+    title: `${prefix}-TEMP - ${q.clients?.name ?? 'Sin cliente'}${ruta}`,
     value: q.total ?? 0,
     currency: 'CLP',
   }
@@ -65,11 +74,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Error creando negocio en Pipedrive', detail: dealJson }, { status: 500 })
   }
 
+  // Título final con número real de Pipedrive
+  const finalTitle = `${prefix}-${dealId} - ${q.clients?.name ?? 'Sin cliente'}${ruta}`
+
   // Guardar deal ID y actualizar número de cotización con el ID del negocio
   await supabase.from('quotations').update({
     pipedrive_deal_id: String(dealId),
     number: String(dealId),
   }).eq('id', quotationId)
+
+  // Actualizar título del negocio en Pipedrive con número real
+  await fetch(`${PIPEDRIVE_API}/deals/${dealId}?api_token=${PIPEDRIVE_TOKEN}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: finalTitle }),
+  })
 
   // Actualizar título del deal en Pipedrive con el número correcto
   await fetch(`${PIPEDRIVE_API}/deals/${dealId}?api_token=${PIPEDRIVE_TOKEN}`, {

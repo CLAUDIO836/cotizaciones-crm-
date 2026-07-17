@@ -293,7 +293,14 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
         const uploadRes = await fetch('/api/pipedrive/upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ quotationId: qData.id, pipelineId: pipelineId || null, fechaSalida: fechaSalida || null }),
+          body: JSON.stringify({
+            quotationId: qData.id,
+            pipelineId: pipelineId || null,
+            fechaSalida: fechaSalida || null,
+            companyName: companies.find(c => c.id === companyId)?.name ?? null,
+            desde: desde || null,
+            hasta: hasta || null,
+          }),
         })
         const uploadJson = await uploadRes.json()
         if (uploadJson.dealId) {
