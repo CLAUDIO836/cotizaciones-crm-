@@ -12,9 +12,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'PIPEDRIVE_API_TOKEN no configurado' }, { status: 500 })
   }
 
-  const { quotationId, dealId, fechaSalida } = await req.json()
-  if (!quotationId || !dealId) {
-    return NextResponse.json({ error: 'Faltan quotationId y dealId' }, { status: 400 })
+  const { quotationId, pipelineId, fechaSalida } = await req.json()
+  if (!quotationId) {
+    return NextResponse.json({ error: 'Falta quotationId' }, { status: 400 })
   }
 
   const supabase = await createClient()
@@ -26,6 +26,50 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (!q) return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 })
+
+  // Mapeo email CRM → user_id Pipedrive
+  const PIPEDRIVE_USERS: Record<string, number> = {
+    'claudio@transccl.cl':        563196,
+    'ventas@transccl.cl':         2008020,
+    'ecomercial1@transccl.cl':    563218,
+    'ecomercial2@transccl.cl':    563943,
+    'ecomercial3@transccl.cl':    2386983,
+    'ecomercial4@transccl.cl':    15372325,
+    'ecomercial5@transccl.cl':    15372314,
+    'ecomercial6@transccl.cl':    15372336,
+    'clsaldivia@transportesklaus.cl': 572704,
+  }
+
+  const vendedorEmail = q.profiles?.email ?? ''
+  const pipedriveUserId = PIPEDRIVE_USERS[vendedorEmail]
+
+  // Crear negocio en Pipedrive
+  const dealBody: Record<string, unknown> = {
+    title: `COT-${q.number} - ${q.clients?.name ?? 'Sin cliente'}`,
+    value: q.total ?? 0,
+    currency: 'CLP',
+  }
+  if (pipedriveUserId) dealBody.user_id = pipedriveUserId
+  if (pipelineId) dealBody.pipeline_id = Number(pipelineId)
+  if (fechaSalida) dealBody.expected_close_date = fechaSalida.slice(0, 10)
+
+  const dealRes = await fetch(`${PIPEDRIVE_API}/deals?api_token=${PIPEDRIVE_TOKEN}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(dealBody),
+  })
+  const dealJson = await dealRes.json()
+  const dealId = dealJson.data?.id
+
+  if (!dealId) {
+    return NextResponse.json({ error: 'Error creando negocio en Pipedrive', detail: dealJson }, { status: 500 })
+  }
+
+  // Guardar deal ID y actualizar número de cotización con el ID del negocio
+  await supabase.from('quotations').update({
+    pipedrive_deal_id: String(dealId),
+    number: String(dealId),
+  }).eq('id', quotationId)
 
   const items = (q.quotation_items ?? []).sort(
     (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order
@@ -68,33 +112,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Error subiendo a Pipedrive', detail: result }, { status: 500 })
   }
 
-  // Mapeo email CRM → user_id Pipedrive
-  const PIPEDRIVE_USERS: Record<string, number> = {
-    'claudio@transccl.cl':        563196,
-    'ventas@transccl.cl':         2008020,
-    'ecomercial1@transccl.cl':    563218,
-    'ecomercial2@transccl.cl':    563943,
-    'ecomercial3@transccl.cl':    2386983,
-    'ecomercial4@transccl.cl':    15372325,
-    'ecomercial5@transccl.cl':    15372314,
-    'ecomercial6@transccl.cl':    15372336,
-    'clsaldivia@transportesklaus.cl': 572704,
-  }
-
-  const vendedorEmail = q.profiles?.email ?? ''
-  const pipedriveUserId = PIPEDRIVE_USERS[vendedorEmail]
-
-  const dealPatch: Record<string, unknown> = {}
-  if (pipedriveUserId) dealPatch.user_id = pipedriveUserId
-  if (fechaSalida) dealPatch.expected_close_date = fechaSalida.slice(0, 10)
-
-  if (Object.keys(dealPatch).length > 0) {
-    await fetch(`${PIPEDRIVE_API}/deals/${dealId}?api_token=${PIPEDRIVE_TOKEN}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(dealPatch),
-    })
-  }
-
-  return NextResponse.json({ ok: true, fileId: result.data?.id })
+  return NextResponse.json({ ok: true, dealId, fileId: result.data?.id })
 }

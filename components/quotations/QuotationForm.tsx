@@ -98,9 +98,6 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], u
   // Vendedor — vacío para mostrar placeholder y forzar selección
   const [selectedUserId, setSelectedUserId] = useState('')
 
-  // Pipedrive
-  const [pipedriveDealId, setPipedriveDealId] = useState('')
-
   // Nuevo cliente inline
   const [newClientName, setNewClientName] = useState('')
   const [newClientRut, setNewClientRut] = useState('')
@@ -153,14 +150,12 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], u
         finalClientId = newId
       }
 
-      if (!pipedriveDealId.trim()) { toast.error('Ingresa el N° de negocio de Pipedrive'); setLoading(false); return }
-      const number = pipedriveDealId.trim()
+      const number = `TEMP-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
 
       const { data: qData, error: qErr } = await supabase
         .from('quotations')
         .insert({
           number,
-          pipedrive_deal_id: pipedriveDealId.trim() || null,
           client_id: finalClientId,
           user_id: selectedUserId,
           pipeline_id: pipelineId || null,
@@ -197,16 +192,22 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], u
       const { error: itemsErr } = await supabase.from('quotation_items').insert(itemsToInsert)
       if (itemsErr) throw itemsErr
 
-      // Subir PDF a Pipedrive
+      // Crear negocio en Pipedrive y subir PDF
       try {
-        await fetch('/api/pipedrive/upload', {
+        const uploadRes = await fetch('/api/pipedrive/upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ quotationId: qData.id, dealId: pipedriveDealId.trim(), fechaSalida: fechaSalida || null }),
+          body: JSON.stringify({ quotationId: qData.id, pipelineId: pipelineId || null, fechaSalida: fechaSalida || null }),
         })
-      } catch { /* no bloquear si falla */ }
-
-      toast.success('Cotización creada y subida a Pipedrive')
+        const uploadJson = await uploadRes.json()
+        if (uploadJson.dealId) {
+          toast.success(`Cotización creada — Negocio #${uploadJson.dealId} creado en Pipedrive`)
+        } else {
+          toast.success('Cotización creada')
+        }
+      } catch {
+        toast.success('Cotización creada (sin conexión a Pipedrive)')
+      }
       router.push(`/cotizaciones/${qData.id}`)
     } catch {
       toast.error('Error al guardar la cotización')
@@ -218,36 +219,25 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], u
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
 
-      {/* ── PIPEDRIVE ── */}
-      <div className="bg-blue-50 rounded-xl border border-blue-200 p-5 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+      {/* ── VENDEDOR ── */}
+      {sellers.length > 0 && (
+        <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
           <div className="space-y-1.5">
-            <Label className="text-blue-700 font-semibold">N° Negocio Pipedrive *</Label>
-            <Input
-              value={pipedriveDealId}
-              onChange={e => setPipedriveDealId(e.target.value)}
-              placeholder="Ej: 46228"
-              className="font-mono text-lg"
-            />
-            <p className="text-xs text-blue-500">El PDF se subirá automáticamente al negocio en Pipedrive.</p>
+            <Label className="text-blue-700 font-semibold">Vendedor *</Label>
+            <Select value={selectedUserId} onValueChange={v => setSelectedUserId(v ?? userId)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccionar vendedor..." />
+              </SelectTrigger>
+              <SelectContent>
+                {sellers.map(s => (
+                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-blue-500">Al crear la cotización se generará automáticamente un negocio en Pipedrive.</p>
           </div>
-          {sellers.length > 0 && (
-            <div className="space-y-1.5">
-              <Label className="text-blue-700 font-semibold">Vendedor *</Label>
-              <Select value={selectedUserId} onValueChange={v => setSelectedUserId(v ?? userId)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar vendedor..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {sellers.map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
         </div>
-      </div>
+      )}
 
       {/* ── CLIENTE ── */}
       <div className="bg-white rounded-xl border p-5 space-y-4">
