@@ -109,12 +109,6 @@ export default async function CotizacionDetailPage({
               PDF
             </Button>
           </a>
-          {!isReadOnly && q.status === 'open' && (
-            <QuotationApprovalButton quotationId={id} />
-          )}
-          {!isReadOnly && q.status === 'won' && !pipeline?.name?.toLowerCase().includes('traslado diario') && (
-            <ApprovalLetterButton quotationId={id} />
-          )}
           {!isReadOnly && (
             <DeleteButton quotationId={id} />
           )}
@@ -144,6 +138,23 @@ export default async function CotizacionDetailPage({
       <div className="flex-1 overflow-auto p-6">
         {tab === 'datos' && (
           <div className="max-w-2xl space-y-5">
+
+            {/* Acciones comerciales destacadas */}
+            {!isReadOnly && q.status === 'open' && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Aprobación de cotización</p>
+                <p className="text-xs text-blue-600 mb-3">Genera un link de firma digital para que el cliente acepte o rechace esta cotización.</p>
+                <QuotationApprovalButton quotationId={id} />
+              </div>
+            )}
+            {!isReadOnly && q.status === 'won' && !pipeline?.name?.toLowerCase().includes('traslado diario') && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">Carta de aprobación de servicio</p>
+                <p className="text-xs text-green-600 mb-3">Genera y envía la carta de aprobación para que el cliente firme digitalmente antes del servicio.</p>
+                <ApprovalLetterButton quotationId={id} />
+              </div>
+            )}
+
             <div className="bg-white rounded-xl border p-5">
               <h2 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wide">Cliente</h2>
               <p className="font-bold text-gray-900 text-lg">{q.clients?.name ?? '—'}</p>
