@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { ArrowLeft, FileDown, Edit, Globe } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import DeleteButton from '@/components/quotations/DeleteButton'
+import ApprovalLetterButton from '@/components/quotations/ApprovalLetterButton'
 
 const ETAPA_LABELS: Record<string, { label: string; color: string; bg: string }> = {
   lead:        { label: 'Lead',        color: '#6366f1', bg: '#eef2ff' },
@@ -39,6 +40,10 @@ export default async function CotizacionDetailPage({
     .single()
 
   if (!q) notFound()
+
+  const { data: pipeline } = q.pipeline_id
+    ? await supabase.from('pipelines').select('name').eq('id', q.pipeline_id).single()
+    : { data: null }
 
   const { data: activities = [] } = await supabase
     .from('quotation_activities')
@@ -103,6 +108,9 @@ export default async function CotizacionDetailPage({
               PDF
             </Button>
           </a>
+          {!isReadOnly && pipeline?.name?.toLowerCase().includes('ocasional') && (
+            <ApprovalLetterButton quotationId={id} />
+          )}
           {!isReadOnly && (
             <DeleteButton quotationId={id} />
           )}
