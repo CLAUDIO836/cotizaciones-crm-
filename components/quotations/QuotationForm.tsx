@@ -133,10 +133,10 @@ const VEHICLES_CCL = [
 ]
 
 const VEHICLES_TKS = [
-  { key: 'bus',     label: 'Bus (40–60 pax)',     img: '/vehicles/tks-bus.jpg' },
-  { key: 'taxibus', label: 'Taxibús (25–33 pax)', img: '/vehicles/tks-taxibus.jpg' },
-  { key: 'minibus', label: 'Minibús (14–19 pax)', img: '/vehicles/tks-minibus.jpg' },
-  { key: 'minivan', label: 'Minivan (7–10 pax)',  img: '/vehicles/minivan.jpg' },
+  { key: 'bus',     label: 'Bus (40–60 pax)',     img: '/vehicles/tks-bus.jpg' },      // bus verde (placeholder hasta tener foto del bus blanco TKS)
+  { key: 'taxibus', label: 'Taxibús (25–33 pax)', img: '/vehicles/tks-bus.jpg' },      // mismo bus verde
+  { key: 'minibus', label: 'Minibús (14–19 pax)', img: '/vehicles/tks-sprinter.jpg' }, // Sprinter plateado
+  { key: 'minivan', label: 'Minivan (7–10 pax)',  img: '/vehicles/tks-minivan.jpg' },  // Mercedes V-class azul
 ]
 
 const ETAPAS = [
