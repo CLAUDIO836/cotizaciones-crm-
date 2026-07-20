@@ -3,6 +3,7 @@ import { formatCLP, getMonthName } from '@/lib/utils'
 import MetricsCards from '@/components/dashboard/MetricsCards'
 import MonthlyChart from '@/components/dashboard/MonthlyChart'
 import SalesPipelineTable from '@/components/dashboard/SalesPipelineTable'
+import MisNegociosRecientes from '@/components/dashboard/MisNegociosRecientes'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -51,6 +52,13 @@ export default async function DashboardPage() {
     }
   })
 
+  // Últimas 8 cotizaciones del vendedor (para no-admin)
+  const recentQuotations = !isAdmin
+    ? [...(quotations ?? [])]
+        .sort((a, b) => new Date(b.created_at ?? b.issue_date).getTime() - new Date(a.created_at ?? a.issue_date).getTime())
+        .slice(0, 8)
+    : []
+
   // Resumen por vendedor (solo admin)
   let vendedoresData: { name: string; open: number; won: number; lost: number; total: number }[] = []
   if (isAdmin) {
@@ -93,6 +101,10 @@ export default async function DashboardPage() {
             <h2 className="font-semibold text-gray-900 mb-4">Resumen por vendedor</h2>
             <SalesPipelineTable data={vendedoresData} />
           </div>
+        )}
+
+        {!isAdmin && (
+          <MisNegociosRecientes quotations={recentQuotations} />
         )}
       </div>
     </div>
