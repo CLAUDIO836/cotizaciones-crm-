@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FileSignature, Copy, Check, ExternalLink, Trash2, AlertTriangle, Clock, CheckCircle2 } from 'lucide-react'
+import { FileSignature, Copy, Check, ExternalLink, Trash2, AlertTriangle, Clock, CheckCircle2, FileDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface Letter {
@@ -111,12 +111,17 @@ export default function ApprovalLetterButton({ quotationId }: { quotationId: str
         </div>
 
         {/* Acciones */}
-        <Button variant="outline" size="sm" onClick={copy} title="Copiar link">
+        <Button variant="outline" size="sm" onClick={copy} title="Copiar link para cliente">
           {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
         </Button>
         <a href={url} target="_blank" rel="noopener noreferrer">
-          <Button variant="outline" size="sm" title="Abrir carta">
+          <Button variant="outline" size="sm" title="Abrir página de firma">
             <ExternalLink className="w-4 h-4" />
+          </Button>
+        </a>
+        <a href={`/api/approval-letters/${letter.token}/pdf`} target="_blank" rel="noopener noreferrer">
+          <Button variant="outline" size="sm" title="Ver PDF">
+            <FileDown className="w-4 h-4" />
           </Button>
         </a>
 
