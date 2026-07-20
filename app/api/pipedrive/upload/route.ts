@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { QuotationPDF } from '@/lib/pdf/generate'
+import { TKSQuotationPDF } from '@/lib/pdf/tks-quotation'
 import { NextRequest, NextResponse } from 'next/server'
 import React from 'react'
 
@@ -103,8 +104,11 @@ export async function POST(req: NextRequest) {
     (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order
   )
 
+  const isTKS = companyName === 'Transportes TKS'
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pdfElement = React.createElement(QuotationPDF as any, {
+  const PdfComponent = isTKS ? TKSQuotationPDF : QuotationPDF
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pdfElement = React.createElement(PdfComponent as any, {
     data: {
       number: String(dealId),
       status: q.status,
@@ -115,9 +119,16 @@ export async function POST(req: NextRequest) {
       total: q.total,
       notes: q.notes,
       terms: q.terms,
-      client: q.clients,
+      client: { ...q.clients, phone: (q.clients as {phone?: string})?.phone },
       vendedor: q.profiles,
       items,
+      desde: q.desde,
+      hasta: q.hasta,
+      fecha_salida: q.fecha_salida,
+      hora_salida: q.hora_salida,
+      fecha_retorno: q.fecha_retorno,
+      hora_retorno: q.hora_retorno,
+      vehicle_type: q.vehicle_type,
     },
   })
 
@@ -126,7 +137,7 @@ export async function POST(req: NextRequest) {
 
   // Subir archivo a Pipedrive
   const formData = new FormData()
-  formData.append('file', new Blob([new Uint8Array(pdfBuffer)], { type: 'application/pdf' }), `COT-${dealId}.pdf`)
+  formData.append('file', new Blob([new Uint8Array(pdfBuffer)], { type: 'application/pdf' }), `${prefix}-${dealId}.pdf`)
   formData.append('deal_id', String(dealId))
 
   const res = await fetch(`${PIPEDRIVE_API}/files?api_token=${PIPEDRIVE_TOKEN}`, {
