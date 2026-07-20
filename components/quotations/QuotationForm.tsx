@@ -125,11 +125,18 @@ interface Props {
   }
 }
 
-const VEHICLES = [
+const VEHICLES_CCL = [
   { key: 'bus',     label: 'Bus (40–45 pax)',     img: '/vehicles/bus-real.png' },
   { key: 'taxibus', label: 'Taxibús (25–33 pax)', img: '/vehicles/taxibus-real.png' },
   { key: 'minibus', label: 'Minibús (14–19 pax)', img: '/vehicles/minibus-real.png' },
   { key: 'minivan', label: 'Minivan (7–11 pax)',  img: '/vehicles/minivan-real.png' },
+]
+
+const VEHICLES_TKS = [
+  { key: 'bus',     label: 'Bus (40–60 pax)',     img: '/vehicles/tks-bus.jpg' },
+  { key: 'taxibus', label: 'Taxibús (25–33 pax)', img: '/vehicles/tks-taxibus.jpg' },
+  { key: 'minibus', label: 'Minibús (14–19 pax)', img: '/vehicles/tks-minibus.jpg' },
+  { key: 'minivan', label: 'Minivan (7–10 pax)',  img: '/vehicles/minivan.jpg' },
 ]
 
 const ETAPAS = [
@@ -408,7 +415,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
         <div className="space-y-1.5">
           <Label>Tipo de vehículo</Label>
           <div className="grid grid-cols-3 gap-2">
-            {VEHICLES.map(v => (
+            {(companies?.find(c => c.id === companyId)?.name === 'Transportes TKS' ? VEHICLES_TKS : VEHICLES_CCL).map(v => (
               <button
                 key={v.key}
                 type="button"
