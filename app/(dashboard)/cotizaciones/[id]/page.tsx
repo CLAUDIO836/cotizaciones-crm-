@@ -10,6 +10,7 @@ import { ArrowLeft, FileDown, Edit, Globe } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import DeleteButton from '@/components/quotations/DeleteButton'
 import ApprovalLetterButton from '@/components/quotations/ApprovalLetterButton'
+import QuotationApprovalButton from '@/components/quotations/QuotationApprovalButton'
 
 const ETAPA_LABELS: Record<string, { label: string; color: string; bg: string }> = {
   lead:        { label: 'Lead',        color: '#6366f1', bg: '#eef2ff' },
@@ -108,6 +109,9 @@ export default async function CotizacionDetailPage({
               PDF
             </Button>
           </a>
+          {!isReadOnly && q.status === 'open' && (
+            <QuotationApprovalButton quotationId={id} />
+          )}
           {!isReadOnly && q.status === 'won' && !pipeline?.name?.toLowerCase().includes('traslado diario') && (
             <ApprovalLetterButton quotationId={id} />
           )}
