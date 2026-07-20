@@ -63,7 +63,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     }).eq('id', quotationId)
   }
 
-  // Actualizar estado en Pipedrive
+  // Actualizar estado en Pipedrive + agregar nota
   if (dealId && PIPEDRIVE_TOKEN) {
     const pipeBody: Record<string, string> = { status: response === 'accepted' ? 'won' : 'lost' }
     if (response === 'rejected' && rejection_reason) {
@@ -73,6 +73,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(pipeBody),
+    })
+
+    // Nota en Pipedrive notificando al vendedor
+    const fechaHora = new Date(respondedAt).toLocaleString('es-CL', { timeZone: 'America/Santiago' })
+    const emoji = response === 'accepted' ? '✅' : '❌'
+    const accion = response === 'accepted' ? 'ACEPTADA' : 'RECHAZADA'
+    let noteContent = `${emoji} <b>COTIZACIÓN ${accion} POR EL CLIENTE</b><br><br>`
+    noteContent += `<b>Nombre:</b> ${responded_name}<br>`
+    noteContent += `<b>RUT:</b> ${responded_rut}<br>`
+    noteContent += `<b>Fecha/Hora:</b> ${fechaHora}<br>`
+    noteContent += `<b>IP:</b> ${ip}<br>`
+    if (response === 'rejected' && rejection_reason) {
+      noteContent += `<br><b>Motivo del rechazo:</b> ${rejection_reason}`
+    }
+    if (response === 'accepted') {
+      noteContent += `<br><br>👉 El negocio fue marcado como <b>Ganado</b>. Puedes crear la carta de aprobación desde el CRM.`
+    }
+
+    await fetch(`${PIPEDRIVE_API}/notes?api_token=${PIPEDRIVE_TOKEN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: noteContent, deal_id: Number(dealId) }),
     })
   }
 
