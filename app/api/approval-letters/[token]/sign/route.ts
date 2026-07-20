@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { ApprovalLetterPDF } from '@/lib/pdf/approval-letter'
+import { TKSApprovalLetterPDF } from '@/lib/pdf/tks-approval-letter'
 import React from 'react'
 
 function getAdminClient() {
@@ -74,8 +75,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
         signed_ip: ip,
         ...(billing_name ? { billing_name, billing_rut, billing_address, billing_company, billing_glosa } : {}),
       }
+      const PdfComponent = letter.company_name?.includes('TKS') ? TKSApprovalLetterPDF : ApprovalLetterPDF
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pdfEl = React.createElement(ApprovalLetterPDF as any, { data: letterData })
+      const pdfEl = React.createElement(PdfComponent as any, { data: letterData })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const buf = await renderToBuffer(pdfEl as any)
 

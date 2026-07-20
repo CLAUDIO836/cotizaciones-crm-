@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { ApprovalLetterPDF } from '@/lib/pdf/approval-letter'
+import { TKSApprovalLetterPDF } from '@/lib/pdf/tks-approval-letter'
 import React from 'react'
 
 function getAdminClient() {
@@ -87,8 +88,9 @@ export async function POST(req: NextRequest) {
   // Generar PDF y subir a Pipedrive en background
   if (q.pipedrive_deal_id) {
     try {
+      const PdfComponent = q.company === 'Transportes TKS' ? TKSApprovalLetterPDF : ApprovalLetterPDF
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pdfEl = React.createElement(ApprovalLetterPDF as any, { data: { ...letterData, token: letter.token } })
+      const pdfEl = React.createElement(PdfComponent as any, { data: { ...letterData, token: letter.token } })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const buf = await renderToBuffer(pdfEl as any)
       await uploadPipedrivePDF(q.pipedrive_deal_id, buf, `Carta-Aprobacion-${q.number ?? quotation_id}.pdf`)
