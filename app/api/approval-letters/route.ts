@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { renderToBuffer } from '@react-pdf/renderer'
+import { ApprovalLetterPDF } from '@/lib/pdf/approval-letter'
+import React from 'react'
 
 function getAdminClient() {
   return createAdminClient(
@@ -8,6 +11,28 @@ function getAdminClient() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } }
   )
+}
+
+const PIPEDRIVE_TOKEN = process.env.PIPEDRIVE_API_TOKEN ?? ''
+const PIPEDRIVE_API = 'https://api.pipedrive.com/v1'
+
+const COMPANY_NAME_MAP: Record<string, string> = {
+  'Transccl': 'Transccl SpA',
+  'Transportes TKS': 'Transportes TKS SpA',
+  'TrackingCCL': 'TrackingCCL SpA',
+}
+
+async function uploadPipedrivePDF(dealId: string, pdfBuffer: Buffer, filename: string) {
+  if (!PIPEDRIVE_TOKEN || !dealId) return null
+  const formData = new FormData()
+  formData.append('file', new Blob([new Uint8Array(pdfBuffer)], { type: 'application/pdf' }), filename)
+  formData.append('deal_id', dealId)
+  const res = await fetch(`${PIPEDRIVE_API}/files?api_token=${PIPEDRIVE_TOKEN}`, {
+    method: 'POST',
+    body: formData,
+  })
+  const json = await res.json()
+  return json.data?.id ?? null
 }
 
 export async function POST(req: NextRequest) {
@@ -28,12 +53,7 @@ export async function POST(req: NextRequest) {
 
   if (!q) return NextResponse.json({ error: 'Quotation not found' }, { status: 404 })
 
-  const companyMap: Record<string, string> = {
-    'Transccl': 'Transccl SpA',
-    'Transportes TKS': 'Transportes TKS SpA',
-    'TrackingCCL': 'TrackingCCL SpA',
-  }
-  const companyName = companyMap[q.company ?? ''] ?? q.company ?? 'Transccl SpA'
+  const companyName = COMPANY_NAME_MAP[q.company ?? ''] ?? q.company ?? 'Transccl SpA'
 
   const letterData = {
     quotation_id,
@@ -50,6 +70,7 @@ export async function POST(req: NextRequest) {
     hora_retorno: q.hora_retorno ?? null,
     total: q.total ?? null,
     company_name: companyName,
+    sent_at: new Date().toISOString(),
   }
 
   const { data: letter, error } = await admin
@@ -62,6 +83,19 @@ export async function POST(req: NextRequest) {
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? req.nextUrl.origin
   const url = `${baseUrl}/firmar/${letter.token}`
+
+  // Generar PDF y subir a Pipedrive en background
+  if (q.pipedrive_deal_id) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pdfEl = React.createElement(ApprovalLetterPDF as any, { data: { ...letterData, token: letter.token } })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const buf = await renderToBuffer(pdfEl as any)
+      await uploadPipedrivePDF(q.pipedrive_deal_id, buf, `Carta-Aprobacion-${q.number ?? quotation_id}.pdf`)
+    } catch (e) {
+      console.error('Error subiendo carta a Pipedrive:', e)
+    }
+  }
 
   return NextResponse.json({ ok: true, token: letter.token, url })
 }

@@ -108,7 +108,7 @@ export default async function CotizacionDetailPage({
               PDF
             </Button>
           </a>
-          {!isReadOnly && !pipeline?.name?.toLowerCase().includes('traslado diario') && (
+          {!isReadOnly && q.status === 'won' && !pipeline?.name?.toLowerCase().includes('traslado diario') && (
             <ApprovalLetterButton quotationId={id} />
           )}
           {!isReadOnly && (

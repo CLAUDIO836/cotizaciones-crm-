@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { renderToBuffer } from '@react-pdf/renderer'
+import { ApprovalLetterPDF } from '@/lib/pdf/approval-letter'
+import React from 'react'
 
 function getAdminClient() {
   return createClient(
@@ -8,6 +11,9 @@ function getAdminClient() {
     { auth: { persistSession: false } }
   )
 }
+
+const PIPEDRIVE_TOKEN = process.env.PIPEDRIVE_API_TOKEN ?? ''
+const PIPEDRIVE_API = 'https://api.pipedrive.com/v1'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
@@ -22,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
   const { data: letter } = await admin
     .from('approval_letters')
-    .select('id, signed_at')
+    .select('*, quotations(pipedrive_deal_id, number)')
     .eq('token', token)
     .single()
 
@@ -31,9 +37,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
   const ip = req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? 'unknown'
   const userAgent = req.headers.get('user-agent') ?? ''
+  const signedAt = new Date().toISOString()
 
   const updateData: Record<string, string | null> = {
-    signed_at: new Date().toISOString(),
+    signed_at: signedAt,
     signed_name,
     signed_rut,
     signed_ip: ip,
@@ -54,6 +61,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     .eq('token', token)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Subir PDF firmado a Pipedrive
+  const dealId = letter.quotations?.pipedrive_deal_id
+  if (dealId && PIPEDRIVE_TOKEN) {
+    try {
+      const letterData = {
+        ...letter,
+        signed_at: signedAt,
+        signed_name,
+        signed_rut,
+        signed_ip: ip,
+        ...(billing_name ? { billing_name, billing_rut, billing_address, billing_company, billing_glosa } : {}),
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pdfEl = React.createElement(ApprovalLetterPDF as any, { data: letterData })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const buf = await renderToBuffer(pdfEl as any)
+
+      const formData = new FormData()
+      const filename = `Carta-FIRMADA-${letter.quotations?.number ?? dealId}.pdf`
+      formData.append('file', new Blob([new Uint8Array(buf)], { type: 'application/pdf' }), filename)
+      formData.append('deal_id', dealId)
+
+      await fetch(`${PIPEDRIVE_API}/files?api_token=${PIPEDRIVE_TOKEN}`, {
+        method: 'POST',
+        body: formData,
+      })
+    } catch (e) {
+      console.error('Error subiendo carta firmada a Pipedrive:', e)
+    }
+  }
 
   return NextResponse.json({ ok: true })
 }
