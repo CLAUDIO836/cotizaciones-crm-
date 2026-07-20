@@ -63,13 +63,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const { data: q } = await supabase
     .from('quotations')
-    .select('*, clients(name, rut, email, phone, address, contacto, telefono_fijo, telefono_celular), profiles(name, celular, email), quotation_items(*)')
+    .select('*, clients(name, rut, email, phone, address, contacto, telefono_fijo, telefono_celular), profiles(name, celular, email), quotation_items(*), companies(name)')
     .eq('id', id)
     .single()
 
   if (!q) return new Response('Not found', { status: 404 })
 
-  const isTKS = q.company === 'Transportes TKS'
+  const isTKS = (q.companies as {name?: string})?.name === 'Transportes TKS'
   const ACCENT = isTKS ? '#C8102E' : '#1B8A4B'
   const ACCENT_LIGHT = isTKS ? '#fef2f2' : '#dcfce7'
   const ACCENT_BORDER = isTKS ? '#fca5a5' : '#1B8A4B'
