@@ -52,9 +52,18 @@ export async function POST(req: NextRequest) {
   const prefix = COMPANY_PREFIX[companyName ?? ''] ?? 'CCL'
   const ruta = (desde && hasta) ? ` - ${desde.split(',')[0].trim()} / ${hasta.split(',')[0].trim()}` : ''
 
+  // Formatear fecha salida para el título: "2026-08-15" → "15/08/2026"
+  function formatFecha(f?: string) {
+    if (!f) return ''
+    const d = f.slice(0, 10).split('-')
+    if (d.length !== 3) return ''
+    return `${d[2]}/${d[1]}/${d[0]}`
+  }
+  const fechaLabel = fechaSalida ? ` - ${formatFecha(fechaSalida)}` : ''
+
   // Crear negocio en Pipedrive (título provisional, se actualiza con dealId después)
   const dealBody: Record<string, unknown> = {
-    title: `${prefix}-TEMP - ${q.clients?.name ?? 'Sin cliente'}${ruta}`,
+    title: `${prefix}-TEMP${fechaLabel}${ruta}`,
     value: q.total ?? 0,
     currency: 'CLP',
   }
@@ -75,7 +84,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Título final con número real de Pipedrive
-  const finalTitle = `${prefix}-${dealId} - ${q.clients?.name ?? 'Sin cliente'}${ruta}`
+  const finalTitle = `${prefix}-${dealId}${fechaLabel} - ${q.clients?.name ?? 'Sin cliente'}${ruta}`
 
   // Guardar deal ID y actualizar número de cotización con el ID del negocio
   await supabase.from('quotations').update({
