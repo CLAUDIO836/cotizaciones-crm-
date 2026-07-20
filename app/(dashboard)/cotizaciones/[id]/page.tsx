@@ -147,11 +147,18 @@ export default async function CotizacionDetailPage({
                 <QuotationApprovalButton quotationId={id} />
               </div>
             )}
-            {!isReadOnly && q.status === 'won' && !pipeline?.name?.toLowerCase().includes('traslado diario') && (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">Carta de aprobación de servicio</p>
-                <p className="text-xs text-green-600 mb-3">Genera y envía la carta de aprobación para que el cliente firme digitalmente antes del servicio.</p>
-                <ApprovalLetterButton quotationId={id} />
+            {!isReadOnly && q.status === 'won' && (
+              <div className="space-y-3">
+                {/* Advertencia si fue ganada sin aprobación digital */}
+                <QuotationApprovalButton quotationId={id} wonMode />
+                {/* Carta de aprobación (no para traslado diario) */}
+                {!pipeline?.name?.toLowerCase().includes('traslado diario') && (
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                    <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">Carta de aprobación de servicio</p>
+                    <p className="text-xs text-green-600 mb-3">Genera y envía la carta de aprobación para que el cliente firme digitalmente antes del servicio.</p>
+                    <ApprovalLetterButton quotationId={id} />
+                  </div>
+                )}
               </div>
             )}
 

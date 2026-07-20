@@ -14,7 +14,7 @@ interface Approval {
   created_at: string
 }
 
-export default function QuotationApprovalButton({ quotationId }: { quotationId: string }) {
+export default function QuotationApprovalButton({ quotationId, wonMode = false }: { quotationId: string; wonMode?: boolean }) {
   const [approval, setApproval] = useState<Approval | null | undefined>(undefined)
   const [generating, setGenerating] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -72,6 +72,39 @@ export default function QuotationApprovalButton({ quotationId }: { quotationId: 
   }
 
   if (approval === undefined) return <div className="h-8 w-48 bg-gray-100 animate-pulse rounded-lg" />
+
+  // Modo wonMode: cotización ya ganada, solo mostrar estado de aprobación
+  if (wonMode) {
+    if (!approval || approval.response !== 'accepted') {
+      return (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Sin aprobación digital del cliente</p>
+          </div>
+          <p className="text-xs text-amber-600 mb-3">
+            {!approval
+              ? 'Esta cotización fue ganada manualmente. El cliente no ha firmado su aprobación digital.'
+              : 'El cliente tiene una solicitud de aprobación pendiente de responder.'}
+          </p>
+          {approval && (
+            <div className="flex items-center gap-2">
+              <a href={url} target="_blank" rel="noopener noreferrer">
+                <Button variant="outline" size="sm" className="border-amber-300 text-amber-700">
+                  <ExternalLink className="w-3.5 h-3.5 mr-1.5" />Ver link del cliente
+                </Button>
+              </a>
+              <Button variant="outline" size="sm" className="border-amber-300 text-amber-700" onClick={copy}>
+                {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+              </Button>
+            </div>
+          )}
+        </div>
+      )
+    }
+    // Aprobada digitalmente — no mostrar nada (flujo correcto)
+    return null
+  }
 
   if (!approval) {
     return (

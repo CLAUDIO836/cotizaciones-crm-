@@ -26,7 +26,16 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
   const [loading, setLoading] = useState(false)
 
   async function markWon() {
-    if (!window.confirm('¿Marcar esta cotización como ganada?')) return
+    // Verificar si el cliente aprobó digitalmente
+    const approvalRes = await fetch(`/api/quotation-approvals/by-quotation?quotation_id=${quotationId}`)
+    const approvalData = await approvalRes.json()
+    const clientApproved = approvalData.approval?.response === 'accepted'
+
+    const confirmMsg = clientApproved
+      ? '¿Marcar esta cotización como ganada?'
+      : '⚠️ El cliente aún NO ha enviado su aprobación digital.\n\n¿Deseas marcarla como ganada de todas formas?\n\nSe notificará en Pipedrive que fue aprobada manualmente.'
+
+    if (!window.confirm(confirmMsg)) return
     setLoading(true)
     try {
       const { error: e1 } = await supabase.from('quotations').update({ status: 'won' }).eq('id', quotationId)
@@ -71,6 +80,17 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
           }),
         })
       } catch { /* ERP falla silenciosamente */ }
+
+      // Si no hay aprobación digital, avisar en Pipedrive
+      if (!clientApproved) {
+        try {
+          await fetch('/api/quotation-approvals/notify-manual-win', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ quotation_id: quotationId }),
+          })
+        } catch { /* no bloquea */ }
+      }
 
       toast.success('¡Cotización ganada!')
       router.refresh()
