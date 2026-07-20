@@ -166,7 +166,7 @@ export function TKSApprovalLetterPDF({ data }: { data: TKSApprovalLetterData }) 
         {/* Bank data */}
         <View style={styles.bankBox}>
           <Text style={styles.bankTitle}>Datos de transferencia para reserva (50%):</Text>
-          {[['Banco', 'Banco de Crédito e Inversiones'], ['Swift', 'CREDCLRM'], ['Nombre', 'Claudio Chuhaicura López'], ['RUT', '14.395.747-0'], ['Cta. Corriente', '27975631'], ['Email', 'contabilidad@transportestks.com']].map(([l, v]) => (
+          {[['Tipo de cuenta', 'Cta. Cte.'], ['Banco', 'Banco de Crédito e Inversiones (BCI)'], ['Swift', 'CREDCLRM'], ['Nombre', 'Claudio Chuhaicura López'], ['RUT', '14.395.747-0'], ['Cta. Corriente', '27975631'], ['Email contabilidad', 'contabilidad@transportestks.com']].map(([l, v]) => (
             <View key={l} style={styles.bankRow}>
               <Text style={styles.bankLabel}>{l}:</Text>
               <Text style={styles.bankValue}>{v}</Text>

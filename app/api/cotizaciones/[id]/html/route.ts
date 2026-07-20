@@ -90,8 +90,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const policies = isTKS ? TKS_POLICIES : CCL_POLICIES
 
-  const companyName = isTKS ? 'Transportes TKS SpA' : 'Transportes Transccl SpA'
-  const companyRUT = isTKS ? '35.496.7-K' : '76.282.952-3'
+  const companyName = isTKS ? 'Transportes TKS' : 'Transportes Transccl SpA'
+  const companyRUT = isTKS ? null : '76.282.952-3'
   const companyTagline = isTKS ? 'Transporte de personas' : 'Transporte de personas y carga'
   const logoBlock = isTKS
     ? `<div style="font-size:28px;font-weight:900;color:${ACCENT};letter-spacing:-0.02em;">TKs</div>`
@@ -101,13 +101,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;margin-bottom:14px;">
     <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#374151;letter-spacing:0.07em;margin-bottom:8px;">Datos de transferencia para reserva (50%)</div>
     ${[
+      ['Tipo de cuenta', 'Cta. Cte.'],
       ['Banco', 'Banco de Crédito e Inversiones (BCI)'],
       ['Swift', 'CREDCLRM'],
       ['Nombre', 'Claudio Chuhaicura López'],
       ['RUT', '14.395.747-0'],
       ['Cta. Corriente', '27975631'],
       ['Email contabilidad', 'contabilidad@transportestks.com'],
-    ].map(([l, v]) => `<div style="display:flex;gap:8px;font-size:10.5px;margin-bottom:3px;"><span style="width:120px;color:#6b7280;">${l}:</span><span style="font-weight:600;">${v}</span></div>`).join('')}
+    ].map(([l, v]) => `<div style="display:flex;gap:8px;font-size:10.5px;margin-bottom:3px;"><span style="width:130px;color:#6b7280;">${l}:</span><span style="font-weight:600;">${v}</span></div>`).join('')}
   </div>` : ''
 
   const servicesIncluded = isTKS ? [
@@ -202,7 +203,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       ${logoBlock}
       <div>
         <div class="company-sub" style="font-size:11px;color:#374151;font-weight:600;">${companyName}</div>
-        <div class="company-sub">RUT: ${companyRUT}</div>
+        ${companyRUT ? `<div class="company-sub">RUT: ${companyRUT}</div>` : ''}
         <div class="company-sub">${companyTagline}</div>
       </div>
     </div>
@@ -342,7 +343,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   <div class="footer">
     <div class="footer-left">
-      <strong>${isTKS ? 'Transportes TKS' : 'Transccl'}</strong> · RUT ${companyRUT}<br/>
+      <strong>${isTKS ? 'Transportes TKS' : 'Transccl'}</strong>${companyRUT ? ` · RUT ${companyRUT}` : ''}<br/>
       Documento emitido el ${new Date().toLocaleDateString('es-CL')}<br/>
       ${q.profiles?.name ? `Ejecutivo: ${q.profiles.name}` : ''}
     </div>

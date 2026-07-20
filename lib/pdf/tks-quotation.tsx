@@ -308,14 +308,15 @@ export function TKSQuotationPDF({ data }: { data: TKSQuotationData }) {
 
         {/* Bank data */}
         <View style={styles.bankBox}>
-          <Text style={styles.bankTitle}>Datos de transferencia:</Text>
+          <Text style={styles.bankTitle}>Datos de transferencia para reserva (50%):</Text>
           {[
-            ['Banco', 'Banco de Crédito e Inversiones – Santiago, Chile'],
+            ['Tipo de cuenta', 'Cta. Cte.'],
+            ['Banco', 'Banco de Crédito e Inversiones (BCI)'],
             ['Swift', 'CREDCLRM'],
             ['Nombre', 'Claudio Chuhaicura López'],
             ['RUT', '14.395.747-0'],
-            ['Cuenta Corriente', '27975631'],
-            ['Email', 'contabilidad@transportestks.com'],
+            ['Cta. Corriente', '27975631'],
+            ['Email contabilidad', 'contabilidad@transportestks.com'],
           ].map(([label, value]) => (
             <View key={label} style={styles.bankRow}>
               <Text style={styles.bankLabel}>{label}:</Text>
