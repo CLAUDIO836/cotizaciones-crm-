@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -11,14 +10,15 @@ export default function DeleteButton({ quotationId }: { quotationId: string }) {
   const [confirming, setConfirming] = useState(false)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
   async function handleDelete() {
     setLoading(true)
-    const { error: itemsErr } = await supabase.from('quotation_items').delete().eq('quotation_id', quotationId)
-    if (itemsErr) { toast.error('Error al eliminar'); setLoading(false); return }
-    const { error } = await supabase.from('quotations').delete().eq('id', quotationId)
-    if (error) { toast.error('Error al eliminar'); setLoading(false); return }
+    const res = await fetch('/api/quotations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ _action: 'delete', id: quotationId }),
+    })
+    if (!res.ok) { toast.error('Error al eliminar'); setLoading(false); return }
     toast.success('Cotización eliminada')
     router.push('/cotizaciones')
   }

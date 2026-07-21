@@ -1,13 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-
-function getAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  )
-}
+import { crmGet, crmPost } from '@/lib/api'
 
 const PIPEDRIVE_TOKEN = process.env.PIPEDRIVE_API_TOKEN ?? ''
 const PIPEDRIVE_API = 'https://api.pipedrive.com/v1'
@@ -46,24 +38,14 @@ export async function POST(req: NextRequest) {
   const dealId = String(data?.id ?? meta.entity_id ?? '')
   if (!dealId) return NextResponse.json({ ok: true })
 
-  const supabase = getAdminClient()
-  console.log('[webhook] supabase url:', process.env.NEXT_PUBLIC_SUPABASE_URL)
-  console.log('[webhook] service key:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET' : 'MISSING')
-
-  const { data: quotation, error: findError } = await supabase
-    .from('quotations')
-    .select('id, status')
-    .eq('pipedrive_deal_id', dealId)
-    .single()
-
-  console.log('[webhook] quotation:', quotation?.id, 'error:', findError?.message)
+  const findResult = await crmGet('quotations_by_pipedrive_deal', { deal_id: dealId })
+  const quotation = findResult?.data as { id: string; status: string } | null
 
   if (!quotation) return NextResponse.json({ ok: true, reason: 'not found', dealId })
 
   // Deal ELIMINADO
   if (action === 'delete') {
-    await supabase.from('quotation_items').delete().eq('quotation_id', quotation.id)
-    await supabase.from('quotations').delete().eq('id', quotation.id)
+    await crmPost('quotations_delete', { id: quotation.id })
     return NextResponse.json({ ok: true, action: 'deleted' })
   }
 
@@ -101,10 +83,8 @@ export async function POST(req: NextRequest) {
       updates.pipeline_id = String(newPipelineId)
     }
 
-    console.log('[webhook] updates:', JSON.stringify(updates))
     if (Object.keys(updates).length > 0) {
-      const { error: updateError } = await supabase.from('quotations').update(updates).eq('id', quotation.id)
-      console.log('[webhook] update error:', updateError?.message)
+      await crmPost('quotations_update', { id: quotation.id, ...updates })
     }
 
     return NextResponse.json({ ok: true, action: 'updated', updates })

@@ -1,5 +1,6 @@
-import { createClient } from '@/lib/supabase/server'
 import QuotationForm from '@/components/quotations/QuotationForm'
+import { getSession, fetchClients, fetchProfiles, fetchCompanies } from '@/lib/api'
+import { redirect } from 'next/navigation'
 
 async function getPipedrivePipelines() {
   const token = process.env.PIPEDRIVE_API_TOKEN
@@ -16,17 +17,19 @@ async function getPipedrivePipelines() {
 }
 
 export default async function NuevaCotizacionPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const { data: clients } = await supabase.from('clients').select('id, name, rut, contacto, telefono_fijo, telefono_celular, email').order('name')
-  const { data: sellers } = await supabase.from('profiles').select('id, name, email').order('name')
-  const { data: companies } = await supabase.from('companies').select('id, name').order('name')
-  const pipelines = await getPipedrivePipelines()
+  const session = await getSession()
+  if (!session) redirect('/login')
+  const [clients, sellers, companies, pipelines] = await Promise.all([
+    fetchClients(),
+    fetchProfiles(),
+    fetchCompanies(),
+    getPipedrivePipelines(),
+  ])
 
   return (
     <div className="p-6 max-w-4xl">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Nueva cotización</h1>
-      <QuotationForm clients={clients ?? []} pipelines={pipelines} sellers={sellers ?? []} companies={companies ?? []} userId={user!.id} />
+      <QuotationForm clients={clients ?? []} pipelines={pipelines} sellers={sellers ?? []} companies={companies ?? []} userId={session.id} />
     </div>
   )
 }

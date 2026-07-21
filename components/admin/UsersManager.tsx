@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Plus, Edit2, Check, X } from 'lucide-react'
 
 interface Profile {
-  id: string; name: string; role: string; created_at: string
+  id: string; name: string; role: string; created_at?: string
   celular?: string; email?: string
 }
 
@@ -28,7 +27,6 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 export default function UsersManager({ users: initialUsers }: { users: Profile[] }) {
-  const supabase = createClient()
   const [users, setUsers] = useState<Profile[]>(initialUsers)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -50,7 +48,11 @@ export default function UsersManager({ users: initialUsers }: { users: Profile[]
 
       // Guardar celular si se ingresó
       if (form.celular && result.profile?.id) {
-        await supabase.from('profiles').update({ celular: form.celular, email: form.email }).eq('id', result.profile.id)
+        await fetch('/api/admin/usuarios', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: result.profile.id, celular: form.celular, email: form.email }),
+        })
         result.profile.celular = form.celular
         result.profile.email = form.email
       }
@@ -68,8 +70,12 @@ export default function UsersManager({ users: initialUsers }: { users: Profile[]
 
   async function updateRole(userId: string, role: string | null) {
     if (!role) return
-    const { error } = await supabase.from('profiles').update({ role }).eq('id', userId)
-    if (error) { toast.error('Error al actualizar rol') }
+    const res = await fetch('/api/admin/usuarios', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: userId, role }),
+    })
+    if (!res.ok) { toast.error('Error al actualizar rol') }
     else { setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u)); toast.success('Rol actualizado') }
   }
 
@@ -79,10 +85,12 @@ export default function UsersManager({ users: initialUsers }: { users: Profile[]
   }
 
   async function saveEdit(userId: string) {
-    const { error } = await supabase.from('profiles')
-      .update({ celular: editForm.celular || null, email: editForm.email || null })
-      .eq('id', userId)
-    if (error) { toast.error('Error al guardar') }
+    const res = await fetch('/api/admin/usuarios', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: userId, celular: editForm.celular || null, email: editForm.email || null }),
+    })
+    if (!res.ok) { toast.error('Error al guardar') }
     else {
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...editForm } : u))
       setEditingId(null)

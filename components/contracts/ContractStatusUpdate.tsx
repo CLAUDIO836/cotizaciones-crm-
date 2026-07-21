@@ -2,19 +2,21 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
 export default function ContractStatusUpdate({ contractId }: { contractId: string }) {
   const router = useRouter()
-  const supabase = createClient()
   const [loading, setLoading] = useState(false)
 
   async function updateStatus(status: 'expired' | 'cancelled') {
     setLoading(true)
-    const { error } = await supabase.from('contracts').update({ status }).eq('id', contractId)
-    if (error) {
+    const res = await fetch('/api/contracts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: contractId, status }),
+    })
+    if (!res.ok) {
       toast.error('Error al actualizar estado')
     } else {
       toast.success('Estado actualizado')

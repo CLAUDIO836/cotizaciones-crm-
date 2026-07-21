@@ -1,23 +1,14 @@
-import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { crmPost, getToken } from '@/lib/api'
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  const token = await getToken()
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await request.json()
-  const supabase = await createClient()
-
-  const { error } = await supabase
-    .from('lead_requests')
-    .update({
-      status: body.status,
-      assigned_user_id: body.assigned_user_id ?? null,
-      crm_notes: body.crm_notes ?? null,
-    })
-    .eq('id', id)
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await crmPost('leads_update_status', { id, status: body.status }, {}, token)
   return NextResponse.json({ ok: true })
 }

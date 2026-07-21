@@ -1,27 +1,18 @@
-import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { getSession, getToken, crmGet } from '@/lib/api'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await getSession()
+  if (!session) redirect('/login')
 
-  if (!user) redirect('/login')
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-
-  const { count: pendingLeads } = await supabase
-    .from('lead_requests')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'pendiente')
+  const token = await getToken()
+  const leadsRes = await crmGet('leads_pending_count', {}, token)
+  const pendingLeads = (leadsRes?.data as { count: number } | null)?.count ?? 0
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#f4f5f7' }}>
-      <Sidebar profile={profile ? { ...profile, pending_leads: pendingLeads ?? 0 } : null} />
+      <Sidebar profile={{ id: session.id, name: session.name, role: session.role, pending_leads: pendingLeads }} />
       <main className="flex-1 overflow-y-auto">
         {children}
       </main>

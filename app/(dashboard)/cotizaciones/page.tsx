@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { getSession, fetchQuotationsSummary, fetchPipelines, fetchCompanies, fetchProfiles } from '@/lib/api'
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -21,45 +21,34 @@ export default async function CotizacionesPage({
   }>
 }) {
   const params = await searchParams
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin'
-  const isReadOnly = profile?.role === 'coordinador'
-  const isOwn = !isAdmin  // vendedor / ejecutivo / coordinador solo ven lo suyo
+  const user = await getSession()
+  const isAdmin = user?.role === 'admin'
+  const isReadOnly = user?.role === 'coordinador'
   const view = params.view ?? 'timeline'
 
-  let query = supabase
-    .from('quotations_summary')
-    .select('*')
-    .order('created_at', { ascending: false })
-
-  if (isOwn) query = query.eq('vendedor_id', user!.id)
-  if (params.status) query = query.eq('status', params.status)
-  if (params.vendedor) query = query.eq('vendedor_id', params.vendedor)
-  if (params.pipeline) query = query.eq('pipeline_id', params.pipeline)
+  const qFilters: Record<string, string> = {}
+  if (params.status)   qFilters.status   = params.status
+  if (params.vendedor && isAdmin) qFilters.vendedor = params.vendedor
+  if (params.pipeline) qFilters.pipeline = params.pipeline
+  if (params.company)  qFilters.company  = params.company
+  if (params.q)        qFilters.q        = params.q
   if (params.month) {
     const [y, m] = params.month.split('-')
-    query = query.eq('year', parseInt(y)).eq('month', parseInt(m))
+    qFilters.year = y; qFilters.month = m
   }
-  if (params.q) {
-    query = query.or(`number.ilike.%${params.q}%,client_name.ilike.%${params.q}%`)
-  }
-  if (params.company) query = query.eq('company_id', params.company)
 
-  const { data: quotations = [] } = await query
-  const { data: companies = [] } = await supabase.from('companies').select('id, name').order('name')
-  const { data: pipelines = [] } = await supabase
-    .from('pipelines').select('id, name, color').eq('active', true).order('sort_order')
-  const { data: vendedores = [] } = isAdmin
-    ? await supabase.from('profiles').select('id, name').order('name')
-    : { data: [] }
+  const [quotations, pipelines, companies, vendedores] = await Promise.all([
+    fetchQuotationsSummary(qFilters),
+    fetchPipelines(),
+    fetchCompanies(),
+    isAdmin ? fetchProfiles() : Promise.resolve([]),
+  ])
 
   // Totales para mostrar en los filtros
-  const total = quotations?.length ?? 0
-  const won = quotations?.filter(q => q.status === 'won').length ?? 0
-  const open = quotations?.filter(q => q.status === 'open').length ?? 0
-  const lost = quotations?.filter(q => q.status === 'lost').length ?? 0
+  const total = quotations.length
+  const won = quotations.filter(q => q.status === 'won').length
+  const open = quotations.filter(q => q.status === 'open').length
+  const lost = quotations.filter(q => q.status === 'lost').length
 
   const views = [
     { key: 'timeline', label: 'Por mes' },
@@ -112,9 +101,9 @@ export default async function CotizacionesPage({
 
       {/* Filter bar — embudos y vendedores */}
       <PipelineFilter
-        pipelines={pipelines ?? []}
-        vendedores={isAdmin ? (vendedores ?? []) : []}
-        companies={companies ?? []}
+        pipelines={pipelines}
+        vendedores={isAdmin ? vendedores : []}
+        companies={companies}
         currentPipeline={params.pipeline}
         currentVendedor={params.vendedor}
         currentCompany={params.company}
@@ -125,15 +114,15 @@ export default async function CotizacionesPage({
       {/* Content */}
       <div className="flex-1 p-6 overflow-auto">
         {view === 'timeline' && (
-          <TimelineView quotations={quotations ?? []} isAdmin={isAdmin} />
+          <TimelineView quotations={quotations} isAdmin={isAdmin} />
         )}
         {view === 'kanban' && (
-          <EtapaKanban quotations={quotations ?? []} isAdmin={isAdmin} />
+          <EtapaKanban quotations={quotations} isAdmin={isAdmin} />
         )}
         {view === 'list' && (
           <QuotationsList
-            quotations={quotations ?? []}
-            vendedores={vendedores ?? []}
+            quotations={quotations}
+            vendedores={vendedores}
             isAdmin={isAdmin}
             currentFilters={params}
           />

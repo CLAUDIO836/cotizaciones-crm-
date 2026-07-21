@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { Activity, TYPE_CONFIG } from '@/components/quotations/ActivitiesPanel'
 import { CheckCircle2, Circle, Clock, Building2, FileText } from 'lucide-react'
 import Link from 'next/link'
@@ -29,8 +28,6 @@ const FILTERS = [
 export default function AgendaView({ activities: initial, sellers, currentFilter, currentTipo, currentVendedor, isAdmin, userId }: Props) {
   const [activities, setActivities] = useState(initial)
   const router = useRouter()
-  const supabase = createClient()
-
   function navigate(params: Record<string, string | undefined>) {
     const sp = new URLSearchParams()
     const merged = { filter: currentFilter, tipo: currentTipo, vendedor: currentVendedor, ...params }
@@ -40,11 +37,12 @@ export default function AgendaView({ activities: initial, sellers, currentFilter
 
   async function toggleDone(act: Activity) {
     const done = !act.done
-    const { error } = await supabase
-      .from('quotation_activities')
-      .update({ done, done_at: done ? new Date().toISOString() : null })
-      .eq('id', act.id)
-    if (!error) setActivities(prev => prev.map(a => a.id === act.id ? { ...a, done } : a))
+    const res = await fetch('/api/activities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ _action: 'update', id: act.id, done }),
+    })
+    if (res.ok) setActivities(prev => prev.map(a => a.id === act.id ? { ...a, done } : a))
   }
 
   const pendingCount = activities.filter(a => !a.done).length

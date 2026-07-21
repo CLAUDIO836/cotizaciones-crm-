@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+// supabase replaced by internal API routes
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,7 +22,7 @@ interface Client {
 }
 
 export default function ClientsManager({ initialClients }: { initialClients: Client[] }) {
-  const supabase = createClient()
+
   const [clients, setClients] = useState<Client[]>(initialClients)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
@@ -52,15 +52,19 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
         phone: form.phone.trim() || null,
         address: form.address.trim() || null,
       }
+      const body = editing ? { ...payload, id: editing.id } : payload
+      const res = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error('Error')
+      const data = await res.json()
       if (editing) {
-        const { data, error } = await supabase.from('clients').update(payload).eq('id', editing.id).select().single()
-        if (error) throw error
-        setClients(prev => prev.map(c => c.id === editing.id ? data : c))
+        setClients(prev => prev.map(c => c.id === editing.id ? { ...c, ...payload } as Client : c))
         toast.success('Cliente actualizado')
       } else {
-        const { data, error } = await supabase.from('clients').insert(payload).select().single()
-        if (error) throw error
-        setClients(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+        setClients(prev => [...prev, data as Client].sort((a, b) => a.name.localeCompare(b.name)))
         toast.success('Cliente creado')
       }
       setOpen(false)

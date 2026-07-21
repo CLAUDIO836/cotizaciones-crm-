@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -152,7 +151,6 @@ const DEFAULT_ITEM: Item = { codigo: '', description: '', pasajeros: 0, quantity
 
 export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation }: Props) {
   const router = useRouter()
-  const supabase = createClient()
   const [loading, setLoading] = useState(false)
 
   // Datos base
@@ -235,20 +233,21 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
 
   async function createNewClient(): Promise<string | null> {
     if (!newClientName.trim()) return null
-    const { data, error } = await supabase
-      .from('clients')
-      .insert({
-          name: newClientName.trim(),
-          rut: newClientRut.trim() || null,
-          contacto: newClientContacto.trim() || null,
-          telefono_fijo: newClientTelFijo.trim() || null,
-          telefono_celular: newClientCelular.trim() || null,
-          email: newClientEmail.trim() || null,
-        })
-      .select('id')
-      .single()
-    if (error) { toast.error('Error al crear cliente'); return null }
-    return data.id
+    const res = await fetch('/api/clients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: newClientName.trim(),
+        rut: newClientRut.trim() || null,
+        contacto: newClientContacto.trim() || null,
+        telefono_fijo: newClientTelFijo.trim() || null,
+        telefono_celular: newClientCelular.trim() || null,
+        email: newClientEmail.trim() || null,
+      }),
+    })
+    const json = await res.json()
+    if (!res.ok) { toast.error('Error al crear cliente'); return null }
+    return json.data?.id ?? null
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -264,9 +263,10 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
 
       const number = `TEMP-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
 
-      const { data: qData, error: qErr } = await supabase
-        .from('quotations')
-        .insert({
+      const qRes = await fetch('/api/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           number,
           client_id: finalClientId,
           user_id: selectedUserId,
@@ -289,24 +289,18 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           total,
           notes: notes || null,
           terms: terms || null,
-        })
-        .select('id')
-        .single()
-
-      if (qErr) { console.error('Supabase insert error:', JSON.stringify(qErr)); throw qErr }
-
-      const itemsToInsert = items.map((item, idx) => ({
-        quotation_id: qData.id,
-        codigo: item.codigo || null,
-        description: item.description,
-        pasajeros: item.pasajeros || null,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        sort_order: idx,
-      }))
-
-      const { error: itemsErr } = await supabase.from('quotation_items').insert(itemsToInsert)
-      if (itemsErr) throw itemsErr
+          items: items.map((item, idx) => ({
+            codigo: item.codigo || null,
+            description: item.description,
+            pasajeros: item.pasajeros || null,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            sort_order: idx,
+          })),
+        }),
+      })
+      if (!qRes.ok) throw new Error((await qRes.json()).error)
+      const qData = await qRes.json()
 
       // Crear negocio en Pipedrive y subir PDF
       try {

@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { getSession, fetchQuotation, fetchActivities, fetchNotes, fetchPipelines } from '@/lib/api'
 import { notFound } from 'next/navigation'
 import { formatCLP, formatDate, getStatusLabel } from '@/lib/utils'
 import StatusActions from '@/components/quotations/StatusActions'
@@ -29,43 +29,24 @@ export default async function CotizacionDetailPage({
 }) {
   const { id } = await params
   const { tab = 'datos' } = await searchParams
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
-  const isReadOnly = profile?.role === 'coordinador'
+  const user = await getSession()
+  const isReadOnly = user?.role === 'coordinador'
 
-  const { data: q } = await supabase
-    .from('quotations')
-    .select(`*, clients(name, rut, email, phone, address), profiles(name), quotation_items(*)`)
-    .eq('id', id)
-    .single()
+  const [q, activities, notes, pipelines] = await Promise.all([
+    fetchQuotation(id),
+    fetchActivities(id),
+    fetchNotes(id),
+    fetchPipelines(),
+  ])
 
   if (!q) notFound()
 
-  const { data: pipeline } = q.pipeline_id
-    ? await supabase.from('pipelines').select('name').eq('id', q.pipeline_id).single()
-    : { data: null }
-
-  const { data: activities = [] } = await supabase
-    .from('quotation_activities')
-    .select('*, profiles(name)')
-    .eq('quotation_id', id)
-    .order('created_at', { ascending: false })
-
-  const { data: notes = [] } = await supabase
-    .from('quotation_notes')
-    .select('*, profiles(name)')
-    .eq('quotation_id', id)
-    .order('created_at', { ascending: false })
-
+  const pipeline = pipelines.find(p => p.id === q.pipeline_id) ?? null
   const items = q.quotation_items ?? []
   const { label, color } = getStatusLabel(q.status)
   const etapa = ETAPA_LABELS[q.etapa ?? 'lead'] ?? ETAPA_LABELS.lead
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const activitiesWithName = (activities ?? []).map((a: any) => ({ ...a, user_name: a.profiles?.name ?? null }))
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const notesWithName = (notes ?? []).map((n: any) => ({ ...n, user_name: n.profiles?.name ?? null }))
+  const activitiesWithName = activities
+  const notesWithName = notes
 
   return (
     <div className="flex flex-col h-full">
@@ -121,7 +102,7 @@ export default async function CotizacionDetailPage({
             </Link>
           )}
           {!isReadOnly && (
-            <StatusActions quotationId={q.id} quotationNumber={q.number} clientId={q.client_id} userId={q.user_id} total={q.total} status={q.status} inline />
+            <StatusActions quotationId={q.id} quotationNumber={q.number} clientId={q.client_id ?? ''} userId={q.user_id ?? ''} total={q.total} status={q.status} inline />
           )}
         </div>
       </div>
@@ -174,7 +155,7 @@ export default async function CotizacionDetailPage({
             <div className="bg-white rounded-xl border p-5 grid grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Fecha emisión</p>
-                <p className="font-medium text-gray-800">{formatDate(q.issue_date)}</p>
+                <p className="font-medium text-gray-800">{q.issue_date ? formatDate(q.issue_date) : '—'}</p>
               </div>
               {q.expiry_date && (
                 <div>
@@ -262,7 +243,7 @@ export default async function CotizacionDetailPage({
             <ActivitiesPanel
               quotationId={id}
               initialActivities={activitiesWithName}
-              userId={user!.id}
+              userId={user?.id ?? ''}
             />
           </div>
         )}
@@ -272,7 +253,7 @@ export default async function CotizacionDetailPage({
             <NotesPanel
               quotationId={id}
               initialNotes={notesWithName}
-              userId={user!.id}
+              userId={user?.id ?? ''}
             />
           </div>
         )}

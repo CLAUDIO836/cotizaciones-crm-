@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { fetchQuotation, crmPost, getToken } from '@/lib/api'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { QuotationPDF } from '@/lib/pdf/generate'
 import { TKSQuotationPDF } from '@/lib/pdf/tks-quotation'
@@ -13,19 +13,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'PIPEDRIVE_API_TOKEN no configurado' }, { status: 500 })
   }
 
+  const token = await getToken()
+  if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
   const { quotationId, pipelineId, fechaSalida, companyName, desde, hasta } = await req.json()
   if (!quotationId) {
     return NextResponse.json({ error: 'Falta quotationId' }, { status: 400 })
   }
 
-  const supabase = await createClient()
-
-  const { data: q } = await supabase
-    .from('quotations')
-    .select(`*, clients(name, rut, email, address), profiles(name, email), quotation_items(description, quantity, unit_price, subtotal, sort_order)`)
-    .eq('id', quotationId)
-    .single()
-
+  const q = await fetchQuotation(quotationId)
   if (!q) return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 })
 
   // Mapeo email CRM → user_id Pipedrive
@@ -41,7 +37,7 @@ export async function POST(req: NextRequest) {
     'clsaldivia@transportesklaus.cl': 572704,
   }
 
-  const vendedorEmail = q.profiles?.email ?? ''
+  const vendedorEmail = (q.profiles as { email?: string })?.email ?? q.profile_email ?? ''
   const pipedriveUserId = PIPEDRIVE_USERS[vendedorEmail]
 
   // Prefijo según empresa
@@ -85,13 +81,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Título final con número real de Pipedrive
-  const finalTitle = `${prefix}-${dealId}${fechaLabel} - ${q.clients?.name ?? 'Sin cliente'}${ruta}`
+  const finalTitle = `${prefix}-${dealId}${fechaLabel} - ${(q.clients as { name?: string })?.name ?? q.client_name ?? 'Sin cliente'}${ruta}`
 
   // Guardar deal ID y actualizar número de cotización con el ID del negocio
-  await supabase.from('quotations').update({
-    pipedrive_deal_id: String(dealId),
-    number: String(dealId),
-  }).eq('id', quotationId)
+  await crmPost('quotations_update', { id: quotationId, pipedrive_deal_id: String(dealId), number: String(dealId) }, {}, token)
 
   // Actualizar título del negocio en Pipedrive con número real
   await fetch(`${PIPEDRIVE_API}/deals/${dealId}?api_token=${PIPEDRIVE_TOKEN}`, {
@@ -119,8 +112,8 @@ export async function POST(req: NextRequest) {
       total: q.total,
       notes: q.notes,
       terms: q.terms,
-      client: { ...q.clients, phone: (q.clients as {phone?: string})?.phone },
-      vendedor: q.profiles,
+      client: q.clients ?? { name: q.client_name, rut: q.client_rut },
+      vendedor: q.profiles ?? { name: q.profile_name },
       items,
       desde: q.desde,
       hasta: q.hasta,

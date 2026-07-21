@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard, FileText, FileCheck, Users, UserCog, LogOut, Filter, BarChart3, CalendarDays, Inbox
 } from 'lucide-react'
@@ -34,12 +33,10 @@ const ROLE_LABELS: Record<string, string> = {
 export default function Sidebar({ profile }: { profile: Profile | null }) {
   const pathname = usePathname()
   const router = useRouter()
-  const supabase = createClient()
-
   const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin'
 
   async function handleLogout() {
-    await supabase.auth.signOut()
+    await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/login')
     router.refresh()
   }

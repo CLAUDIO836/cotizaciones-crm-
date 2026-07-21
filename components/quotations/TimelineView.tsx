@@ -16,8 +16,8 @@ interface Quotation {
   vendedor_name?: string
   pipeline_name?: string
   pipeline_color?: string
-  year: number
-  month: number
+  year?: number
+  month?: number
 }
 
 interface Props {

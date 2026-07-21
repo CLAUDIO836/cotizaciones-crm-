@@ -1,14 +1,6 @@
-import { createClient } from '@supabase/supabase-js'
 import { notFound } from 'next/navigation'
 import ApprovalForm from './ApprovalForm'
-
-function getAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  )
-}
+import { crmGet } from '@/lib/api'
 
 function formatCLP(n: number) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(n)
@@ -16,17 +8,14 @@ function formatCLP(n: number) {
 
 export default async function AprobarPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
-  const admin = getAdminClient()
 
-  const { data: approval } = await admin
-    .from('quotation_approvals')
-    .select('*')
-    .eq('token', token)
-    .single()
+  const r = await crmGet('approvals_get', { token })
+  const approval = r?.data as Record<string, string> | null
 
   if (!approval) notFound()
 
-  const items: { description: string; quantity: number; unit_price: number; subtotal: number }[] = approval.items ?? []
+  const items: { description: string; quantity: number; unit_price: number; subtotal: number }[] =
+    typeof approval.items === 'string' ? JSON.parse(approval.items || '[]') : (approval.items ?? [])
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>

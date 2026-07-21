@@ -2,23 +2,29 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-
 export default function UpdatePasswordPage() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
-  const supabase = createClient()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (password !== confirm) { setError('Las contraseñas no coinciden'); return }
     if (password.length < 6) { setError('Mínimo 6 caracteres'); return }
     setLoading(true)
-    const { error } = await supabase.auth.updateUser({ password })
-    if (error) { setError(error.message); setLoading(false); return }
+    const res = await fetch('/api/auth/update-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      setError(j.error ?? 'Error al actualizar contraseña')
+      setLoading(false)
+      return
+    }
     router.push('/dashboard')
   }
 

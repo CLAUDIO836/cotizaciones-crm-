@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -29,7 +28,6 @@ interface Props {
 }
 
 export default function ClientRutSearch({ onSelect }: Props) {
-  const supabase = createClient()
   const [rut, setRut] = useState('')
   const [client, setClient] = useState<Client | null>(null)
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null)
@@ -62,23 +60,16 @@ export default function ClientRutSearch({ onSelect }: Props) {
   async function searchByRut(rawRut: string) {
     if (rawRut.length < 3) { setClient(null); setNotFound(false); return }
     setSearching(true)
-    const { data } = await supabase
-      .from('clients')
-      .select('id, name, rut, address')
-      .ilike('rut', `%${rawRut.replace(/\./g, '')}%`)
-      .limit(1)
-      .single()
+    const res = await fetch(`/api/clients?rut=${encodeURIComponent(rawRut.replace(/\./g, ''))}`)
+    const json = await res.json()
+    const data = json.data ?? null
 
     if (data) {
-      const { data: contacts } = await supabase
-        .from('contacts')
-        .select('id, name, email, phone_mobile, phone_landline, cargo')
-        .eq('client_id', data.id)
-        .order('created_at')
-      setClient({ ...data, contacts: contacts ?? [] })
+      const contacts = data.contacts ?? []
+      setClient({ ...data, contacts })
       setNotFound(false)
       setShowNewClient(false)
-      if (contacts && contacts.length === 1) {
+      if (contacts.length === 1) {
         setSelectedContactId(contacts[0].id)
         onSelect(data.id, contacts[0].id)
       } else {
@@ -109,12 +100,14 @@ export default function ClientRutSearch({ onSelect }: Props) {
 
   async function saveNewClient() {
     if (!newClientName.trim()) return
-    const { data, error } = await supabase
-      .from('clients')
-      .insert({ name: newClientName.trim(), rut: rut || null, address: newClientAddress || null })
-      .select('id, name, rut, address')
-      .single()
-    if (error || !data) return
+    const res = await fetch('/api/clients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newClientName.trim(), rut: rut || null, address: newClientAddress || null }),
+    })
+    const json = await res.json()
+    const data = json.data ?? null
+    if (!res.ok || !data) return
     setClient({ ...data, contacts: [] })
     setNotFound(false)
     setShowNewClient(false)
@@ -125,19 +118,22 @@ export default function ClientRutSearch({ onSelect }: Props) {
   async function saveNewContact() {
     if (!newContactName.trim() || !client) return
     setSavingContact(true)
-    const { data, error } = await supabase
-      .from('contacts')
-      .insert({
+    const res = await fetch('/api/clients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        _action: 'create_contact',
         client_id: client.id,
         name: newContactName.trim(),
         email: newContactEmail || null,
         phone_mobile: newContactMobile || null,
         phone_landline: newContactLandline || null,
         cargo: newContactCargo || null,
-      })
-      .select()
-      .single()
-    if (error || !data) { setSavingContact(false); return }
+      }),
+    })
+    const json = await res.json()
+    const data = json.data ?? null
+    if (!res.ok || !data) { setSavingContact(false); return }
     const updated = { ...client, contacts: [...client.contacts, data] }
     setClient(updated)
     setSelectedContactId(data.id)

@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,7 +13,6 @@ interface Client { id: string; name: string }
 
 export default function ContractForm({ clients, userId }: { clients: Client[]; userId: string }) {
   const router = useRouter()
-  const supabase = createClient()
   const [loading, setLoading] = useState(false)
   const [clientId, setClientId] = useState('')
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0])
@@ -27,17 +25,19 @@ export default function ContractForm({ clients, userId }: { clients: Client[]; u
     if (!clientId) { toast.error('Selecciona un cliente'); return }
     setLoading(true)
     try {
-      const { data: numData } = await supabase.rpc('generate_contract_number')
-      const { error } = await supabase.from('contracts').insert({
-        number: numData,
-        client_id: clientId,
-        user_id: userId,
-        start_date: startDate,
-        end_date: endDate || null,
-        value,
-        notes: notes || null,
+      const res = await fetch('/api/contracts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: clientId,
+          user_id: userId,
+          start_date: startDate,
+          end_date: endDate || null,
+          value,
+          notes: notes || null,
+        }),
       })
-      if (error) throw error
+      if (!res.ok) throw new Error((await res.json()).error)
       toast.success('Contrato creado exitosamente')
       router.push('/contratos')
     } catch {

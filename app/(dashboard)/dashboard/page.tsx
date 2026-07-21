@@ -1,62 +1,47 @@
-import { createClient } from '@/lib/supabase/server'
+import { getSession, fetchQuotationsSummary, fetchProfiles } from '@/lib/api'
 import { formatCLP, getMonthName } from '@/lib/utils'
 import MetricsCards from '@/components/dashboard/MetricsCards'
 import MonthlyChart from '@/components/dashboard/MonthlyChart'
 import SalesPipelineTable from '@/components/dashboard/SalesPipelineTable'
 
 export default async function DashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
-
-  const isAdmin = profile?.role === 'admin'
+  const user = await getSession()
+  const isAdmin = user?.role === 'admin'
   const now = new Date()
   const currentYear = now.getFullYear()
   const currentMonth = now.getMonth() + 1
-
-  // Traer cotizaciones de los últimos 12 meses
   const startDate = new Date(currentYear, now.getMonth() - 11, 1).toISOString().split('T')[0]
 
-  let query = supabase
-    .from('quotations_summary')
-    .select('*')
-    .gte('issue_date', startDate)
+  const [quotations, profiles] = await Promise.all([
+    fetchQuotationsSummary({ start: startDate }),
+    isAdmin ? fetchProfiles() : Promise.resolve([]),
+  ])
 
-  if (!isAdmin) {
-    query = query.eq('vendedor_id', user!.id)
-  }
-
-  const { data: quotations = [] } = await query
-
-  // Métricas del mes actual
-  const thisMonth = (quotations ?? []).filter(q => q.year === currentYear && q.month === currentMonth)
-  const openCount = (quotations ?? []).filter(q => q.status === 'open').length
+  const thisMonth = quotations.filter(q => q.year === currentYear && q.month === currentMonth)
+  const openCount = quotations.filter(q => q.status === 'open').length
   const wonThisMonth = thisMonth.filter(q => q.status === 'won').reduce((s, q) => s + (q.total ?? 0), 0)
   const total = thisMonth.length
   const wonCount = thisMonth.filter(q => q.status === 'won').length
   const conversionRate = total > 0 ? Math.round((wonCount / total) * 100) : 0
 
-  // Datos para gráfico por mes (últimos 6 meses)
   const monthlyData = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(currentYear, now.getMonth() - (5 - i), 1)
     const y = d.getFullYear()
     const m = d.getMonth() + 1
-    const monthQuotes = (quotations ?? []).filter(q => q.year === y && q.month === m)
+    const mq = quotations.filter(q => q.year === y && q.month === m)
     return {
       month: getMonthName(m).slice(0, 3),
-      ganadas: monthQuotes.filter(q => q.status === 'won').length,
-      perdidas: monthQuotes.filter(q => q.status === 'lost').length,
-      abiertas: monthQuotes.filter(q => q.status === 'open').length,
-      monto: monthQuotes.filter(q => q.status === 'won').reduce((s, q) => s + (q.total ?? 0), 0),
+      ganadas: mq.filter(q => q.status === 'won').length,
+      perdidas: mq.filter(q => q.status === 'lost').length,
+      abiertas: mq.filter(q => q.status === 'open').length,
+      monto: mq.filter(q => q.status === 'won').reduce((s, q) => s + (q.total ?? 0), 0),
     }
   })
 
-  // Resumen por vendedor (solo admin)
   let vendedoresData: { name: string; open: number; won: number; lost: number; total: number }[] = []
   if (isAdmin) {
-    const { data: profiles } = await supabase.from('profiles').select('id, name')
-    vendedoresData = (profiles ?? []).map(p => {
-      const pq = (quotations ?? []).filter(q => q.vendedor_id === p.id)
+    vendedoresData = profiles.map(p => {
+      const pq = quotations.filter(q => q.vendedor_id === p.id)
       return {
         name: p.name,
         open: pq.filter(q => q.status === 'open').length,
@@ -71,23 +56,14 @@ export default async function DashboardPage() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {getMonthName(currentMonth)} {currentYear}
-        </p>
+        <p className="text-sm text-gray-500 mt-1">{getMonthName(currentMonth)} {currentYear}</p>
       </div>
-
-      <MetricsCards
-        openCount={openCount}
-        wonThisMonth={wonThisMonth}
-        conversionRate={conversionRate}
-      />
-
+      <MetricsCards openCount={openCount} wonThisMonth={wonThisMonth} conversionRate={conversionRate} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border p-5">
           <h2 className="font-semibold text-gray-900 mb-4">Últimos 6 meses</h2>
           <MonthlyChart data={monthlyData} />
         </div>
-
         {isAdmin && vendedoresData.length > 0 && (
           <div className="bg-white rounded-xl border p-5">
             <h2 className="font-semibold text-gray-900 mb-4">Resumen por vendedor</h2>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+// supabase replaced by internal API routes
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,7 +23,6 @@ const COLORS = [
 ]
 
 export default function PipelinesManager({ initialPipelines }: { initialPipelines: Pipeline[] }) {
-  const supabase = createClient()
   const [pipelines, setPipelines] = useState<Pipeline[]>(initialPipelines)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Pipeline | null>(null)
@@ -46,24 +45,20 @@ export default function PipelinesManager({ initialPipelines }: { initialPipeline
     if (!form.name.trim()) { toast.error('El nombre es requerido'); return }
     setLoading(true)
     try {
+      const body = editing
+        ? { id: editing.id, name: form.name.trim(), color: form.color }
+        : { name: form.name.trim(), color: form.color }
+      const res = await fetch('/api/pipelines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error('Error')
+      const data = await res.json()
       if (editing) {
-        const { data, error } = await supabase
-          .from('pipelines')
-          .update({ name: form.name.trim(), color: form.color })
-          .eq('id', editing.id)
-          .select()
-          .single()
-        if (error) throw error
-        setPipelines(prev => prev.map(p => p.id === editing.id ? data : p))
+        setPipelines(prev => prev.map(p => p.id === editing.id ? { ...p, ...body } : p))
         toast.success('Embudo actualizado')
       } else {
-        const maxOrder = pipelines.reduce((m, p) => Math.max(m, p.sort_order), 0)
-        const { data, error } = await supabase
-          .from('pipelines')
-          .insert({ name: form.name.trim(), color: form.color, sort_order: maxOrder + 1 })
-          .select()
-          .single()
-        if (error) throw error
         setPipelines(prev => [...prev, data])
         toast.success('Embudo creado')
       }
@@ -76,11 +71,12 @@ export default function PipelinesManager({ initialPipelines }: { initialPipeline
   }
 
   async function toggleActive(p: Pipeline) {
-    const { error } = await supabase
-      .from('pipelines')
-      .update({ active: !p.active })
-      .eq('id', p.id)
-    if (error) { toast.error('Error'); return }
+    const res = await fetch('/api/pipelines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: p.id, name: p.name, color: p.color, active: !p.active, sort_order: p.sort_order }),
+    })
+    if (!res.ok) { toast.error('Error'); return }
     setPipelines(prev => prev.map(x => x.id === p.id ? { ...x, active: !x.active } : x))
   }
 

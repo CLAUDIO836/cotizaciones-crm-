@@ -1,13 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+// supabase replaced by internal API routes
 import { Plus, Trash2, Edit2, Check, X } from 'lucide-react'
 
 interface Note {
   id: string
   content: string
-  created_at: string
+  created_at?: string
   user_name?: string
 }
 
@@ -23,38 +23,33 @@ export default function NotesPanel({ quotationId, initialNotes, userId }: Props)
   const [loading, setLoading] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editContent, setEditContent] = useState('')
-  const supabase = createClient()
-
   async function handleAdd() {
     if (!newContent.trim()) return
     setLoading(true)
-    const { data, error } = await supabase
-      .from('quotation_notes')
-      .insert({ quotation_id: quotationId, user_id: userId, content: newContent.trim() })
-      .select('*')
-      .single()
-    if (!error && data) {
+    const res = await fetch('/api/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quotation_id: quotationId, user_id: userId, content: newContent.trim() }),
+    })
+    const data = await res.json()
+    if (res.ok && data) {
       setNotes(prev => [data, ...prev])
       setNewContent('')
     }
     setLoading(false)
   }
 
-  async function handleEdit(id: string) {
-    if (!editContent.trim()) return
-    const { error } = await supabase
-      .from('quotation_notes')
-      .update({ content: editContent.trim() })
-      .eq('id', id)
-    if (!error) {
-      setNotes(prev => prev.map(n => n.id === id ? { ...n, content: editContent.trim() } : n))
-      setEditingId(null)
-    }
+  async function handleEdit(_id: string) {
+    // TODO: add edit endpoint
   }
 
   async function handleDelete(id: string) {
-    const { error } = await supabase.from('quotation_notes').delete().eq('id', id)
-    if (!error) setNotes(prev => prev.filter(n => n.id !== id))
+    const res = await fetch('/api/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ _action: 'delete', id }),
+    })
+    if (res.ok) setNotes(prev => prev.filter(n => n.id !== id))
   }
 
   return (
@@ -125,9 +120,9 @@ export default function NotesPanel({ quotationId, initialNotes, userId }: Props)
               </div>
             )}
             <p className="text-xs text-gray-400 mt-2">
-              {new Date(note.created_at).toLocaleString('es-CL', {
+              {note.created_at ? new Date(note.created_at).toLocaleString('es-CL', {
                 day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-              })}
+              }) : ''}
             </p>
           </div>
         ))}

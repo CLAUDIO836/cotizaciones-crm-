@@ -7,21 +7,21 @@ import { Button } from '@/components/ui/button'
 
 type Lead = {
   id: string
-  created_at: string
-  target_company: string
-  tipo_servicio: string
-  empresa_nombre: string
+  created_at?: string
+  target_company?: string
+  tipo_servicio?: string
+  empresa_nombre?: string
   empresa_rut?: string
-  contacto_nombre: string
+  contacto_nombre?: string
   contacto_cargo?: string
-  contacto_email: string
-  contacto_telefono: string
+  contacto_email?: string
+  contacto_telefono?: string
   desde?: string
   hasta?: string
   fecha_inicio?: string
   frecuencia?: string
   dias_semana?: string[]
-  pasajeros_aprox?: number
+  pasajeros_aprox?: string | number
   vehiculo_preferido?: string
   establecimiento_nombre?: string
   cantidad_alumnos?: number
@@ -75,7 +75,7 @@ function LeadCard({ lead, sellers }: { lead: Lead; sellers: Seller[] }) {
   const [saving, setSaving] = useState(false)
   const router = useRouter()
 
-  const accent = COMPANY_COLORS[lead.target_company] ?? '#6b7280'
+  const accent = COMPANY_COLORS[lead.target_company ?? ''] ?? '#6b7280'
   const statusStyle = STATUS_STYLES[status] ?? STATUS_STYLES.pendiente
 
   async function save() {
@@ -100,18 +100,18 @@ function LeadCard({ lead, sellers }: { lead: Lead; sellers: Seller[] }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ background: accent }}>
-                {COMPANY_LABELS[lead.target_company]}
+                {COMPANY_LABELS[lead.target_company ?? '']}
               </span>
               <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={statusStyle}>
                 {statusStyle.label}
               </span>
-              <span className="text-xs text-gray-400">{TIPO_LABELS[lead.tipo_servicio] ?? lead.tipo_servicio}</span>
+              <span className="text-xs text-gray-400">{TIPO_LABELS[lead.tipo_servicio ?? ''] ?? lead.tipo_servicio}</span>
             </div>
             <p className="font-bold text-gray-900 text-base truncate">{lead.empresa_nombre}</p>
             {lead.empresa_rut && <p className="text-xs text-gray-400">RUT: {lead.empresa_rut}</p>}
           </div>
           <div className="text-right flex-shrink-0">
-            <p className="text-xs text-gray-400">{formatDate(lead.created_at)}</p>
+            <p className="text-xs text-gray-400">{lead.created_at ? formatDate(lead.created_at) : ''}</p>
             {lead.profiles?.name && <p className="text-xs text-gray-500 mt-0.5">→ {lead.profiles.name}</p>}
           </div>
         </div>

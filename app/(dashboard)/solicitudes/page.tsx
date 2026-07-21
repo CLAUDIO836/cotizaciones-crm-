@@ -1,18 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
+import { fetchLeads, fetchProfiles } from '@/lib/api'
 import LeadRequestsPanel from '@/components/leads/LeadRequestsPanel'
 
 export default async function SolicitudesPage() {
-  const supabase = await createClient()
-
-  const { data: leads = [] } = await supabase
-    .from('lead_requests')
-    .select('*, profiles(name)')
-    .order('created_at', { ascending: false })
-
-  const { data: sellers = [] } = await supabase
-    .from('profiles')
-    .select('id, name')
-    .order('name')
+  const [leads, sellers] = await Promise.all([fetchLeads(), fetchProfiles()])
 
   return (
     <div className="p-6 space-y-5">

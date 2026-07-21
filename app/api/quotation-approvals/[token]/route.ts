@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { crmGet, getToken } from '@/lib/api'
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { error } = await supabase.from('quotation_approvals').delete().eq('token', token)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true })
+  const r = await crmGet('approvals_get', { token })
+  return NextResponse.json(r.data)
 }

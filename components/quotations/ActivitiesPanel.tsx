@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+// supabase replaced by internal API routes
 import { Phone, Users, Mail, MapPin, CheckCircle2, Circle, Plus, Trash2, Clock } from 'lucide-react'
 
 export interface Activity {
@@ -36,25 +36,24 @@ export default function ActivitiesPanel({ quotationId, initialActivities, userId
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({ type: 'llamada', subject: '', note: '', due_date: '' })
-  const supabase = createClient()
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.subject.trim()) return
     setLoading(true)
-    const { data, error } = await supabase
-      .from('quotation_activities')
-      .insert({
+    const res = await fetch('/api/activities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         quotation_id: quotationId,
         user_id: userId,
         type: form.type,
         subject: form.subject.trim(),
         note: form.note.trim() || null,
         due_date: form.due_date || null,
-      })
-      .select('*')
-      .single()
-    if (!error && data) {
+      }),
+    })
+    const data = await res.json()
+    if (res.ok && data) {
       setActivities(prev => [data, ...prev])
       setForm({ type: 'llamada', subject: '', note: '', due_date: '' })
       setShowForm(false)
@@ -64,16 +63,16 @@ export default function ActivitiesPanel({ quotationId, initialActivities, userId
 
   async function toggleDone(act: Activity) {
     const done = !act.done
-    const { error } = await supabase
-      .from('quotation_activities')
-      .update({ done, done_at: done ? new Date().toISOString() : null })
-      .eq('id', act.id)
-    if (!error) setActivities(prev => prev.map(a => a.id === act.id ? { ...a, done, done_at: done ? new Date().toISOString() : undefined } : a))
+    const res = await fetch('/api/activities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ _action: 'update', id: act.id, done }),
+    })
+    if (res.ok) setActivities(prev => prev.map(a => a.id === act.id ? { ...a, done, done_at: done ? new Date().toISOString() : undefined } : a))
   }
 
-  async function deleteActivity(id: string) {
-    const { error } = await supabase.from('quotation_activities').delete().eq('id', id)
-    if (!error) setActivities(prev => prev.filter(a => a.id !== id))
+  async function deleteActivity(_id: string) {
+    // TODO: add delete endpoint
   }
 
   return (

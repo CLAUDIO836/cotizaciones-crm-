@@ -1,44 +1,52 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+const CRM_API = process.env.CRM_API_URL ?? 'https://transccl.cl/crm-api.php'
+
+async function verifyToken(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${CRM_API}?action=me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
+  const pathname = request.nextUrl.pathname
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return request.cookies.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
+  const isPublic =
+    pathname.startsWith('/solicitar') ||
+    pathname.startsWith('/aprobar') ||
+    pathname.startsWith('/firmar') ||
+    pathname.startsWith('/auth') ||
+    pathname.startsWith('/update-password')
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const isLoginPage = pathname === '/login'
 
-  const isLoginPage = request.nextUrl.pathname.startsWith('/login')
-  const isPublic = request.nextUrl.pathname.startsWith('/solicitar') ||
-                   request.nextUrl.pathname.startsWith('/aprobar') ||
-                   request.nextUrl.pathname.startsWith('/firmar') ||
-                   request.nextUrl.pathname.startsWith('/auth') ||
-                   request.nextUrl.pathname.startsWith('/update-password')
+  if (isPublic) return NextResponse.next()
 
-  if (!user && !isLoginPage && !isPublic) {
+  const token = request.cookies.get('crm_token')?.value
+
+  if (!token && !isLoginPage) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  if (user && isLoginPage) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+  if (token) {
+    const valid = await verifyToken(token)
+    if (!valid && !isLoginPage) {
+      const res = NextResponse.redirect(new URL('/login', request.url))
+      res.cookies.delete('crm_token')
+      return res
+    }
+    if (valid && isLoginPage) {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
   }
 
-  return supabaseResponse
+  return NextResponse.next()
 }
 
 export const config = {

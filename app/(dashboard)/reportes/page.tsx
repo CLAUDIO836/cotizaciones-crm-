@@ -1,27 +1,25 @@
-import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { getSession, fetchQuotationsSummary, fetchProfiles } from '@/lib/api'
 import { formatCLP, getMonthName } from '@/lib/utils'
 import ReportesCharts from '@/components/dashboard/ReportesCharts'
 
 export default async function ReportesPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
+  const session = await getSession()
+  if (!session) redirect('/login')
 
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin'
+  const isAdmin = session.role === 'admin' || session.role === 'superadmin'
   if (!isAdmin) redirect('/dashboard')
 
   const now = new Date()
   const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString().split('T')[0]
 
-  const { data: quotations = [] } = await supabase
-    .from('quotations_summary')
-    .select('*')
-    .gte('issue_date', startDate)
+  const [quotations, profiles] = await Promise.all([
+    fetchQuotationsSummary({ start: startDate }),
+    fetchProfiles(),
+  ])
 
-  const { data: profiles = [] } = await supabase.from('profiles').select('id, name')
-
-  const qs = quotations ?? []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const qs: Record<string, any>[] = quotations ?? []
 
   // KPIs globales
   const totalGanado = qs.filter(q => q.status === 'won').reduce((s, q) => s + (q.total ?? 0), 0)

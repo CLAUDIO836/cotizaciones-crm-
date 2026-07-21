@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,7 +10,6 @@ import { Plus, Building2, Trash2 } from 'lucide-react'
 interface Company { id: string; name: string; rut?: string }
 
 export default function EmpresasPage() {
-  const supabase = createClient()
   const [companies, setCompanies] = useState<Company[]>([])
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
@@ -19,7 +17,8 @@ export default function EmpresasPage() {
   const [loading, setLoading] = useState(false)
 
   async function load() {
-    const { data } = await supabase.from('companies').select('id, name, rut').order('name')
+    const res = await fetch('/api/companies')
+    const data = await res.json()
     setCompanies(data ?? [])
   }
 
@@ -28,8 +27,12 @@ export default function EmpresasPage() {
   async function handleCreate() {
     if (!name.trim()) { toast.error('Ingresa el nombre de la empresa'); return }
     setLoading(true)
-    const { error } = await supabase.from('companies').insert({ name: name.trim(), rut: rut.trim() || null })
-    if (error) { toast.error('Error al crear empresa'); setLoading(false); return }
+    const res = await fetch('/api/companies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim(), rut: rut.trim() || null }),
+    })
+    if (!res.ok) { toast.error('Error al crear empresa'); setLoading(false); return }
     toast.success('Empresa creada')
     setName(''); setRut(''); setShowForm(false)
     await load()
@@ -38,8 +41,12 @@ export default function EmpresasPage() {
 
   async function handleDelete(id: string, companyName: string) {
     if (!confirm(`¿Eliminar "${companyName}"? Las cotizaciones asociadas quedarán sin empresa.`)) return
-    const { error } = await supabase.from('companies').delete().eq('id', id)
-    if (error) { toast.error('Error al eliminar'); return }
+    const res = await fetch('/api/companies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ _action: 'delete', id }),
+    })
+    if (!res.ok) { toast.error('Error al eliminar'); return }
     toast.success('Empresa eliminada')
     await load()
   }

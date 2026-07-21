@@ -1,23 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { crmGet, getToken } from '@/lib/api'
 
 export async function GET(req: NextRequest) {
-  const quotationId = req.nextUrl.searchParams.get('quotation_id')
-  if (!quotationId) return NextResponse.json({ approval: null })
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: approvals } = await supabase
-    .from('quotation_approvals')
-    .select('id, token, response, responded_at, responded_name, rejection_reason, sent_at, created_at, client_name')
-    .eq('quotation_id', quotationId)
-    .order('created_at', { ascending: false })
-
-  if (!approvals || approvals.length === 0) return NextResponse.json({ approval: null })
-
-  // Prefer responded approval if exists
-  const responded = approvals.find(a => a.response)
-  return NextResponse.json({ approval: responded ?? approvals[0] })
+  const token = await getToken()
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const quotation_id = req.nextUrl.searchParams.get('quotation_id') ?? ''
+  if (!quotation_id) return NextResponse.json({ approval: null })
+  const r = await crmGet('approvals_by_quotation', { quotation_id }, token)
+  return NextResponse.json({ approval: r.data ?? null })
 }

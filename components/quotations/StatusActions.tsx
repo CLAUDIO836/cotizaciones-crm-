@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { CheckCircle, XCircle, RotateCcw } from 'lucide-react'
@@ -22,66 +21,42 @@ const ERP_TOKEN      = process.env.NEXT_PUBLIC_CRM_SYNC_TOKEN ?? ''
 
 export default function StatusActions({ quotationId, quotationNumber, clientId, userId, total, status, inline }: Props) {
   const router = useRouter()
-  const supabase = createClient()
   const [loading, setLoading] = useState(false)
 
+  async function setStatus(newStatus: string) {
+    const res = await fetch('/api/quotations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ _action: 'set_status', id: quotationId, status: newStatus }),
+    })
+    if (!res.ok) throw new Error('Error')
+  }
+
   async function markWon() {
-    // Verificar si el cliente aprobó digitalmente
     const approvalRes = await fetch(`/api/quotation-approvals/by-quotation?quotation_id=${quotationId}`)
     const approvalData = await approvalRes.json()
     const clientApproved = approvalData.approval?.response === 'accepted'
 
     const confirmMsg = clientApproved
       ? '¿Marcar esta cotización como ganada?'
-      : '⚠️ El cliente aún NO ha enviado su aprobación digital.\n\n¿Deseas marcarla como ganada de todas formas?\n\nSe notificará en Pipedrive que fue aprobada manualmente.'
+      : '⚠️ El cliente aún NO ha enviado su aprobación digital.\n\n¿Deseas marcarla como ganada de todas formas?'
 
     if (!window.confirm(confirmMsg)) return
     setLoading(true)
     try {
-      const { error: e1 } = await supabase.from('quotations').update({ status: 'won' }).eq('id', quotationId)
-      if (e1) throw new Error(e1.message)
-
-      await supabase.from('contracts').delete().eq('quotation_id', quotationId)
-
-      const { data: numData, error: e2 } = await supabase.rpc('generate_contract_number')
-      if (e2) throw new Error(e2.message)
-
-      const { error: e3 } = await supabase.from('contracts').insert({
-        number: numData,
-        quotation_id: quotationId,
-        client_id: clientId,
-        user_id: userId,
-        value: total,
-        start_date: new Date().toISOString().split('T')[0],
+      await setStatus('won')
+      // Create contract via API
+      await fetch('/api/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          _action: 'create_contract',
+          quotation_id: quotationId,
+          client_id: clientId,
+          user_id: userId,
+          value: total,
+        }),
       })
-      if (e3) throw new Error(e3.message)
-
-      // Enviar al ERP (no bloquea si falla)
-      try {
-        const { data: client } = await supabase
-          .from('clients')
-          .select('name, rut, email, phone, contacto, telefono_fijo, telefono_celular')
-          .eq('id', clientId)
-          .single()
-        await fetch(ERP_IMPORT_URL, {
-          method: 'POST',
-          headers: { 'x-crm-token': ERP_TOKEN, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            codigoCRM: quotationId,
-            numeroCotizacion: quotationNumber,
-            total,
-            subtotal: Math.round(total / 1.19),
-            ivaPorc: 19,
-            clienteRut: client?.rut ?? '',
-            clienteNombre: client?.name ?? '',
-            clienteEmail: client?.email ?? '',
-            clienteTelefono: client?.telefono_celular ?? client?.phone ?? '',
-            clienteContacto: client?.contacto ?? '',
-          }),
-        })
-      } catch { /* ERP falla silenciosamente */ }
-
-      // Si no hay aprobación digital, avisar en Pipedrive
       if (!clientApproved) {
         try {
           await fetch('/api/quotation-approvals/notify-manual-win', {
@@ -91,7 +66,6 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
           })
         } catch { /* no bloquea */ }
       }
-
       toast.success('¡Cotización ganada!')
       router.refresh()
     } catch (err) {
@@ -105,8 +79,7 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
     if (!window.confirm('¿Marcar esta cotización como perdida?')) return
     setLoading(true)
     try {
-      const { error } = await supabase.from('quotations').update({ status: 'lost' }).eq('id', quotationId)
-      if (error) throw new Error(error.message)
+      await setStatus('lost')
       toast.success('Cotización marcada como perdida')
       router.refresh()
     } catch (err) {
@@ -120,9 +93,7 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
     if (!window.confirm('¿Reabrir esta cotización?')) return
     setLoading(true)
     try {
-      await supabase.from('contracts').delete().eq('quotation_id', quotationId)
-      const { error } = await supabase.from('quotations').update({ status: 'open' }).eq('id', quotationId)
-      if (error) throw new Error(error.message)
+      await setStatus('open')
       toast.success('Cotización reabierta')
       router.refresh()
     } catch (err) {

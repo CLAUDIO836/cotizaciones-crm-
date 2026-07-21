@@ -1,14 +1,6 @@
-import { createClient } from '@supabase/supabase-js'
 import { notFound } from 'next/navigation'
 import SigningForm from './SigningForm'
-
-function getAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  )
-}
+import { crmGet } from '@/lib/api'
 
 function formatCLP(n: number) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(n)
@@ -16,13 +8,9 @@ function formatCLP(n: number) {
 
 export default async function SignPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
-  const admin = getAdminClient()
 
-  const { data: letter } = await admin
-    .from('approval_letters')
-    .select('*')
-    .eq('token', token)
-    .single()
+  const r = await crmGet('letters_get', { token })
+  const letter = r?.data as Record<string, string> | null
 
   if (!letter) notFound()
 

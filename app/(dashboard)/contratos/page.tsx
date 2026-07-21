@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { getSession, fetchContracts } from '@/lib/api'
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -10,20 +10,11 @@ export default async function ContratosPage({
   searchParams: Promise<{ status?: string }>
 }) {
   const params = await searchParams
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
-  const isAdmin = profile?.role === 'admin'
-
-  let query = supabase
-    .from('contracts')
-    .select(`*, clients(name, rut), profiles(name), quotations(number)`)
-    .order('created_at', { ascending: false })
-
-  if (!isAdmin) query = query.eq('user_id', user!.id)
-  if (params.status) query = query.eq('status', params.status)
-
-  const { data: contracts = [] } = await query
+  const user = await getSession()
+  const isAdmin = user?.role === 'admin'
+  const filters: Record<string, string> = {}
+  if (params.status) filters.status = params.status
+  const contracts = await fetchContracts(filters)
 
   return (
     <div className="p-6 space-y-5">
@@ -78,18 +69,18 @@ export default async function ContratosPage({
             </tr>
           </thead>
           <tbody>
-            {(contracts ?? []).length === 0 ? (
+            {(contracts).length === 0 ? (
               <tr>
                 <td colSpan={isAdmin ? 9 : 8} className="text-center py-12 text-gray-400">
                   No se encontraron contratos
                 </td>
               </tr>
             ) : (
-              (contracts ?? []).map((c: {
+              (contracts).map((c: {
                 id: string
                 number: string
                 status: string
-                start_date: string
+                start_date?: string
                 end_date?: string
                 value: number
                 clients?: { name: string; rut?: string }
@@ -108,7 +99,7 @@ export default async function ContratosPage({
                         {label}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-500">{formatDate(c.start_date)}</td>
+                    <td className="px-4 py-3 text-gray-500">{c.start_date ? formatDate(c.start_date) : '—'}</td>
                     <td className="px-4 py-3 text-gray-500">{c.end_date ? formatDate(c.end_date) : '—'}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCLP(c.value)}</td>
                     <td className="px-4 py-3">

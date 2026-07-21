@@ -1,5 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
+import { fetchContract } from '@/lib/api'
 import { formatCLP, formatDate, getStatusLabel } from '@/lib/utils'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
@@ -11,13 +11,7 @@ export default async function ContractDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const supabase = await createClient()
-
-  const { data: c } = await supabase
-    .from('contracts')
-    .select('*, clients(name, rut, email), profiles(name), quotations(number)')
-    .eq('id', id)
-    .single()
+  const c = await fetchContract(id)
 
   if (!c) notFound()
 
@@ -37,7 +31,7 @@ export default async function ContractDetailPage({
             </span>
           </div>
           <p className="text-sm text-gray-500">
-            Creado: {formatDate(c.created_at)}
+            Creado: {c.created_at ? formatDate(c.created_at) : '—'}
             {c.profiles?.name && ` · Vendedor: ${c.profiles.name}`}
           </p>
         </div>
@@ -57,7 +51,7 @@ export default async function ContractDetailPage({
           </div>
           <div>
             <p className="text-gray-500">Fecha inicio</p>
-            <p className="font-medium text-gray-900">{formatDate(c.start_date)}</p>
+            <p className="font-medium text-gray-900">{c.start_date ? formatDate(c.start_date) : '—'}</p>
           </div>
           <div>
             <p className="text-gray-500">Fecha término</p>

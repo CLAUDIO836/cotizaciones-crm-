@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
 import { formatCLP, formatDate } from '@/lib/utils'
 import { Calendar, User } from 'lucide-react'
 import {
@@ -181,8 +180,6 @@ export default function EtapaKanban({ quotations: initialQuotations, isAdmin }: 
   const [quotations, setQuotations] = useState(initialQuotations)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
-  const supabase = createClient()
-
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   )
@@ -210,10 +207,11 @@ export default function EtapaKanban({ quotations: initialQuotations, isAdmin }: 
       prev.map(q => q.id === active.id ? { ...q, etapa: targetEtapa } : q)
     )
 
-    await supabase
-      .from('quotations')
-      .update({ etapa: targetEtapa })
-      .eq('id', active.id)
+    await fetch('/api/quotations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ _action: 'set_etapa', id: active.id, etapa: targetEtapa }),
+    })
   }
 
   return (

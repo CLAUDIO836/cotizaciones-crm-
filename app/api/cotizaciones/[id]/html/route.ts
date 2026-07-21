@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { fetchQuotation } from '@/lib/api'
 import { formatCLP, formatDate } from '@/lib/utils'
 
 function fmtDateTime(val: string | null | undefined) {
@@ -59,17 +59,11 @@ const CCL_POLICIES = [
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const baseUrl = new URL(req.url).origin
   const { id } = await params
-  const supabase = await createClient()
 
-  const { data: q } = await supabase
-    .from('quotations')
-    .select('*, clients(name, rut, email, phone, address, contacto, telefono_fijo, telefono_celular), profiles(name, celular, email), quotation_items(*), companies(name)')
-    .eq('id', id)
-    .single()
-
+  const q = await fetchQuotation(id)
   if (!q) return new Response('Not found', { status: 404 })
 
-  const isTKS = (q.companies as {name?: string})?.name === 'Transportes TKS'
+  const isTKS = q.company === 'Transportes TKS'
   const ACCENT = isTKS ? '#C8102E' : '#1B8A4B'
   const ACCENT_LIGHT = isTKS ? '#fef2f2' : '#dcfce7'
   const ACCENT_BORDER = isTKS ? '#fca5a5' : '#1B8A4B'
