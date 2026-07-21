@@ -299,7 +299,10 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           })),
         }),
       })
-      if (!qRes.ok) throw new Error((await qRes.json()).error)
+      if (!qRes.ok) {
+        const errJson = await qRes.json().catch(() => ({}))
+        throw new Error(errJson.error ?? `HTTP ${qRes.status}`)
+      }
       const qData = await qRes.json()
 
       // Crear negocio en Pipedrive y subir PDF
@@ -326,8 +329,8 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
         toast.success('Cotización creada (sin conexión a Pipedrive)')
       }
       router.push(`/cotizaciones/${qData.id}`)
-    } catch {
-      toast.error('Error al guardar la cotización')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Error al guardar la cotización')
     } finally {
       setLoading(false)
     }
