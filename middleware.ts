@@ -27,7 +27,8 @@ export async function middleware(request: NextRequest) {
   const isPublic = request.nextUrl.pathname.startsWith('/solicitar') ||
                    request.nextUrl.pathname.startsWith('/aprobar') ||
                    request.nextUrl.pathname.startsWith('/firmar') ||
-                   request.nextUrl.pathname.startsWith('/auth')
+                   request.nextUrl.pathname.startsWith('/auth') ||
+                   request.nextUrl.pathname.startsWith('/update-password')
 
   if (!user && !isLoginPage && !isPublic) {
     return NextResponse.redirect(new URL('/login', request.url))
