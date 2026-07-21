@@ -69,12 +69,18 @@ function verifyJWT(string $token): ?array {
 }
 
 function getAuthUser(): ?array {
-    $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+    // Apache/cPanel puede bloquear HTTP_AUTHORIZATION; buscar en múltiples fuentes
+    $auth = $_SERVER['HTTP_AUTHORIZATION']
+         ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
+         ?? (function_exists('apache_request_headers') ? (apache_request_headers()['Authorization'] ?? '') : '')
+         ?? '';
     $token = null;
     if (str_starts_with($auth, 'Bearer ')) {
         $token = substr($auth, 7);
     } elseif (!empty($_GET['token'])) {
         $token = $_GET['token'];
+    } elseif (!empty($_COOKIE['crm_token'])) {
+        $token = $_COOKIE['crm_token'];
     }
     if (!$token) return null;
     return verifyJWT($token);
@@ -114,6 +120,34 @@ if ($action === 'login') {
     $payload = ['id' => $user['id'], 'email' => $user['email'], 'name' => $user['name'], 'role' => $user['role'], 'exp' => $exp];
     $jwt = createJWT($payload);
 
+    ok(['token' => $jwt, 'user' => ['id' => $user['id'], 'email' => $user['email'], 'name' => $user['name'], 'role' => $user['role']]]);
+}
+
+// Google OAuth — busca o crea perfil por email (sin contraseña)
+if ($action === 'google_auth') {
+    $b = body();
+    $email = trim($b['email'] ?? '');
+    $name  = trim($b['name']  ?? '');
+    if (!$email) err('Email requerido');
+
+    // Buscar perfil existente
+    $stmt = db()->prepare('SELECT * FROM profiles WHERE email = ? AND active = 1 LIMIT 1');
+    $stmt->execute([$email]);
+    $user = $stmt->fetch();
+
+    if (!$user) {
+        // Crear perfil con rol vendedor por defecto
+        $id = uuid();
+        db()->prepare('INSERT INTO profiles (id, email, name, role, password_hash, active) VALUES (?, ?, ?, ?, ?, 1)')
+             ->execute([$id, $email, $name ?: $email, 'vendedor', password_hash(bin2hex(random_bytes(16)), PASSWORD_BCRYPT)]);
+        $stmt = db()->prepare('SELECT * FROM profiles WHERE id = ? LIMIT 1');
+        $stmt->execute([$id]);
+        $user = $stmt->fetch();
+    }
+
+    $exp = time() + SESSION_HOURS * 3600;
+    $payload = ['id' => $user['id'], 'email' => $user['email'], 'name' => $user['name'], 'role' => $user['role'], 'exp' => $exp];
+    $jwt = createJWT($payload);
     ok(['token' => $jwt, 'user' => ['id' => $user['id'], 'email' => $user['email'], 'name' => $user['name'], 'role' => $user['role']]]);
 }
 
