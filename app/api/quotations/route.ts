@@ -21,6 +21,11 @@ export async function POST(req: NextRequest) {
     : body._action === 'set_etapa' ? 'quotations_set_etapa'
     : body.id ? 'quotations_update'
     : 'quotations_create'
-  const r = await crmPost(action, body, {}, token)
-  return NextResponse.json(r.data)
+  try {
+    const r = await crmPost(action, body, {}, token)
+    return NextResponse.json(r.data)
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 }
