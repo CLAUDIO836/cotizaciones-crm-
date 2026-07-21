@@ -14,9 +14,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .eq('id', user.id)
     .single()
 
+  const { count: pendingLeads } = await supabase
+    .from('lead_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pendiente')
+
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#f4f5f7' }}>
-      <Sidebar profile={profile} />
+      <Sidebar profile={profile ? { ...profile, pending_leads: pendingLeads ?? 0 } : null} />
       <main className="flex-1 overflow-y-auto">
         {children}
       </main>

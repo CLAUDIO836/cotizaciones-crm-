@@ -13,16 +13,16 @@ import { formatCLP } from '@/lib/utils'
 import { Plus, Trash2 } from 'lucide-react'
 import ClientRutSearch from '@/components/clients/ClientRutSearch'
 
-// ── Nominatim autocomplete ──────────────────────────────────────────────────
-interface NominatimResult { place_id: number; display_name: string; lat: string; lon: string }
+// ── Google Places autocomplete (via server proxy) ────────────────────────────
+interface PlacePrediction { description: string; place_id: string }
 
 function AddressInput({ value, onChange, placeholder }: {
   value: string
-  onChange: (address: string, lat?: number, lng?: number) => void
+  onChange: (address: string, lat?: number, lng?: number, placeId?: string) => void
   placeholder?: string
 }) {
   const [query, setQuery] = useState(value)
-  const [suggestions, setSuggestions] = useState<NominatimResult[]>([])
+  const [suggestions, setSuggestions] = useState<PlacePrediction[]>([])
   const [open, setOpen] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
@@ -36,23 +36,31 @@ function AddressInput({ value, onChange, placeholder }: {
     if (v.length < 3) { setSuggestions([]); setOpen(false); return }
     timer.current = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(v)}&format=json&limit=5&countrycodes=cl`,
-          { headers: { 'Accept-Language': 'es' } }
-        )
-        const data: NominatimResult[] = await res.json()
-        setSuggestions(data)
-        setOpen(data.length > 0)
-      } catch { /* ignore */ }
-    }, 500)
+        const res = await fetch(`/api/places?input=${encodeURIComponent(v)}`)
+        const data = await res.json()
+        if (data.predictions?.length > 0) {
+          setSuggestions(data.predictions.map((p: { description: string; place_id: string }) => ({
+            description: p.description,
+            place_id: p.place_id,
+          })))
+          setOpen(true)
+        } else {
+          setSuggestions([]); setOpen(false)
+        }
+      } catch { setSuggestions([]); setOpen(false) }
+    }, 350)
   }
 
-  function select(r: NominatimResult) {
-    const short = r.display_name.split(',').slice(0, 3).join(',').trim()
-    setQuery(short)
-    onChange(short, parseFloat(r.lat), parseFloat(r.lon))
-    setSuggestions([])
-    setOpen(false)
+  async function select(pred: PlacePrediction) {
+    setQuery(pred.description)
+    onChange(pred.description)
+    setSuggestions([]); setOpen(false)
+    try {
+      const res = await fetch(`/api/places?place_id=${encodeURIComponent(pred.place_id)}`)
+      const data = await res.json()
+      const loc = data.result?.geometry?.location
+      if (loc) onChange(pred.description, loc.lat, loc.lng, pred.place_id)
+    } catch { /* lat/lng opcional */ }
   }
 
   return (
@@ -63,13 +71,13 @@ function AddressInput({ value, onChange, placeholder }: {
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder={placeholder}
       />
-      {open && (
+      {open && suggestions.length > 0 && (
         <div className="absolute z-50 w-full bg-white border rounded-lg shadow-lg mt-1 max-h-52 overflow-y-auto">
-          {suggestions.map(r => (
-            <button key={r.place_id} type="button"
+          {suggestions.map(p => (
+            <button key={p.place_id} type="button"
               className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b last:border-0"
-              onMouseDown={() => select(r)}>
-              {r.display_name}
+              onMouseDown={() => select(p)}>
+              {p.description}
             </button>
           ))}
         </div>
@@ -78,13 +86,6 @@ function AddressInput({ value, onChange, placeholder }: {
   )
 }
 
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371
-  const dLat = (lat2 - lat1) * Math.PI / 180
-  const dLon = (lon2 - lon1) * Math.PI / 180
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)))
-}
 
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ interface Client {
   contacto?: string; telefono_fijo?: string; telefono_celular?: string; email?: string
 }
 interface Pipeline { id: string; name: string; color: string }
-interface Item { codigo: string; description: string; quantity: number; unit_price: number }
+interface Item { codigo: string; description: string; pasajeros: number; quantity: number; unit_price: number }
 
 interface Seller { id: string; name: string; email?: string }
 interface Company { id: string; name: string }
@@ -126,17 +127,17 @@ interface Props {
 }
 
 const VEHICLES_CCL = [
-  { key: 'bus',     label: 'Bus (40–45 pax)',     img: '/vehicles/bus-real.png' },
-  { key: 'taxibus', label: 'Taxibús (25–33 pax)', img: '/vehicles/taxibus-real.png' },
-  { key: 'minibus', label: 'Minibús (14–19 pax)', img: '/vehicles/minibus-real.png' },
-  { key: 'minivan', label: 'Minivan (7–11 pax)',  img: '/vehicles/minivan-real.png' },
+  { key: 'bus',     label: 'Bus (40–45 pax)',     img: '/vehicles/bus-real.png',     desc: 'Servicio de transporte en Bus (40–45 pasajeros)' },
+  { key: 'taxibus', label: 'Taxibús (25–33 pax)', img: '/vehicles/taxibus-real.png', desc: 'Servicio de transporte en Taxibús (25–33 pasajeros)' },
+  { key: 'minibus', label: 'Minibús (14–19 pax)', img: '/vehicles/minibus-real.png', desc: 'Servicio de transporte en Minibús (14–19 pasajeros)' },
+  { key: 'minivan', label: 'Minivan (7–11 pax)',  img: '/vehicles/minivan-real.png', desc: 'Servicio de transporte en Minivan (7–11 pasajeros)' },
 ]
 
 const VEHICLES_TKS = [
-  { key: 'bus',     label: 'Bus (40–60 pax)',     img: '/vehicles/tks-bus.jpg' },      // bus verde (placeholder hasta tener foto del bus blanco TKS)
-  { key: 'taxibus', label: 'Taxibús (25–33 pax)', img: '/vehicles/tks-bus.jpg' },      // mismo bus verde
-  { key: 'minibus', label: 'Minibús (14–19 pax)', img: '/vehicles/tks-sprinter.jpg' }, // Sprinter plateado
-  { key: 'minivan', label: 'Minivan (7–10 pax)',  img: '/vehicles/tks-minivan.jpg' },  // Mercedes V-class azul
+  { key: 'bus',     label: 'Bus (40–45 pax)',     img: '/vehicles/tks-bus.jpg',      desc: 'Servicio de transporte en Bus (40–45 pasajeros)' },
+  { key: 'taxibus', label: 'Taxibús (25–33 pax)', img: '/vehicles/tks-bus.jpg',      desc: 'Servicio de transporte en Taxibús (25–33 pasajeros)' },
+  { key: 'minibus', label: 'Minibús (14–19 pax)', img: '/vehicles/tks-sprinter.jpg', desc: 'Servicio de transporte en Minibús (14–19 pasajeros)' },
+  { key: 'minivan', label: 'Minivan (7–10 pax)',  img: '/vehicles/tks-minivan.jpg',  desc: 'Servicio de transporte en Minivan (7–10 pasajeros)' },
 ]
 
 const ETAPAS = [
@@ -147,7 +148,7 @@ const ETAPAS = [
   { key: 'cierre',      label: 'Cierre' },
 ]
 
-const DEFAULT_ITEM: Item = { codigo: '', description: '', quantity: 1, unit_price: 0 }
+const DEFAULT_ITEM: Item = { codigo: '', description: '', pasajeros: 0, quantity: 1, unit_price: 0 }
 
 export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation }: Props) {
   const router = useRouter()
@@ -167,13 +168,23 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   // Ruta / servicio
   const [desde, setDesde] = useState(quotation?.desde ?? '')
   const [hasta, setHasta] = useState(quotation?.hasta ?? '')
-  const [desdeLat, setDesdeLat] = useState<number>()
-  const [desdeLng, setDesdeLng] = useState<number>()
-  const [hastaLat, setHastaLat] = useState<number>()
-  const [hastaLng, setHastaLng] = useState<number>()
-  const distanciaKm = (desdeLat && desdeLng && hastaLat && hastaLng)
-    ? haversineKm(desdeLat, desdeLng, hastaLat, hastaLng)
-    : null
+  const [desdePlaceId, setDesdePlaceId] = useState<string>()
+  const [hastaPlaceId, setHastaPlaceId] = useState<string>()
+  const [distanciaKm, setDistanciaKm] = useState<number | null>(null)
+  const [duracionText, setDuracionText] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!desdePlaceId || !hastaPlaceId) { setDistanciaKm(null); setDuracionText(null); return }
+    fetch(`/api/places?origin=${encodeURIComponent(desdePlaceId)}&destination=${encodeURIComponent(hastaPlaceId)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.distance_m) {
+          setDistanciaKm(Math.round(d.distance_m / 1000))
+          setDuracionText(d.duration_text ?? null)
+        }
+      })
+      .catch(() => { setDistanciaKm(null); setDuracionText(null) })
+  }, [desdePlaceId, hastaPlaceId])
   const [fechaSalida, setFechaSalida] = useState(quotation?.fecha_salida?.slice(0, 16) ?? '')
   const [fechaDestino, setFechaDestino] = useState(quotation?.fecha_destino?.slice(0, 16) ?? '')
 
@@ -245,6 +256,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     if (!clientId) { toast.error('Busca y selecciona un cliente por RUT'); return }
     if (!selectedUserId) { toast.error('Selecciona un vendedor'); return }
     if (items.some(i => !i.description.trim())) { toast.error('Completa la descripción de todos los ítems'); return }
+    if (items.some(i => !i.pasajeros || i.pasajeros <= 0)) { toast.error('Indica la cantidad de pasajeros en cada ítem'); return }
 
     setLoading(true)
     try {
@@ -287,6 +299,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
         quotation_id: qData.id,
         codigo: item.codigo || null,
         description: item.description,
+        pasajeros: item.pasajeros || null,
         quantity: item.quantity,
         unit_price: item.unit_price,
         sort_order: idx,
@@ -419,7 +432,17 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
               <button
                 key={v.key}
                 type="button"
-                onClick={() => setVehicleType(vehicleType === v.key ? '' : v.key)}
+                onClick={() => {
+                setVehicleType(vehicleType === v.key ? '' : v.key)
+                if (vehicleType !== v.key) {
+                  setItems(prev => {
+                    const next = [...prev]
+                    const last = next.length - 1
+                    next[last] = { ...next[last], codigo: v.key.toUpperCase(), description: v.desc }
+                    return next
+                  })
+                }
+              }}
                 className="relative rounded-xl border-2 overflow-hidden transition-all text-left"
                 style={vehicleType === v.key
                   ? { borderColor: '#1B8A4B' }
@@ -463,7 +486,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           <h2 className="font-semibold text-sm uppercase tracking-wide text-gray-500">Ruta / Servicio</h2>
           {distanciaKm !== null && (
             <span className="text-sm font-semibold px-3 py-1 rounded-full" style={{ background: '#e8f5e9', color: '#1B8A4B' }}>
-              ~{distanciaKm} km (línea recta)
+              {distanciaKm} km en ruta{duracionText ? ` · ${duracionText}` : ''}
             </span>
           )}
         </div>
@@ -472,7 +495,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
             <Label>Desde</Label>
             <AddressInput
               value={desde}
-              onChange={(addr, lat, lng) => { setDesde(addr); setDesdeLat(lat); setDesdeLng(lng) }}
+              onChange={(addr, _lat, _lng, pid) => { setDesde(addr); if (pid) setDesdePlaceId(pid) }}
               placeholder="Dirección de origen"
             />
           </div>
@@ -480,7 +503,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
             <Label>Hasta</Label>
             <AddressInput
               value={hasta}
-              onChange={(addr, lat, lng) => { setHasta(addr); setHastaLat(lat); setHastaLng(lng) }}
+              onChange={(addr, _lat, _lng, pid) => { setHasta(addr); if (pid) setHastaPlaceId(pid) }}
               placeholder="Dirección de destino"
             />
           </div>
@@ -502,7 +525,8 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
         <div className="space-y-2">
           <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-400 px-1">
             <span className="col-span-2">Código</span>
-            <span className="col-span-5">Descripción</span>
+            <span className="col-span-4">Descripción</span>
+            <span className="col-span-1 text-center">Pax *</span>
             <span className="col-span-1 text-center">Cant.</span>
             <span className="col-span-2 text-right">Precio unit.</span>
             <span className="col-span-1 text-right">Total</span>
@@ -513,16 +537,25 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
             <div key={idx} className="grid grid-cols-12 gap-2 items-center">
               <Input
                 className="col-span-2"
-                placeholder="A30"
+                placeholder="BUS"
                 value={item.codigo}
                 onChange={e => updateItem(idx, 'codigo', e.target.value)}
               />
               <Input
-                className="col-span-5"
+                className="col-span-4"
                 placeholder="Descripción del servicio"
                 value={item.description}
                 onChange={e => updateItem(idx, 'description', e.target.value)}
                 required
+              />
+              <Input
+                className="col-span-1 text-center"
+                type="number" min={1} step={1}
+                placeholder="0"
+                value={item.pasajeros || ''}
+                onChange={e => updateItem(idx, 'pasajeros', parseInt(e.target.value) || 0)}
+                title="Cantidad de pasajeros a trasladar"
+                style={(!item.pasajeros || item.pasajeros <= 0) ? { borderColor: '#f97316' } : {}}
               />
               <Input
                 className="col-span-1 text-center"

@@ -4,17 +4,19 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  LayoutDashboard, FileText, FileCheck, Users, UserCog, LogOut, Filter, BarChart3, CalendarDays
+  LayoutDashboard, FileText, FileCheck, Users, UserCog, LogOut, Filter, BarChart3, CalendarDays, Inbox
 } from 'lucide-react'
 
 interface Profile {
   id: string
   name: string
   role: string
+  pending_leads?: number
 }
 
 const navItems = [
   { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
+  { href: '/solicitudes',  label: 'Solicitudes',  icon: Inbox, badge: true },
   { href: '/cotizaciones', label: 'Negocios',     icon: FileText },
   { href: '/agenda',       label: 'Agenda',       icon: CalendarDays },
   { href: '/contratos',    label: 'Contratos',    icon: FileCheck },
@@ -56,16 +58,17 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
         </div>
 
         {/* Nav icons */}
-        {navItems.map(({ href, label, icon: Icon }) => (
+        {navItems.map(({ href, label, icon: Icon, badge }) => (
           <Link key={href} href={href} title={label}>
-            <div
-              className="w-9 h-9 rounded-lg flex items-center justify-center transition-all"
-              style={isActive(href) ? { background: '#1B8A4B' } : {}}
-            >
-              <Icon
-                className="w-4 h-4"
-                style={{ color: isActive(href) ? 'white' : 'rgba(255,255,255,0.45)' }}
-              />
+            <div className="relative w-9 h-9 rounded-lg flex items-center justify-center transition-all"
+              style={isActive(href) ? { background: '#1B8A4B' } : {}}>
+              <Icon className="w-4 h-4"
+                style={{ color: isActive(href) ? 'white' : 'rgba(255,255,255,0.45)' }} />
+              {badge && (profile as Profile & { pending_leads?: number })?.pending_leads ? (
+                <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-red-500 rounded-full flex items-center justify-center text-white text-[8px] font-bold">
+                  {(profile as Profile & { pending_leads?: number }).pending_leads}
+                </span>
+              ) : null}
             </div>
           </Link>
         ))}
@@ -123,7 +126,7 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
         </div>
 
         <div className="flex flex-col gap-0.5 px-2">
-          {navItems.map(({ href, label, icon: Icon }) => (
+          {navItems.map(({ href, label, icon: Icon, badge }) => (
             <Link key={href} href={href}
               className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all"
               style={isActive(href)
@@ -132,7 +135,12 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
               }
             >
               <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-              {label}
+              <span className="flex-1">{label}</span>
+              {badge && (profile as Profile & { pending_leads?: number })?.pending_leads ? (
+                <span className="bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+                  {(profile as Profile & { pending_leads?: number }).pending_leads}
+                </span>
+              ) : null}
             </Link>
           ))}
 

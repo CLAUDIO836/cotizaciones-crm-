@@ -57,7 +57,9 @@ CREATE TABLE quotations (
 CREATE TABLE quotation_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   quotation_id UUID NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+  codigo TEXT,
   description TEXT NOT NULL,
+  pasajeros INT,
   quantity NUMERIC(10,2) NOT NULL DEFAULT 1,
   unit_price NUMERIC(12,2) NOT NULL DEFAULT 0,
   subtotal NUMERIC(12,2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
