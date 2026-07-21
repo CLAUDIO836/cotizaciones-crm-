@@ -4,8 +4,7 @@ const CRM_API = process.env.CRM_API_URL ?? 'https://transccl.cl/crm-api.php'
 
 async function verifyToken(token: string): Promise<boolean> {
   try {
-    const res = await fetch(`${CRM_API}?action=me`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const res = await fetch(`${CRM_API}?action=me&token=${encodeURIComponent(token)}`, {
       cache: 'no-store',
     })
     return res.ok

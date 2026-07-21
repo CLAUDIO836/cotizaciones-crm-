@@ -39,14 +39,12 @@ async function crmFetch(
   token?: string | null,
 ): Promise<{ ok: boolean; data: unknown; error?: string }> {
   const params = new URLSearchParams({ action, ...queryParams })
+  if (token) params.set('token', token)
   const url = `${CRM_API}?${params}`
-
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (token) headers['Authorization'] = `Bearer ${token}`
 
   const res = await fetch(url, {
     method,
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
     cache: 'no-store',
   })
