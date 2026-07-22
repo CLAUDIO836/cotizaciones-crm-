@@ -64,7 +64,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const q = await fetchQuotation(id, urlToken)
   if (!q) return new Response('Not found', { status: 404 })
 
-  const isTKS = q.company === 'Transportes TKS'
+  const isTKS = (q.company ?? (q as Record<string,unknown>).company_real_name ?? "").toString().includes("TKS")
   const ACCENT = isTKS ? '#C8102E' : '#1B8A4B'
   const ACCENT_LIGHT = isTKS ? '#fef2f2' : '#dcfce7'
   const ACCENT_BORDER = isTKS ? '#fca5a5' : '#1B8A4B'
