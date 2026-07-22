@@ -257,15 +257,15 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   }
 
   const isEditing = !!quotation?.id
+  const [loadingPdf, setLoadingPdf] = useState(false)
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function saveQuotation(withPdf: boolean) {
     if (!clientId) { toast.error('Busca y selecciona un cliente por RUT'); return }
     if (!selectedUserId) { toast.error('Selecciona un vendedor'); return }
     if (items.some(i => !i.description.trim())) { toast.error('Completa la descripción de todos los ítems'); return }
     if (items.some(i => !i.pasajeros || i.pasajeros <= 0)) { toast.error('Indica la cantidad de pasajeros en cada ítem'); return }
 
-    setLoading(true)
+    withPdf ? setLoadingPdf(true) : setLoading(true)
     try {
       const finalClientId = clientId
 
@@ -313,15 +313,20 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
       const qData = await qRes.json()
 
       if (isEditing) {
-        // Al editar: re-sincronizar PDF con el deal existente en Pipedrive
-        try {
-          await fetch('/api/pipedrive/upload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ quotationId: quotation.id, resync: true }),
-          })
-        } catch { /* resync is best-effort */ }
-        toast.success('Cotización actualizada')
+        if (withPdf) {
+          try {
+            await fetch('/api/pipedrive/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ quotationId: quotation.id, resync: true }),
+            })
+            toast.success('Cotización actualizada — nuevo PDF subido a Pipedrive')
+          } catch {
+            toast.success('Cotización actualizada (PDF pendiente)')
+          }
+        } else {
+          toast.success('Cotización actualizada')
+        }
         router.push(`/cotizaciones/${quotation.id}`)
       } else {
         // Al crear: crear deal en Pipedrive y subir PDF
@@ -353,7 +358,13 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
       toast.error(e instanceof Error ? e.message : 'Error al guardar la cotización')
     } finally {
       setLoading(false)
+      setLoadingPdf(false)
     }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    saveQuotation(false)
   }
 
   return (
@@ -671,11 +682,24 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
         </div>
       </div>
 
-      <div className="flex gap-3">
-        <Button type="submit" disabled={loading} style={{ background: '#1B8A4B' }} className="text-white">
-          {loading ? 'Guardando...' : (quotation ? 'Guardar cambios' : 'Crear cotización')}
-        </Button>
-        <Button type="button" variant="outline" onClick={() => router.back()}>
+      <div className="flex gap-3 flex-wrap">
+        {isEditing ? (
+          <>
+            <Button type="submit" disabled={loading || loadingPdf} style={{ background: '#1B8A4B' }} className="text-white">
+              {loading ? 'Guardando...' : 'Guardar cambios'}
+            </Button>
+            <Button type="button" disabled={loading || loadingPdf}
+              onClick={() => saveQuotation(true)}
+              style={{ background: '#1d4ed8' }} className="text-white">
+              {loadingPdf ? 'Generando PDF...' : 'Guardar y generar PDF'}
+            </Button>
+          </>
+        ) : (
+          <Button type="submit" disabled={loading} style={{ background: '#1B8A4B' }} className="text-white">
+            {loading ? 'Guardando...' : 'Crear cotización'}
+          </Button>
+        )}
+        <Button type="button" variant="outline" onClick={() => router.back()} disabled={loading || loadingPdf}>
           Cancelar
         </Button>
       </div>
