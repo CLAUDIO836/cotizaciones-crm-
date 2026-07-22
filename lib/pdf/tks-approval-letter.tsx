@@ -1,4 +1,7 @@
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
+import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
+import path from 'path'
+
+const TKS_LOGO = path.join(process.cwd(), 'public', 'vehicles', 'tks-logo.png')
 
 const RED = '#C8102E'
 const BORDER = '#d1d5db'
@@ -91,8 +94,7 @@ export function TKSApprovalLetterPDF({ data }: { data: TKSApprovalLetterData }) 
         {/* Header */}
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.logoText}>TKs</Text>
-            <Text style={styles.logoSub}>Transportes TKS SpA</Text>
+            <Image src={TKS_LOGO} style={{ width: 90, height: 90, objectFit: 'contain' }} />
           </View>
           <View>
             <Text style={styles.docTitle}>CARTA DE APROBACIÓN DE SERVICIO</Text>

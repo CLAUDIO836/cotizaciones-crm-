@@ -1,6 +1,9 @@
 import {
-  Document, Page, Text, View, StyleSheet,
+  Document, Page, Text, View, StyleSheet, Image,
 } from '@react-pdf/renderer'
+import path from 'path'
+
+const TKS_LOGO = path.join(process.cwd(), 'public', 'vehicles', 'tks-logo.png')
 
 const RED = '#C8102E'
 const DARK = '#1a1a1a'
@@ -192,10 +195,7 @@ export function TKSQuotationPDF({ data }: { data: TKSQuotationData }) {
         {/* Header */}
         <View style={styles.headerRow}>
           <View style={styles.logoBox}>
-            <View>
-              <Text style={styles.logoText}>TKs</Text>
-              <Text style={styles.logoSub}>Transportes TKS SpA</Text>
-            </View>
+            <Image src={TKS_LOGO} style={{ width: 90, height: 90, objectFit: 'contain' }} />
           </View>
           <View style={styles.headerRight}>
             <Text style={styles.cotNum}>{data.number}</Text>
