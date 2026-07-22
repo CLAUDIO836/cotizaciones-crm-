@@ -64,10 +64,7 @@ export async function htmlToPdf(url: string, cookieToken?: string): Promise<Buff
   try {
     const page = await browser.newPage()
 
-    await page.goto(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`, {
-      waitUntil: 'domcontentloaded',
-      timeout: 30000,
-    })
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 30000 })
 
     await page.evaluate(() => {
       const btns = document.querySelectorAll('.no-print, [data-no-print]')
