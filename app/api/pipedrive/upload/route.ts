@@ -24,7 +24,7 @@ async function handleUpload(req: NextRequest) {
   const token = await getToken()
   if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
-  const { quotationId, pipelineId, fechaSalida, companyName, desde, hasta, resync } = await req.json()
+  const { quotationId, pipelineId, fechaSalida, companyName, desde, hasta, resync, skipPdf } = await req.json()
   if (!quotationId) {
     return NextResponse.json({ error: 'Falta quotationId' }, { status: 400 })
   }
@@ -175,6 +175,11 @@ async function handleUpload(req: NextRequest) {
     }
   } catch (orgErr) {
     console.warn('[upload] org/person link failed:', orgErr)
+  }
+
+  // Si skipPdf=true (re-sincronizar metadata sin subir PDF), terminar aquí
+  if (skipPdf) {
+    return NextResponse.json({ ok: true, dealId, skippedPdf: true })
   }
 
   // ── PASO 2: Generar PDF ──────────────────────────────────────────────────────

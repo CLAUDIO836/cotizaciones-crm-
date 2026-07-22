@@ -32,17 +32,12 @@ export default function ResyncButton({ quotationId, pipelineId, fechaSalida, com
           desde: desde || null,
           hasta: hasta || null,
           resync: true,
+          skipPdf: true,
         }),
       })
       const json = await res.json()
       if (json.ok) {
-        if (json.pdfWarning) {
-          toast.warning(`Negocio #${json.dealId} en Pipedrive — PDF pendiente: ${json.pdfWarning}`)
-        } else {
-          toast.success(pipedriveDealId
-            ? `PDF re-subido al negocio #${json.dealId ?? pipedriveDealId} en Pipedrive`
-            : `Negocio #${json.dealId} creado en Pipedrive`)
-        }
+        toast.success(`Negocio #${json.dealId ?? pipedriveDealId} sincronizado — organización, contacto y valor actualizados`)
       } else {
         toast.error(json.error ?? 'Error al sincronizar')
       }
