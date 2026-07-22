@@ -7,9 +7,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
   return NextResponse.json(r.data)
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
-  const authToken = await getToken()
+  const authToken = req.cookies.get('crm_token')?.value ?? null
   if (!authToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     await crmPost('letters_delete', { token }, {}, authToken)
