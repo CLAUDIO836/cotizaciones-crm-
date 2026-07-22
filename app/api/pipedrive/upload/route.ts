@@ -55,8 +55,12 @@ async function handleUpload(req: NextRequest) {
     'Transportes TKS': 'TKS',
     'TrackingCCL': 'TCCL',
   }
-  const effectiveCompanyName = companyName ?? (q as unknown as { companies?: { name?: string } }).companies?.name ?? ''
-  const prefix = COMPANY_PREFIX[effectiveCompanyName] ?? 'CCL'
+  const effectiveCompanyName = companyName
+    ?? (q as unknown as { companies?: { name?: string } }).companies?.name
+    ?? (q as unknown as { company_real_name?: string }).company_real_name
+    ?? (q as unknown as { company?: string }).company
+    ?? ''
+  const prefix = Object.entries(COMPANY_PREFIX).find(([k]) => effectiveCompanyName.includes(k.split(' ').pop()!))?.[1] ?? 'CCL'
   const effectiveDesde = desde ?? (q as { desde?: string }).desde ?? ''
   const effectiveHasta = hasta ?? (q as { hasta?: string }).hasta ?? ''
   const ruta = (effectiveDesde && effectiveHasta) ? ` - ${effectiveDesde.split(',')[0].trim()} / ${effectiveHasta.split(',')[0].trim()}` : ''
