@@ -150,12 +150,17 @@ async function handleUpload(req: NextRequest) {
     let personId: number | null = null
     if (contactName) {
       personId = await pdSearch('persons', contactEmail || contactName)
+      const personBody: Record<string, unknown> = { name: contactName }
+      if (orgId) personBody.org_id = orgId
+      if (contactEmail) personBody.email = [{ value: contactEmail, primary: true }]
+      if (contactPhone) personBody.phone = [{ value: contactPhone, primary: true }]
       if (!personId) {
-        const personBody: Record<string, unknown> = { name: contactName }
-        if (orgId) personBody.org_id = orgId
-        if (contactEmail) personBody.email = [{ value: contactEmail, primary: true }]
-        if (contactPhone) personBody.phone = [{ value: contactPhone, primary: true }]
         personId = await pdCreate('persons', personBody)
+      } else {
+        // Actualizar datos existentes
+        await fetch(`${PIPEDRIVE_API}/persons/${personId}?api_token=${PIPEDRIVE_TOKEN}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(personBody),
+        })
       }
     }
 
