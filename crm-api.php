@@ -5,6 +5,8 @@
  */
 
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Authorization, Content-Type');
@@ -546,6 +548,262 @@ if ($action === 'quotations_by_pipedrive_deal') {
     exit;
 }
 
+if ($action === 'admin_fix_quotation') {
+    // Endpoint temporal para restaurar datos borrados accidentalmente
+    if (($_GET['secret'] ?? '') !== 'transccl-admin-fix-2024') err('Unauthorized', 401);
+    $b = body();
+    $id = $b['id'] ?? '';
+    if (!$id) err('id requerido');
+    $fields = ['number','status','etapa','company','company_id','issue_date','expiry_date',
+        'subtotal','tax_pct','total','notes','terms','desde','hasta','desde_lat','desde_lng',
+        'hasta_lat','hasta_lng','distancia_km','fecha_salida','hora_salida','fecha_retorno',
+        'hora_retorno','client_id','pipedrive_deal_id','vehicle_type','observaciones',
+        'contact_id','descuento_pct','user_id'];
+    $setClauses = []; $params = [];
+    foreach ($fields as $col) {
+        if (array_key_exists($col, $b)) {
+            $setClauses[] = "$col = ?";
+            $params[] = $b[$col];
+        }
+    }
+    // Si no hay campos para actualizar, leer el registro actual
+    if (empty($setClauses)) {
+        // Buscar por number si el id empieza con __
+        if (str_starts_with($id, '__')) {
+            $num = str_replace(['__find_', '__'], '', $id);
+            if ($num === 'triggers') {
+                $t = db()->query("SHOW TRIGGERS LIKE 'quotations'")->fetchAll();
+                ok(['triggers' => $t]);
+            }
+            if ($num === 'summary') {
+                $rows = db()->query("SELECT id,number,status,total,issue_date,pipedrive_deal_id FROM quotations_summary ORDER BY created_at DESC")->fetchAll();
+                ok(['summary' => $rows]);
+            }
+            if ($num === 'schema_check') {
+                // SHOW CREATE VIEW quotations_summary
+                $viewDef = db()->query("SHOW CREATE VIEW `quotations_summary`")->fetch();
+                // SHOW INDEX FROM quotations
+                $indexes = db()->query("SHOW INDEX FROM `quotations`")->fetchAll();
+                // COUNT(*) en tablas principales
+                $counts = [];
+                foreach (['quotations','quotation_items','quotation_activities','quotation_approvals'] as $tbl) {
+                    $counts[$tbl] = (int)db()->query("SELECT COUNT(*) FROM `$tbl`")->fetchColumn();
+                }
+                // DESCRIBE quotations — tipos reales de columnas
+                $cols = db()->query("DESCRIBE `quotations`")->fetchAll();
+                // Duplicados en pipedrive_deal_id
+                $dups = db()->query("SELECT pipedrive_deal_id, COUNT(*) AS n FROM quotations WHERE pipedrive_deal_id IS NOT NULL GROUP BY pipedrive_deal_id HAVING n > 1")->fetchAll();
+                // Tipo real de id y pipedrive_deal_id
+                $colTypes = db()->query("SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quotations' AND COLUMN_NAME IN ('id','pipedrive_deal_id','created_at') ORDER BY ORDINAL_POSITION")->fetchAll();
+                // Verificar si ya existen columnas de sync
+                $syncCols = db()->query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quotations' AND COLUMN_NAME IN ('is_deleted','deleted_at','deleted_source','last_sync_source','last_sync_at','pd_stage_id','pd_updated_at','pd_person_id','pd_org_id','crm_updated_at')")->fetchAll();
+                // Verificar si ya existen sync_log y sync_reconciliation_log
+                $tables = db()->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('sync_log','sync_reconciliation_log')")->fetchAll();
+                // pipedrive_deal_id en Pipedrive: tipo del campo en su API (siempre integer, verificar valores reales)
+                $pdIdSample = db()->query("SELECT pipedrive_deal_id FROM quotations WHERE pipedrive_deal_id IS NOT NULL LIMIT 5")->fetchAll(PDO::FETCH_COLUMN);
+                ok([
+                    'view_definition'     => $viewDef,
+                    'indexes'             => $indexes,
+                    'table_counts'        => $counts,
+                    'columns_describe'    => $cols,
+                    'key_column_types'    => $colTypes,
+                    'sync_cols_existing'  => $syncCols,
+                    'existing_tables'     => $tables,
+                    'pipedrive_id_dups'   => $dups,
+                    'pipedrive_id_sample' => $pdIdSample,
+                ]);
+            }
+            // ── MIGRACIÓN FASE 1 ─────────────────────────────────────────────
+            if ($num === 'synclog_last5') {
+                $rows = db()->query("SELECT id,source,action,event_type,event_id,quotation_id,deal_id,http_status,result,error,processed_at FROM sync_log ORDER BY processed_at DESC LIMIT 5")->fetchAll();
+                ok(['sync_log' => $rows, 'total' => (int)db()->query("SELECT COUNT(*) FROM sync_log")->fetchColumn()]);
+            }
+            if ($num === 'migrate_phase1_backup') {
+                $results = [];
+                $pdo = db();
+                // Bloque 1: backups con estructura exacta
+                $tables = ['quotations','quotation_items','quotation_activities','quotation_approvals'];
+                foreach ($tables as $tbl) {
+                    $bak = $tbl . '_backup_20260721';
+                    // Si ya existe, no recrear
+                    $exists = $pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='$bak'")->fetchColumn();
+                    if ($exists) { $results[$bak] = 'already_exists_skip'; continue; }
+                    $pdo->exec("CREATE TABLE `$bak` LIKE `$tbl`");
+                    $pdo->exec("INSERT INTO `$bak` SELECT * FROM `$tbl`");
+                    $orig  = (int)$pdo->query("SELECT COUNT(*) FROM `$tbl`")->fetchColumn();
+                    $bakn  = (int)$pdo->query("SELECT COUNT(*) FROM `$bak`")->fetchColumn();
+                    $results[$bak] = ['original' => $orig, 'backup' => $bakn, 'match' => $orig === $bakn];
+                }
+                ok(['block' => 'backup', 'results' => $results]);
+            }
+            if ($num === 'migrate_phase1_counts') {
+                $pdo = db();
+                $rows = [];
+                $tables = ['quotations','quotations_backup_20260721','quotation_items','quotation_items_backup_20260721','quotation_activities','quotation_activities_backup_20260721','quotation_approvals','quotation_approvals_backup_20260721'];
+                foreach ($tables as $tbl) {
+                    $ex = $pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='$tbl'")->fetchColumn();
+                    $rows[$tbl] = $ex ? (int)$pdo->query("SELECT COUNT(*) FROM `$tbl`")->fetchColumn() : 'TABLE_NOT_FOUND';
+                }
+                ok(['block' => 'counts', 'counts' => $rows]);
+            }
+            if ($num === 'migrate_phase1_alter') {
+                $pdo = db();
+                // Verificar cuáles columnas ya existen para hacer ALTER idempotente
+                $existing = $pdo->query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='quotations'")->fetchAll(PDO::FETCH_COLUMN);
+                $existing = array_flip($existing);
+                $added = []; $skipped = [];
+                $cols = [
+                    'is_deleted'       => "TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Eliminación lógica: 0=activo 1=eliminado'",
+                    'deleted_at'       => "DATETIME NULL",
+                    'deleted_source'   => "VARCHAR(20) NULL COMMENT 'crm | pipedrive'",
+                    'crm_updated_at'   => "DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Última edición real en CRM'",
+                    'last_sync_source' => "VARCHAR(20) NULL COMMENT 'crm | pipedrive'",
+                    'last_sync_at'     => "DATETIME(3) NULL COMMENT 'Timestamp ms del último sync'",
+                    'pd_stage_id'      => "BIGINT NULL COMMENT 'stage_id numérico de Pipedrive'",
+                    'pd_updated_at'    => "DATETIME(3) NULL COMMENT 'updated_time del deal en Pipedrive'",
+                    'pd_person_id'     => "BIGINT NULL COMMENT 'person_id de Pipedrive'",
+                    'pd_org_id'        => "BIGINT NULL COMMENT 'org_id de Pipedrive'",
+                ];
+                foreach ($cols as $col => $def) {
+                    if (isset($existing[$col])) { $skipped[] = $col; continue; }
+                    $pdo->exec("ALTER TABLE `quotations` ADD COLUMN `$col` $def");
+                    $added[] = $col;
+                }
+                // Verificar resultado
+                $after = $pdo->query("SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT,EXTRA,COLUMN_COMMENT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='quotations' ORDER BY ORDINAL_POSITION")->fetchAll();
+                ok(['block' => 'alter_table', 'added' => $added, 'skipped_already_exist' => $skipped, 'columns_after' => $after]);
+            }
+            if ($num === 'migrate_phase1_indexes') {
+                $pdo = db();
+                $existing = $pdo->query("SHOW INDEX FROM `quotations`")->fetchAll(PDO::FETCH_ASSOC);
+                $existingNames = array_unique(array_column($existing, 'Key_name'));
+                $toAdd = [
+                    'idx_is_deleted'     => "ALTER TABLE `quotations` ADD INDEX `idx_is_deleted` (`is_deleted`)",
+                    'idx_pipedrive_deal' => "ALTER TABLE `quotations` ADD INDEX `idx_pipedrive_deal` (`pipedrive_deal_id`)",
+                    'idx_last_sync'      => "ALTER TABLE `quotations` ADD INDEX `idx_last_sync` (`last_sync_at`)",
+                ];
+                $added = []; $skipped = [];
+                foreach ($toAdd as $name => $sql) {
+                    if (in_array($name, $existingNames)) { $skipped[] = $name; continue; }
+                    $pdo->exec($sql);
+                    $added[] = $name;
+                }
+                $after = $pdo->query("SHOW INDEX FROM `quotations`")->fetchAll();
+                ok(['block' => 'indexes', 'added' => $added, 'skipped' => $skipped, 'indexes_after' => $after]);
+            }
+            if ($num === 'migrate_phase1_synclog') {
+                $pdo = db();
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `sync_log` (
+                    `id`             BIGINT         AUTO_INCREMENT PRIMARY KEY,
+                    `entity`         VARCHAR(50)    NOT NULL DEFAULT 'quotation',
+                    `quotation_id`   VARCHAR(36)    NULL COMMENT 'FK lógica a quotations.id',
+                    `deal_id`        VARCHAR(50)    NULL COMMENT 'FK lógica a quotations.pipedrive_deal_id',
+                    `source`         VARCHAR(20)    NOT NULL COMMENT 'crm | pipedrive',
+                    `action`         VARCHAR(50)    NOT NULL,
+                    `event_type`     VARCHAR(100)   NULL,
+                    `event_id`       VARCHAR(100)   NULL COMMENT 'meta.id del webhook cuando existe',
+                    `event_hash`     VARCHAR(64)    NULL COMMENT 'SHA256 del payload normalizado cuando no hay event_id',
+                    `http_status`    SMALLINT       NULL,
+                    `payload`        MEDIUMTEXT     NULL,
+                    `before_data`    MEDIUMTEXT     NULL,
+                    `after_data`     MEDIUMTEXT     NULL,
+                    `result`         TEXT           NULL,
+                    `error`          TEXT           NULL,
+                    `attempt_number` TINYINT        NOT NULL DEFAULT 1,
+                    `processed_at`   DATETIME(3)    NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+                    INDEX `idx_sl_quotation`  (`quotation_id`),
+                    INDEX `idx_sl_deal`       (`deal_id`),
+                    INDEX `idx_sl_source`     (`source`),
+                    INDEX `idx_sl_event_id`   (`event_id`),
+                    INDEX `idx_sl_event_hash` (`event_hash`),
+                    INDEX `idx_sl_processed`  (`processed_at`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+                $cols = $pdo->query("DESCRIBE `sync_log`")->fetchAll();
+                $count = (int)$pdo->query("SELECT COUNT(*) FROM `sync_log`")->fetchColumn();
+                ok(['block' => 'sync_log', 'columns' => $cols, 'row_count' => $count]);
+            }
+            if ($num === 'migrate_phase1_reconlog') {
+                $pdo = db();
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `sync_reconciliation_log` (
+                    `id`            INT            AUTO_INCREMENT PRIMARY KEY,
+                    `ran_at`        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `mode`          VARCHAR(20)    NOT NULL DEFAULT 'readonly' COMMENT 'readonly hasta aprobación explícita',
+                    `deals_checked` INT            NOT NULL DEFAULT 0,
+                    `differences`   INT            NOT NULL DEFAULT 0,
+                    `corrections`   INT            NOT NULL DEFAULT 0 COMMENT 'Siempre 0 en modo readonly',
+                    `detail`        MEDIUMTEXT     NULL,
+                    INDEX `idx_rlog_ran_at` (`ran_at`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+                $cols = $pdo->query("DESCRIBE `sync_reconciliation_log`")->fetchAll();
+                $count = (int)$pdo->query("SELECT COUNT(*) FROM `sync_reconciliation_log`")->fetchColumn();
+                ok(['block' => 'sync_reconciliation_log', 'columns' => $cols, 'row_count' => $count]);
+            }
+            if ($num === 'migrate_phase1_view') {
+                $pdo = db();
+                $pdo->exec("CREATE OR REPLACE VIEW `quotations_summary` AS
+                    SELECT
+                        q.id, q.number, q.status, q.etapa, q.company, q.company_id,
+                        q.total, q.issue_date, q.fecha_salida,
+                        YEAR(COALESCE(q.fecha_salida, q.issue_date))  AS `year`,
+                        MONTH(COALESCE(q.fecha_salida, q.issue_date)) AS `month`,
+                        q.user_id        AS vendedor_id,
+                        p.name           AS vendedor_name,
+                        c.name           AS client_name,
+                        q.client_id, q.pipeline_id, q.pipedrive_deal_id, q.created_at,
+                        q.is_deleted, q.deleted_at, q.deleted_source,
+                        q.crm_updated_at, q.last_sync_source, q.last_sync_at,
+                        q.pd_stage_id, q.pd_updated_at
+                    FROM quotations q
+                    LEFT JOIN profiles p ON p.id = q.user_id
+                    LEFT JOIN clients  c ON c.id = q.client_id
+                    WHERE q.is_deleted = 0");
+                $viewDef = $pdo->query("SHOW CREATE VIEW `quotations_summary`")->fetch();
+                $count = (int)$pdo->query("SELECT COUNT(*) FROM `quotations_summary`")->fetchColumn();
+                ok(['block' => 'view', 'rows_visible' => $count, 'view_definition' => $viewDef]);
+            }
+            // ── FIN MIGRACIÓN FASE 1 ──────────────────────────────────────────
+            if ($num === 'fix_view') {
+                // Recrear la VIEW usando fecha_salida para year/month (fecha del servicio)
+                db()->exec("CREATE OR REPLACE VIEW quotations_summary AS
+                    SELECT q.id, q.number, q.status, q.etapa, q.company, q.company_id,
+                           q.total, q.issue_date, q.fecha_salida,
+                           YEAR(COALESCE(q.fecha_salida, q.issue_date)) AS `year`,
+                           MONTH(COALESCE(q.fecha_salida, q.issue_date)) AS `month`,
+                           q.user_id AS vendedor_id, p.name AS vendedor_name,
+                           c.name AS client_name, q.client_id, q.pipeline_id,
+                           q.pipedrive_deal_id, q.created_at
+                    FROM quotations q
+                    LEFT JOIN profiles p ON p.id = q.user_id
+                    LEFT JOIN clients c ON c.id = q.client_id");
+                ok(['view_recreated' => true]);
+            }
+            $rows = db()->prepare('SELECT id,number,status,total,issue_date,pipedrive_deal_id FROM quotations WHERE number = ? OR pipedrive_deal_id = ?');
+            $rows->execute([$num, $num]);
+            ok(['all_rows' => $rows->fetchAll()]);
+        }
+        $row = db()->prepare('SELECT id,number,status,total,issue_date,pipedrive_deal_id FROM quotations WHERE id = ?');
+        $row->execute([$id]);
+        $direct = $row->fetch();
+        // También leer desde la VIEW
+        $view = db()->prepare('SELECT * FROM quotations_summary WHERE id = ?');
+        $view->execute([$id]);
+        $fromView = $view->fetch();
+        ok(['from_table' => $direct, 'from_view' => $fromView]);
+    }
+    $params[] = $id;
+    $affected = db()->prepare('UPDATE quotations SET ' . implode(', ', $setClauses) . ' WHERE id = ?');
+    $affected->execute($params);
+    // Leer inmediatamente desde la VIEW en la misma conexión
+    $check = db()->prepare('SELECT id,number,status,total,issue_date FROM quotations_summary WHERE id = ?');
+    $check->execute([$id]);
+    $after = $check->fetch();
+    // También leer directo de la tabla
+    $check2 = db()->prepare('SELECT id,number,status,total,issue_date FROM quotations WHERE id = ?');
+    $check2->execute([$id]);
+    $afterTable = $check2->fetch();
+    ok(['fixed' => $id, 'rows_affected' => $affected->rowCount(), 'view_after_update' => $after, 'table_after_update' => $afterTable]);
+}
+
 if ($action === 'pipedrive_webhook') {
     // No auth — Pipedrive webhook, verificar secret
     $secret = getenv('CRM_JWT_SECRET') ?: JWT_SECRET;
@@ -556,7 +814,9 @@ if ($action === 'pipedrive_webhook') {
     $payload = body();
     $event   = $payload['event'] ?? '';
     $current = $payload['current'] ?? $payload['data']['current'] ?? [];
-    $dealId  = (string)($current['id'] ?? '');
+    $previous = $payload['previous'] ?? $payload['data']['previous'] ?? [];
+    // Para deleted.deal el id está en previous o en meta
+    $dealId  = (string)($current['id'] ?? $previous['id'] ?? $payload['meta']['id'] ?? '');
     if (!$dealId) ok(['skipped' => 'no deal id']);
 
     // Buscar cotización por pipedrive_deal_id
@@ -567,6 +827,12 @@ if ($action === 'pipedrive_webhook') {
 
     $updates = [];
     $params  = [];
+
+    // Deal eliminado en Pipedrive → eliminar del CRM
+    if (str_contains($event, 'deleted')) {
+        db()->prepare('DELETE FROM quotations WHERE id = ?')->execute([$quot['id']]);
+        ok(['deleted' => $quot['id'], 'deal' => $dealId, 'action' => 'deleted_from_crm']);
+    }
 
     // Sync status: won/lost/open
     $pdStatus = $current['status'] ?? null;
