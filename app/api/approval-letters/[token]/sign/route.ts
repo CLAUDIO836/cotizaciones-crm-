@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { crmPost } from '@/lib/api'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { ApprovalLetterPDF } from '@/lib/pdf/approval-letter'
 import { TKSApprovalLetterPDF } from '@/lib/pdf/tks-approval-letter'
 import React from 'react'
 
+const CRM_API = process.env.CRM_API_URL ?? 'https://transccl.cl/crm-api.php'
 const PIPEDRIVE_TOKEN = process.env.PIPEDRIVE_API_TOKEN ?? ''
 const PIPEDRIVE_API = 'https://api.pipedrive.com/v1'
 
@@ -18,14 +18,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   }
 
   try {
-    const r = await crmPost('letters_sign', {
-      token, signed_name, signed_rut,
-      billing_name, billing_rut, billing_address, billing_company, billing_glosa,
+    // Call PHP directly with proper JSON body so all fields arrive in body()
+    const phpRes = await fetch(`${CRM_API}?action=letters_sign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, signed_name, signed_rut, billing_name, billing_rut, billing_address, billing_company, billing_glosa }),
+      cache: 'no-store',
     })
-    const letter = r.data as Record<string, unknown>
+    const phpJson = await phpRes.json().catch(() => ({}))
+    if (!phpRes.ok) {
+      const msg = phpJson.error ?? `HTTP ${phpRes.status}`
+      if (msg.includes('Ya fue firmada')) return NextResponse.json({ error: 'Este documento ya fue firmado' }, { status: 409 })
+      return NextResponse.json({ error: msg }, { status: 500 })
+    }
+
+    const letter = phpJson.data as Record<string, unknown>
 
     // Upload signed PDF to Pipedrive
-    const dealId = letter.pipedrive_deal_id as string | undefined
+    const dealId = letter?.pipedrive_deal_id as string | undefined
     if (dealId && PIPEDRIVE_TOKEN) {
       try {
         const PdfComponent = (letter.company_name as string)?.includes('TKS') ? TKSApprovalLetterPDF : ApprovalLetterPDF
