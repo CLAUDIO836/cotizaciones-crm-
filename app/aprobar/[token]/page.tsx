@@ -69,17 +69,25 @@ export default async function AprobarPage({ params }: { params: Promise<{ token:
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
       {/* Header */}
-      <div style={{ background: '#16192A', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 8, background: ACCENT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {isTKS
-            ? <span style={{ color: 'white', fontWeight: 900, fontSize: 11, letterSpacing: -0.5 }}>TKs</span>
-            : <span style={{ color: 'white', fontWeight: 900, fontSize: 14 }}>T</span>
-          }
-        </div>
-        <div>
-          <p style={{ color: 'white', fontWeight: 700, margin: 0, fontSize: 14 }}>{companyFull}</p>
-          <p style={{ color: 'rgba(255,255,255,0.45)', margin: 0, fontSize: 11 }}>Aprobación de Cotización</p>
-        </div>
+      <div style={{ background: '#16192A', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        {isTKS
+          ? <img src="/vehicles/tks-logo.png" alt="TKs" style={{ height: 52, width: 'auto', objectFit: 'contain' }} />
+          : <>
+              <div style={{ width: 36, height: 36, borderRadius: 8, background: ACCENT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ color: 'white', fontWeight: 900, fontSize: 14 }}>T</span>
+              </div>
+              <div>
+                <p style={{ color: 'white', fontWeight: 700, margin: 0, fontSize: 14 }}>{companyFull}</p>
+                <p style={{ color: 'rgba(255,255,255,0.45)', margin: 0, fontSize: 11 }}>Aprobación de Cotización</p>
+              </div>
+            </>
+        }
+        {isTKS && (
+          <div>
+            <p style={{ color: 'white', fontWeight: 700, margin: 0, fontSize: 14 }}>{companyFull}</p>
+            <p style={{ color: 'rgba(255,255,255,0.45)', margin: 0, fontSize: 11 }}>Aprobación de Cotización</p>
+          </div>
+        )}
       </div>
 
       <div style={{ maxWidth: 680, margin: '0 auto', padding: '32px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
