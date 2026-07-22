@@ -294,6 +294,19 @@ if ($action === 'contacts_create') {
     ok($stmt->fetch());
 }
 
+if ($action === 'contacts_update') {
+    requireAuth();
+    $b = body();
+    $id = $b['id'] ?? '';
+    if (!$id) err('id requerido');
+    db()->prepare('UPDATE contacts SET name=?,email=?,phone_mobile=?,phone_landline=?,cargo=? WHERE id=?')->execute([
+        $b['name'] ?? '', $b['email'] ?? null, $b['phone_mobile'] ?? null, $b['phone_landline'] ?? null, $b['cargo'] ?? null, $id
+    ]);
+    $stmt = db()->prepare('SELECT * FROM contacts WHERE id = ?');
+    $stmt->execute([$id]);
+    ok($stmt->fetch());
+}
+
 if ($action === 'clients_create') {
     requireAuth();
     $b  = body();

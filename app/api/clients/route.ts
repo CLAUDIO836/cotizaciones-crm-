@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   let action = 'clients_create'
   if (body._action === 'create_contact') action = 'contacts_create'
+  else if (body._action === 'update_contact') action = 'contacts_update'
   else if (body.id) action = 'clients_update'
   const r = await crmPost(action, body, {}, token)
   return NextResponse.json(r)
