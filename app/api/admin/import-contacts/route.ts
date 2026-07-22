@@ -8,9 +8,10 @@ export async function POST() {
   return NextResponse.json(r)
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const token = await getToken()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const r = await crmGet('diagnostico_clientes', {}, token)
+  const action = req.nextUrl.searchParams.get('action') ?? 'diagnostico_clientes'
+  const r = await crmGet(action, {}, token)
   return NextResponse.json(r)
 }

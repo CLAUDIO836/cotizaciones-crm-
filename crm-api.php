@@ -402,6 +402,12 @@ if ($action === 'restaurar_client_ids') {
     ok(['client_ids_restaurados' => $fixed, 'distribucion_actual' => $dist]);
 }
 
+if ($action === 'debug_quotations_raw') {
+    requireAuth();
+    $rows = db()->query("SELECT id, number, pipedrive_deal_id, client_id FROM quotations WHERE is_deleted=0 ORDER BY created_at DESC LIMIT 15")->fetchAll();
+    ok($rows);
+}
+
 if ($action === 'restaurar_desde_pipedrive') {
     requireAuth();
     $b = body();
