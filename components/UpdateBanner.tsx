@@ -30,17 +30,16 @@ export default function UpdateBanner({ currentBuildId }: { currentBuildId: strin
 
   return (
     <div
-      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl text-sm font-medium"
-      style={{ background: '#1e293b', color: '#f8fafc', minWidth: 320 }}
+      className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center gap-3 px-4 py-2 text-xs font-medium"
+      style={{ background: '#1B8A4B', color: '#fff' }}
     >
-      <RefreshCw className="w-4 h-4 text-emerald-400 flex-shrink-0 animate-spin" style={{ animationDuration: '3s' }} />
-      <span>Hay una nueva versión del CRM disponible.</span>
+      <RefreshCw className="w-3.5 h-3.5 flex-shrink-0" />
+      <span>Nueva versión disponible</span>
       <button
         onClick={() => window.location.reload()}
-        className="ml-auto px-3 py-1 rounded-lg text-xs font-bold"
-        style={{ background: '#22c55e', color: '#fff' }}
+        className="px-2.5 py-0.5 rounded-md text-xs font-semibold border border-white/40 hover:bg-white/20 transition-colors"
       >
-        Actualizar
+        Actualizar ahora
       </button>
     </div>
   )
