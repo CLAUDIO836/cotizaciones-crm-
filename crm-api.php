@@ -263,9 +263,14 @@ if ($action === 'clients_search') {
 
 if ($action === 'clients_get') {
     requireAuth();
-    $stmt = db()->prepare('SELECT * FROM clients WHERE id = ?');
+    $stmt = db()->prepare("SELECT c.*, JSON_ARRAYAGG(JSON_OBJECT('id',ct.id,'name',ct.name,'email',ct.email,'phone_mobile',ct.phone_mobile,'phone_landline',ct.phone_landline,'cargo',ct.cargo)) AS contacts_json FROM clients c LEFT JOIN contacts ct ON ct.client_id = c.id WHERE c.id = ? GROUP BY c.id LIMIT 1");
     $stmt->execute([$_GET['id'] ?? '']);
-    ok($stmt->fetch() ?: null);
+    $row = $stmt->fetch();
+    if (!$row) { ok(null); exit; }
+    $row['contacts'] = json_decode($row['contacts_json'] ?? '[]', true);
+    $row['contacts'] = array_values(array_filter($row['contacts'], fn($c) => $c && isset($c['id'])));
+    unset($row['contacts_json']);
+    ok($row);
 }
 
 if ($action === 'clients_by_rut') {
@@ -354,6 +359,31 @@ if ($action === 'clients_merge') {
     // Eliminar el duplicado
     db()->prepare('DELETE FROM clients WHERE id = ?')->execute([$delete_id]);
     ok(['merged' => true]);
+}
+
+if ($action === 'contacts_import_from_quotations') {
+    // Importa contactos únicos desde cotizaciones existentes que tengan contact_name
+    requireAuth();
+    $rows = db()->query("
+        SELECT DISTINCT q.client_id, q.contact_name, q.contact_email, q.contact_phone
+        FROM quotations q
+        WHERE q.client_id IS NOT NULL AND q.contact_name IS NOT NULL AND q.contact_name != ''
+        AND NOT EXISTS (
+            SELECT 1 FROM contacts c WHERE c.client_id = q.client_id AND c.name = q.contact_name
+        )
+    ")->fetchAll();
+    $imported = 0;
+    foreach ($rows as $r) {
+        $id = uuid();
+        db()->prepare('INSERT INTO contacts (id,client_id,name,email,phone_mobile) VALUES (?,?,?,?,?)')->execute([
+            $id, $r['client_id'], $r['contact_name'], $r['contact_email'] ?? null, $r['contact_phone'] ?? null
+        ]);
+        // Actualizar contact_id en cotizaciones que tengan este contact_name y client_id
+        db()->prepare("UPDATE quotations SET contact_id = ? WHERE client_id = ? AND contact_name = ? AND (contact_id IS NULL OR contact_id = '')")
+            ->execute([$id, $r['client_id'], $r['contact_name']]);
+        $imported++;
+    }
+    ok(['imported' => $imported]);
 }
 
 // ── PIPELINES ─────────────────────────────────────────────────────────────────
