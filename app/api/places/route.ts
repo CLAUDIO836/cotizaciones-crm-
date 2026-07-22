@@ -17,22 +17,37 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(data)
   }
 
-  // Distancia en ruta entre dos place_ids
+  // Distancia en ruta entre dos place_ids (via OSRM — no requiere Distance Matrix API)
   const origin = searchParams.get('origin')
   const destination = searchParams.get('destination')
   if (origin && destination) {
-    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=place_id:${encodeURIComponent(origin)}&destinations=place_id:${encodeURIComponent(destination)}&mode=driving&language=es&key=${KEY}`
-    const res = await fetch(url)
-    const data = await res.json()
-    const element = data?.rows?.[0]?.elements?.[0]
-    if (element?.status === 'OK') {
-      return NextResponse.json({
-        distance_m: element.distance.value,
-        distance_text: element.distance.text,
-        duration_text: element.duration.text,
-      })
+    // Obtener lat/lng de cada place_id usando Place Details
+    async function getLatLng(placeId: string) {
+      const r = await fetch(`https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=geometry&key=${KEY}`)
+      const d = await r.json()
+      return d?.result?.geometry?.location as { lat: number; lng: number } | undefined
     }
-    return NextResponse.json({ error: 'No route found' }, { status: 404 })
+    const [oLoc, dLoc] = await Promise.all([getLatLng(origin), getLatLng(destination)])
+    if (!oLoc || !dLoc) return NextResponse.json({ error: 'No coordinates' }, { status: 404 })
+
+    // OSRM para distancia de conducción (gratuito, sin API key)
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${oLoc.lng},${oLoc.lat};${dLoc.lng},${dLoc.lat}?overview=false`
+    const osrmRes = await fetch(osrmUrl)
+    const osrmData = await osrmRes.json()
+    const route = osrmData?.routes?.[0]
+    if (!route) return NextResponse.json({ error: 'No route found' }, { status: 404 })
+
+    const distanceM = Math.round(route.distance)
+    const durationSec = Math.round(route.duration)
+    const hours = Math.floor(durationSec / 3600)
+    const mins = Math.floor((durationSec % 3600) / 60)
+    const durationText = hours > 0 ? `${hours} h ${mins} min` : `${mins} min`
+
+    return NextResponse.json({
+      distance_m: distanceM,
+      distance_text: `${Math.round(distanceM / 1000)} km`,
+      duration_text: durationText,
+    })
   }
 
   // Autocomplete
