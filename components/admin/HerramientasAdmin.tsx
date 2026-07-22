@@ -9,6 +9,8 @@ export default function HerramientasAdmin() {
   const [result, setResult] = useState<string | null>(null)
   const [restoring, setRestoring] = useState(false)
   const [restoreResult, setRestoreResult] = useState<string | null>(null)
+  const [recovering, setRecovering] = useState(false)
+  const [recoverResult, setRecoverResult] = useState<string | null>(null)
 
   async function runImport() {
     setImporting(true)
@@ -47,6 +49,26 @@ export default function HerramientasAdmin() {
     }
   }
 
+  async function runRecover() {
+    if (!confirm('¿Recuperar clientes de cotizaciones consultando Pipedrive?')) return
+    setRecovering(true)
+    setRecoverResult(null)
+    try {
+      const res = await fetch('/api/admin/recover-from-pipedrive', { method: 'POST' })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error ?? 'Error')
+      const data = d.data ?? d
+      const dist = (data.distribucion ?? []).map((r: {client_name: string, total: number}) => `${r.client_name}: ${r.total}`).join(' · ')
+      const noFound = (data.no_encontradas ?? []).join(', ')
+      setRecoverResult(`✓ ${data.restauradas} restauradas${noFound ? ` · No encontradas: ${noFound}` : ''} → ${dist}`)
+      toast.success('¡Recuperación desde Pipedrive completa!')
+    } catch (e: unknown) {
+      toast.error(String(e))
+    } finally {
+      setRecovering(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-xl border p-6 space-y-3">
@@ -61,6 +83,21 @@ export default function HerramientasAdmin() {
         )}
         <Button onClick={runImport} disabled={importing}>
           {importing ? 'Importando...' : 'Ejecutar importación'}
+        </Button>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 space-y-3">
+        <h2 className="font-semibold text-blue-800">Recuperar clientes desde Pipedrive</h2>
+        <p className="text-sm text-blue-600">
+          Consulta Pipedrive para obtener la organización de cada cotización y restaurar el cliente correcto. Usar cuando los negocios aparecen todos con el mismo cliente.
+        </p>
+        {recoverResult && (
+          <div className="text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-2 break-words">
+            {recoverResult}
+          </div>
+        )}
+        <Button onClick={runRecover} disabled={recovering} className="bg-blue-600 hover:bg-blue-700 text-white">
+          {recovering ? 'Recuperando desde Pipedrive...' : 'Recuperar desde Pipedrive'}
         </Button>
       </div>
 

@@ -402,6 +402,78 @@ if ($action === 'restaurar_client_ids') {
     ok(['client_ids_restaurados' => $fixed, 'distribucion_actual' => $dist]);
 }
 
+if ($action === 'restaurar_desde_pipedrive') {
+    requireAuth();
+    $b = body();
+    $deals = $b['deals'] ?? [];
+    if (empty($deals)) err('No se recibieron deals');
+
+    // Obtener todos los clientes para hacer match por nombre
+    $clients = db()->query("SELECT id, name, rut FROM clients")->fetchAll();
+
+    // Función para normalizar nombre (sin tildes, mayúsculas, sin espacios extra)
+    function normName(string $s): string {
+        $s = mb_strtoupper(trim($s));
+        $s = str_replace(['Á','É','Í','Ó','Ú','Ñ'], ['A','E','I','O','U','N'], $s);
+        $s = preg_replace('/\s+/', ' ', $s);
+        return $s;
+    }
+
+    // Indexar clientes por nombre normalizado
+    $clientByName = [];
+    foreach ($clients as $c) {
+        $key = normName($c['name']);
+        $clientByName[$key] = $c['id'];
+    }
+
+    $fixed = 0; $notFound = [];
+    foreach ($deals as $deal) {
+        $pdId = $deal['pipedrive_deal_id'] ?? '';
+        $orgName = $deal['org_name'] ?? '';
+        if (!$pdId || !$orgName) continue;
+
+        // Buscar quotation con este pipedrive_deal_id
+        $stmt = db()->prepare('SELECT id, client_id FROM quotations WHERE pipedrive_deal_id = ? LIMIT 1');
+        $stmt->execute([$pdId]);
+        $q = $stmt->fetch();
+        if (!$q) continue;
+
+        // Buscar cliente por nombre exacto o parcial
+        $normOrg = normName($orgName);
+        $clientId = $clientByName[$normOrg] ?? null;
+
+        // Búsqueda parcial si no coincide exacto
+        if (!$clientId) {
+            foreach ($clientByName as $name => $id) {
+                if (str_contains($name, $normOrg) || str_contains($normOrg, $name)) {
+                    $clientId = $id;
+                    break;
+                }
+            }
+        }
+
+        if (!$clientId) {
+            $notFound[] = $orgName;
+            continue;
+        }
+
+        if ($q['client_id'] === $clientId) continue; // Ya correcto
+
+        db()->prepare('UPDATE quotations SET client_id = ? WHERE id = ?')->execute([$clientId, $q['id']]);
+        $fixed++;
+    }
+
+    // Distribución después de restaurar
+    $rows = db()->query("SELECT client_id, COUNT(*) as total FROM quotations WHERE is_deleted=0 GROUP BY client_id ORDER BY total DESC LIMIT 30")->fetchAll();
+    $cmap = [];
+    foreach ($clients as $c) $cmap[$c['id']] = $c['name'];
+    $dist = [];
+    foreach ($rows as $r) {
+        $dist[] = ['client_name' => $cmap[$r['client_id']] ?? 'SIN CLIENTE', 'total' => (int)$r['total']];
+    }
+    ok(['restauradas' => $fixed, 'no_encontradas' => array_unique($notFound), 'distribucion' => $dist]);
+}
+
 if ($action === 'contacts_import_from_quotations') {
     // Para cada contacto en cotizaciones, asegura que su client_id coincide con el de la cotización.
     // También crea contactos faltantes si el nombre viene de Pipedrive (pd_person_id presente).
