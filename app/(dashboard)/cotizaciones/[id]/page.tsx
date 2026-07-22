@@ -98,6 +98,11 @@ export default async function CotizacionDetailPage({
             <ResyncButton
               quotationId={id}
               pipedriveDealId={q.pipedrive_deal_id}
+              pipelineId={q.pipeline_id ?? undefined}
+              fechaSalida={(q as { fecha_salida?: string }).fecha_salida}
+              companyName={(q.companies as { name?: string } | undefined)?.name ?? (q as { company?: string }).company}
+              desde={(q as { desde?: string }).desde}
+              hasta={(q as { hasta?: string }).hasta}
             />
           )}
           {!isReadOnly && (
