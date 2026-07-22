@@ -404,10 +404,34 @@ if ($action === 'quotations_create') {
     $user = requireAuth();
     $b = body();
     $id = uuid();
+    try {
     // Auto number
     $year = date('Y');
     $count = (int)(db()->query("SELECT COUNT(*)+1 AS n FROM quotations WHERE YEAR(created_at) = $year")->fetch()['n']);
     $number = 'COT-' . $year . '-' . str_pad($count, 4, '0', STR_PAD_LEFT);
+
+    // Normalizar fecha_salida y fecha_retorno (pueden venir como datetime-local "YYYY-MM-DDTHH:MM")
+    $fechaSalida = $b['fecha_salida'] ?? null;
+    if ($fechaSalida && str_contains($fechaSalida, 'T')) {
+        [$fechaSalida, $horaSalida] = explode('T', $fechaSalida, 2);
+    } else {
+        $horaSalida = $b['hora_salida'] ?? null;
+    }
+    $fechaRetorno = $b['fecha_retorno'] ?? null;
+    if ($fechaRetorno && str_contains($fechaRetorno, 'T')) {
+        [$fechaRetorno, $horaRetorno] = explode('T', $fechaRetorno, 2);
+    } else {
+        $horaRetorno = $b['hora_retorno'] ?? null;
+    }
+    // fecha_destino (campo legacy del form, guardarlo en fecha_retorno si no hay fecha_retorno)
+    if (!$fechaRetorno && !empty($b['fecha_destino'])) {
+        $fd = $b['fecha_destino'];
+        if (str_contains($fd, 'T')) {
+            [$fechaRetorno, $horaRetorno] = explode('T', $fd, 2);
+        } else {
+            $fechaRetorno = $fd;
+        }
+    }
 
     db()->prepare('
         INSERT INTO quotations (id,number,status,etapa,company,company_id,issue_date,expiry_date,
@@ -426,10 +450,10 @@ if ($action === 'quotations_create') {
         $b['desde_lat'] ?? null, $b['desde_lng'] ?? null,
         $b['hasta_lat'] ?? null, $b['hasta_lng'] ?? null,
         $b['distancia_km'] ?? null,
-        $b['fecha_salida'] ?? null, $b['hora_salida'] ?? null,
-        $b['fecha_retorno'] ?? null, $b['hora_retorno'] ?? null,
-        $b['user_id'] ?? $user['id'], $b['client_id'] ?? null,
-        $b['pipeline_id'] ?? null, $b['pipedrive_deal_id'] ?? null,
+        $fechaSalida ?: null, $horaSalida ?: null,
+        $fechaRetorno ?: null, $horaRetorno ?: null,
+        $b['user_id'] ?: $user['id'], $b['client_id'] ?? null,
+        null, $b['pipedrive_deal_id'] ?? null,
         $b['vehicle_type'] ?? null, $b['observaciones'] ?? null,
         $b['contact_id'] ?? null, $b['descuento_pct'] ?? 0,
     ]);
@@ -444,6 +468,9 @@ if ($action === 'quotations_create') {
         }
     }
     ok(['id' => $id, 'number' => $number]);
+    } catch (Throwable $e) {
+        err('DB Error: ' . $e->getMessage());
+    }
 }
 
 if ($action === 'quotations_update') {
@@ -452,15 +479,17 @@ if ($action === 'quotations_update') {
     $id = $b['id'] ?? '';
     if (!$id) err('id requerido');
 
-    db()->prepare('
+    $stmt = db()->prepare('
         UPDATE quotations SET
-          status=?, etapa=?, company=?, company_id=?, issue_date=?, expiry_date=?,
+          number=COALESCE(?,number), status=?, etapa=?, company=?, company_id=?, issue_date=?, expiry_date=?,
           subtotal=?, tax_pct=?, total=?, notes=?, terms=?,
           desde=?, hasta=?, desde_lat=?, desde_lng=?, hasta_lat=?, hasta_lng=?,
           distancia_km=?, fecha_salida=?, hora_salida=?, fecha_retorno=?, hora_retorno=?,
           client_id=?, pipeline_id=?, pipedrive_deal_id=?
         WHERE id=?
-    ')->execute([
+    ');
+    $stmt->execute([
+        $b['number'] ?? null,
         $b['status'] ?? 'open', $b['etapa'] ?? 'lead',
         $b['company'] ?? 'Transccl', $b['company_id'] ?? null,
         $b['issue_date'] ?? null, $b['expiry_date'] ?? null,
@@ -472,7 +501,7 @@ if ($action === 'quotations_update') {
         $b['distancia_km'] ?? null,
         $b['fecha_salida'] ?? null, $b['hora_salida'] ?? null,
         $b['fecha_retorno'] ?? null, $b['hora_retorno'] ?? null,
-        $b['client_id'] ?? null, $b['pipeline_id'] ?? null,
+        $b['client_id'] ?? null, null,
         $b['pipedrive_deal_id'] ?? null, $id,
     ]);
 
@@ -497,6 +526,46 @@ if ($action === 'quotations_by_pipedrive_deal') {
     $row = $stmt->fetch();
     echo json_encode(['data' => $row ?: null]);
     exit;
+}
+
+if ($action === 'pipedrive_webhook') {
+    // No auth — Pipedrive webhook, verificar secret
+    $secret = getenv('CRM_JWT_SECRET') ?: JWT_SECRET;
+    $incomingSecret = $_SERVER['HTTP_X_PIPEDRIVE_SIGNATURE'] ?? $_GET['secret'] ?? '';
+    if ($incomingSecret !== $secret && $incomingSecret !== 'pd-webhook-transccl-2024') {
+        http_response_code(401); echo json_encode(['error' => 'Unauthorized']); exit;
+    }
+    $payload = body();
+    $event   = $payload['event'] ?? '';
+    $current = $payload['current'] ?? $payload['data']['current'] ?? [];
+    $dealId  = (string)($current['id'] ?? '');
+    if (!$dealId) ok(['skipped' => 'no deal id']);
+
+    // Buscar cotización por pipedrive_deal_id
+    $stmt = db()->prepare('SELECT id, status, etapa FROM quotations WHERE pipedrive_deal_id = ? LIMIT 1');
+    $stmt->execute([$dealId]);
+    $quot = $stmt->fetch();
+    if (!$quot) ok(['skipped' => 'quotation not found for deal ' . $dealId]);
+
+    $updates = [];
+    $params  = [];
+
+    // Sync status: won/lost/open
+    $pdStatus = $current['status'] ?? null;
+    if ($pdStatus && in_array($pdStatus, ['won', 'lost', 'open'])) {
+        $crmStatus = $pdStatus === 'open' ? 'open' : $pdStatus;
+        if ($crmStatus !== $quot['status']) {
+            $updates[] = 'status = ?';
+            $params[]  = $crmStatus;
+        }
+    }
+
+    if ($updates) {
+        $params[] = $quot['id'];
+        db()->prepare('UPDATE quotations SET ' . implode(', ', $updates) . ' WHERE id = ?')->execute($params);
+    }
+
+    ok(['updated' => $quot['id'], 'deal' => $dealId]);
 }
 
 if ($action === 'quotations_delete') {
