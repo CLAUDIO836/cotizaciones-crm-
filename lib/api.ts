@@ -37,16 +37,21 @@ async function crmFetch(
   queryParams: Record<string, string> = {},
   body?: unknown,
   token?: string | null,
+  revalidateSeconds?: number,
 ): Promise<{ ok: boolean; data: unknown; error?: string }> {
   const params = new URLSearchParams({ action, ...queryParams })
   if (token) params.set('token', token)
   const url = `${CRM_API}?${params}`
 
+  const cacheOption: RequestInit = revalidateSeconds
+    ? { next: { revalidate: revalidateSeconds } }
+    : { cache: 'no-store' }
+
   const res = await fetch(url, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
-    cache: 'no-store',
+    ...cacheOption,
   })
 
   const json = await res.json().catch(() => ({}))
@@ -86,12 +91,14 @@ export async function fetchClients() {
 }
 
 export async function fetchPipelines(all = false) {
-  const r = await crmGet('pipelines_list', all ? { all: '1' } : {})
+  // Pipelines cambian muy raramente — cachear 5 minutos
+  const r = await crmFetch('GET', 'pipelines_list', all ? { all: '1' } : {}, undefined, await getToken(), 300)
   return (r.data as Pipeline[]) ?? []
 }
 
 export async function fetchCompanies() {
-  const r = await crmGet('companies_list')
+  // Empresas cambian muy raramente — cachear 5 minutos
+  const r = await crmFetch('GET', 'companies_list', {}, undefined, await getToken(), 300)
   return (r.data as Company[]) ?? []
 }
 

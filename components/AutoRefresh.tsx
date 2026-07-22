@@ -5,7 +5,7 @@ import { useEffect, useRef } from 'react'
 // Polling liviano: cada 5 segundos consulta el hash de estado del listado.
 // Si el servidor devuelve un hash distinto al anterior, recarga la página.
 // Así el usuario nunca tiene que recargar manualmente.
-export default function AutoRefresh({ intervalMs = 5000 }: { intervalMs?: number }) {
+export default function AutoRefresh({ intervalMs = 60000 }: { intervalMs?: number }) {
   const lastHash = useRef<string | null>(null)
 
   useEffect(() => {
@@ -28,7 +28,7 @@ export default function AutoRefresh({ intervalMs = 5000 }: { intervalMs?: number
     }
 
     const id = setInterval(check, intervalMs)
-    check() // ejecutar inmediatamente al montar
+    // No ejecutar inmediatamente al montar — solo detectar cambios futuros
     return () => clearInterval(id)
   }, [intervalMs])
 
