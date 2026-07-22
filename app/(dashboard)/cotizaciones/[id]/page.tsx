@@ -130,6 +130,50 @@ export default async function CotizacionDetailPage({
         {tab === 'datos' && (
           <div className="max-w-2xl space-y-5">
 
+            {/* Resumen ejecutivo */}
+            {(() => {
+              const desde = (q as { desde?: string }).desde
+              const hasta = (q as { hasta?: string }).hasta
+              const firstItem = items[0] as { description?: string } | undefined
+              const moreItems = items.length > 1 ? ` + ${items.length - 1} más` : ''
+              const hasRuta = desde || hasta
+              return (
+                <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-5 text-white shadow-md">
+                  <p className="text-blue-200 text-xs font-semibold uppercase tracking-widest mb-3">Resumen del servicio</p>
+                  <div className="grid grid-cols-1 gap-3">
+                    {q.fecha_salida && (
+                      <div className="flex items-start gap-3">
+                        <span className="text-2xl">📅</span>
+                        <div>
+                          <p className="text-blue-200 text-xs uppercase tracking-wide">Fecha del servicio</p>
+                          <p className="font-bold text-lg leading-tight">{formatDate(q.fecha_salida)}{q.hora_salida ? ` · ${(q.hora_salida as string).slice(0,5)} hrs` : ''}</p>
+                        </div>
+                      </div>
+                    )}
+                    {firstItem?.description && (
+                      <div className="flex items-start gap-3">
+                        <span className="text-2xl">📋</span>
+                        <div>
+                          <p className="text-blue-200 text-xs uppercase tracking-wide">Qué cotiza</p>
+                          <p className="font-semibold leading-tight">{firstItem.description}{moreItems}</p>
+                        </div>
+                      </div>
+                    )}
+                    {hasRuta && (
+                      <div className="flex items-start gap-3">
+                        <span className="text-2xl">🗺️</span>
+                        <div>
+                          <p className="text-blue-200 text-xs uppercase tracking-wide">Ruta</p>
+                          {desde && <p className="font-semibold leading-tight">Desde: {desde.split(',')[0]}</p>}
+                          {hasta && <p className="font-semibold leading-tight">Hasta: {hasta.split(',')[0]}</p>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Acciones comerciales destacadas */}
             {!isReadOnly && q.status === 'open' && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
