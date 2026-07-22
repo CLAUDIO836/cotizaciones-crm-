@@ -2,7 +2,10 @@
 
 import { useState } from 'react'
 
-export default function ApprovalForm({ token, quotationId }: { token: string; quotationId: string }) {
+export default function ApprovalForm({ token, quotationId, accent = '#1B8A4B', accentLight = '#f0fdf4', accentBorder = '#86efac', accentText = '#166534', companyLabel = 'Transccl' }: {
+  token: string; quotationId: string
+  accent?: string; accentLight?: string; accentBorder?: string; accentText?: string; companyLabel?: string
+}) {
   const [mode, setMode] = useState<'idle' | 'accepting' | 'rejecting'>('idle')
   const [name, setName] = useState('')
   const [rut, setRut] = useState('')
@@ -34,10 +37,10 @@ export default function ApprovalForm({ token, quotationId }: { token: string; qu
 
   if (done) {
     return (
-      <div style={{ background: 'white', borderRadius: 16, border: `1px solid ${done === 'accepted' ? '#86efac' : '#fca5a5'}`, padding: 40, textAlign: 'center' }}>
-        <div style={{ width: 64, height: 64, borderRadius: '50%', background: done === 'accepted' ? '#dcfce7' : '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+      <div style={{ background: 'white', borderRadius: 16, border: `1px solid ${done === 'accepted' ? accentBorder : '#fca5a5'}`, padding: 40, textAlign: 'center' }}>
+        <div style={{ width: 64, height: 64, borderRadius: '50%', background: done === 'accepted' ? accentLight : '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
           {done === 'accepted'
-            ? <svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+            ? <svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path stroke={accent} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
             : <svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
           }
         </div>
@@ -93,7 +96,7 @@ export default function ApprovalForm({ token, quotationId }: { token: string; qu
         <div style={{ display: 'flex', gap: 12 }}>
           <button
             onClick={() => setMode('accepting')}
-            style={{ flex: 1, padding: '13px 20px', borderRadius: 10, background: '#1B8A4B', color: 'white', border: 'none', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
+            style={{ flex: 1, padding: '13px 20px', borderRadius: 10, background: accent, color: 'white', border: 'none', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
           >
             ✅ Aceptar cotización
           </button>
@@ -114,7 +117,7 @@ export default function ApprovalForm({ token, quotationId }: { token: string; qu
           <button
             onClick={() => submit('accepted')}
             disabled={loading}
-            style={{ flex: 1, padding: '13px 20px', borderRadius: 10, background: loading ? '#9ca3af' : '#1B8A4B', color: 'white', border: 'none', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}
+            style={{ flex: 1, padding: '13px 20px', borderRadius: 10, background: loading ? '#9ca3af' : accent, color: 'white', border: 'none', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}
           >
             {loading ? 'Procesando...' : 'Confirmar aceptación'}
           </button>
