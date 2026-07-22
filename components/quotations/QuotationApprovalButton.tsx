@@ -14,7 +14,7 @@ interface Approval {
   created_at: string
 }
 
-export default function QuotationApprovalButton({ quotationId, wonMode = false }: { quotationId: string; wonMode?: boolean }) {
+export default function QuotationApprovalButton({ quotationId, wonMode = false, isTKS = false }: { quotationId: string; wonMode?: boolean; isTKS?: boolean }) {
   const [approval, setApproval] = useState<Approval | null | undefined>(undefined)
   const [generating, setGenerating] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -29,7 +29,8 @@ export default function QuotationApprovalButton({ quotationId, wonMode = false }
       .catch(() => setApproval(null))
   }, [quotationId])
 
-  const url = approval ? `${window.location.origin}/aprobar/${approval.token}` : ''
+  const baseOrigin = isTKS ? 'https://aprobaciones.transportestks.com' : window.location.origin
+  const url = approval ? `${baseOrigin}/aprobar/${approval.token}` : ''
 
   async function generate() {
     setGenerating(true)

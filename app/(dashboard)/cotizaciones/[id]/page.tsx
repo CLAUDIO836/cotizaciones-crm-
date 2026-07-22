@@ -186,13 +186,13 @@ export default async function CotizacionDetailPage({
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                 <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Aprobación de cotización</p>
                 <p className="text-xs text-blue-600 mb-3">Genera un link de firma digital para que el cliente acepte o rechace esta cotización.</p>
-                <QuotationApprovalButton quotationId={id} />
+                <QuotationApprovalButton quotationId={id} isTKS={isTKS} />
               </div>
             )}
             {!isReadOnly && q.status === 'won' && (
               <div className="space-y-3">
                 {/* Advertencia si fue ganada sin aprobación digital */}
-                <QuotationApprovalButton quotationId={id} wonMode />
+                <QuotationApprovalButton quotationId={id} wonMode isTKS={isTKS} />
                 {/* Carta de aprobación (no para traslado diario) */}
                 {!pipeline?.name?.toLowerCase().includes('traslado diario') && (
                   <div className="bg-green-50 border border-green-200 rounded-xl p-4">
