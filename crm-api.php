@@ -500,6 +500,18 @@ if ($action === 'quotations_create') {
     }
 }
 
+if ($action === 'quotation_fix_company') {
+    requireAuth();
+    $b = body();
+    $id = $b['id'] ?? '';
+    if (!$id) err('id requerido');
+    // Update company field from companies join based on company_id
+    db()->prepare('UPDATE quotations q JOIN companies co ON co.id = q.company_id SET q.company = co.name WHERE q.id = ?')->execute([$id]);
+    $stmt = db()->prepare('SELECT company, company_id FROM quotations WHERE id = ?');
+    $stmt->execute([$id]);
+    ok($stmt->fetch());
+}
+
 if ($action === 'quotations_update') {
     requireAuth();
     $b = body();

@@ -29,6 +29,9 @@ async function handleUpload(req: NextRequest) {
     return NextResponse.json({ error: 'Falta quotationId' }, { status: 400 })
   }
 
+  // Fix company field from companies join if needed
+  await crmPost('quotation_fix_company', {}, { id: quotationId }, token).catch(() => {})
+
   const q = await fetchQuotation(quotationId)
   if (!q) return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 })
 
