@@ -31,11 +31,13 @@ export async function htmlToPdf(url: string, cookieToken?: string): Promise<Buff
   try {
     const page = await browser.newPage()
 
-    // Navegar a data: URL evita errores de status HTTP en la navegación principal
+    // data: URL + domcontentloaded evita errores de 404 en recursos (imágenes)
     await page.goto(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`, {
-      waitUntil: 'networkidle0',
+      waitUntil: 'domcontentloaded',
       timeout: 30000,
     })
+    // Esperar a que las imágenes absolutas carguen
+    await new Promise(r => setTimeout(r, 3000))
 
     // Ocultar botones de impresión
     await page.evaluate(() => {
