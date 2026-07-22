@@ -16,10 +16,17 @@ const VEHICLE_IMAGES_CCL: Record<string, string> = {
 }
 
 const VEHICLE_IMAGES_TKS: Record<string, string> = {
-  'bus':     '/vehicles/tks-bus.jpg',
-  'taxibus': '/vehicles/tks-taxibus.jpg',
-  'minibus': '/vehicles/tks-minibus.jpg',
-  'minivan': '/vehicles/minivan.jpg',
+  'bus':     '/vehicles/tks-bus-grande.jpg',
+  'taxibus': '/vehicles/tks-bus.jpg',
+  'minibus': '/vehicles/tks-taxibus.jpg',
+  'minivan': '/vehicles/tks-minivan.jpg',
+}
+
+const TKS_VEHICLE_DESCS: Record<string, string> = {
+  'bus':     'Servicio de transporte en Bus (40–60 pasajeros) – Flota 2009 al 2016',
+  'taxibus': 'Servicio de transporte en Taxibús (25–33 pasajeros) – Flota 2014 al 2018',
+  'minibus': 'Servicio de transporte en Minibús (14–19 pasajeros) – Flota 2014 al 2026',
+  'minivan': 'Servicio de transporte en Minivan (7–10 pasajeros) – Flota 2014 al 2026',
 }
 
 const VEHICLE_LABELS: Record<string, string> = {
@@ -89,7 +96,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const companyRUT = isTKS ? null : '76.282.952-3'
   const companyTagline = isTKS ? 'Transporte de personas' : 'Transporte de personas y carga'
   const logoBlock = isTKS
-    ? `<div style="font-size:28px;font-weight:900;color:${ACCENT};letter-spacing:-0.02em;">TKs</div>`
+    ? `<img src="${baseUrl}/vehicles/tks-logo.png" alt="TKs" style="height:72px;width:auto;object-fit:contain;" />`
     : `<img src="${baseUrl}/logo-transccl.png" alt="Transccl" style="height:56px;width:auto;object-fit:contain;" />`
 
   const bankBlock = isTKS ? `
@@ -260,14 +267,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         </tr>
       </thead>
       <tbody>
-        ${items.map((item: { codigo?: string; description: string; quantity: number; unit_price: number; subtotal: number }) => `
+        ${items.map((item: { codigo?: string; description: string; quantity: number; unit_price: number; subtotal: number }) => {
+          const key = (item.codigo ?? '').toLowerCase()
+          const desc = isTKS && TKS_VEHICLE_DESCS[key] ? TKS_VEHICLE_DESCS[key] : item.description
+          return `
         <tr>
           <td style="font-weight:600;color:${ACCENT}">${item.codigo ?? ''}</td>
-          <td>${item.description}</td>
+          <td>${desc}</td>
           <td class="right">${formatCLP(item.unit_price)}</td>
           <td class="right">${item.quantity}</td>
           <td class="right" style="font-weight:700">${formatCLP(item.subtotal ?? item.quantity * item.unit_price)}</td>
-        </tr>`).join('')}
+        </tr>`
+        }).join('')}
       </tbody>
     </table>
   </div>
