@@ -133,8 +133,8 @@ const VEHICLES_CCL = [
 ]
 
 const VEHICLES_TKS = [
-  { key: 'bus',     label: 'Bus (40–45 pax)',     img: '/vehicles/tks-bus.jpg',      desc: 'Servicio de transporte en Bus (40–45 pasajeros)' },
-  { key: 'taxibus', label: 'Taxibús (25–33 pax)', img: '/vehicles/tks-bus.jpg',      desc: 'Servicio de transporte en Taxibús (25–33 pasajeros)' },
+  { key: 'bus',     label: 'Bus (40–60 pax)',     img: '/vehicles/tks-bus.jpg',      desc: 'Servicio de transporte en Bus (40–60 pasajeros)' },
+  { key: 'taxibus', label: 'Taxibús (25–33 pax)', img: '/vehicles/tks-taxibus.jpg',  desc: 'Servicio de transporte en Taxibús (25–33 pasajeros)' },
   { key: 'minibus', label: 'Minibús (14–19 pax)', img: '/vehicles/tks-sprinter.jpg', desc: 'Servicio de transporte en Minibús (14–19 pasajeros)' },
   { key: 'minivan', label: 'Minivan (7–10 pax)',  img: '/vehicles/tks-minivan.jpg',  desc: 'Servicio de transporte en Minivan (7–10 pasajeros)' },
 ]
@@ -433,38 +433,40 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
         <div className="space-y-1.5">
           <Label>Tipo de vehículo</Label>
           <div className="grid grid-cols-3 gap-2">
-            {(companies?.find(c => c.id === companyId)?.name === 'Transportes TKS' ? VEHICLES_TKS : VEHICLES_CCL).map(v => (
-              <button
-                key={v.key}
-                type="button"
-                onClick={() => {
-                setVehicleType(vehicleType === v.key ? '' : v.key)
-                if (vehicleType !== v.key) {
-                  setItems(prev => {
-                    const next = [...prev]
-                    const last = next.length - 1
-                    next[last] = { ...next[last], codigo: v.key.toUpperCase(), description: v.desc }
-                    return next
-                  })
-                }
-              }}
-                className="relative rounded-xl border-2 overflow-hidden transition-all text-left"
-                style={vehicleType === v.key
-                  ? { borderColor: '#1B8A4B' }
-                  : { borderColor: '#e5e7eb' }
-                }
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={v.img} alt={v.label} className="w-full h-16 object-cover" />
-                <div className="px-2 py-1.5"
-                  style={vehicleType === v.key ? { background: '#1B8A4B' } : { background: '#f9fafb' }}>
-                  <p className="text-xs font-semibold truncate"
-                    style={{ color: vehicleType === v.key ? 'white' : '#374151' }}>
-                    {v.label}
-                  </p>
-                </div>
-              </button>
-            ))}
+            {(() => {
+              const isTKS = companies?.find(c => c.id === companyId)?.name === 'Transportes TKS'
+              const vehicles = isTKS ? VEHICLES_TKS : VEHICLES_CCL
+              const selectedColor = isTKS ? '#C8102E' : '#1B8A4B'
+              return vehicles.map(v => (
+                <button
+                  key={v.key}
+                  type="button"
+                  onClick={() => {
+                    setVehicleType(vehicleType === v.key ? '' : v.key)
+                    if (vehicleType !== v.key) {
+                      setItems(prev => {
+                        const next = [...prev]
+                        const last = next.length - 1
+                        next[last] = { ...next[last], codigo: v.key.toUpperCase(), description: v.desc }
+                        return next
+                      })
+                    }
+                  }}
+                  className="relative rounded-xl border-2 overflow-hidden transition-all text-left"
+                  style={vehicleType === v.key ? { borderColor: selectedColor } : { borderColor: '#e5e7eb' }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={v.img} alt={v.label} className="w-full h-16 object-cover" />
+                  <div className="px-2 py-1.5"
+                    style={vehicleType === v.key ? { background: selectedColor } : { background: '#f9fafb' }}>
+                    <p className="text-xs font-semibold truncate"
+                      style={{ color: vehicleType === v.key ? 'white' : '#374151' }}>
+                      {v.label}
+                    </p>
+                  </div>
+                </button>
+              ))
+            })()}
           </div>
         </div>
 
