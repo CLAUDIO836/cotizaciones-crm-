@@ -11,10 +11,11 @@ interface Props {
 }
 
 const TABS = [
-  { key: 'datos',     label: 'Datos' },
-  { key: 'items',     label: 'Ítems' },
-  { key: 'gestiones', label: 'Gestiones' },
-  { key: 'notas',     label: 'Notas' },
+  { key: 'datos',      label: 'Datos' },
+  { key: 'items',      label: 'Ítems' },
+  { key: 'gestiones',  label: 'Gestiones' },
+  { key: 'notas',      label: 'Notas' },
+  { key: 'documentos', label: 'Documentos' },
 ]
 
 export default function QuotationTabs({ quotationId, currentTab, activitiesCount, notesCount }: Props) {

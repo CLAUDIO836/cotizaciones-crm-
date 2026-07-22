@@ -1781,5 +1781,61 @@ if ($action === 'contracts_update_status') {
     ok();
 }
 
+// ── quotation_pdfs: historial de versiones de PDF ─────────────────────────────
+
+if ($action === 'migrate_quotation_pdfs') {
+    requireAdmin();
+    $pdo = db();
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `quotation_pdfs` (
+        `id`                BIGINT       AUTO_INCREMENT PRIMARY KEY,
+        `quotation_id`      VARCHAR(36)  NOT NULL,
+        `version`           INT          NOT NULL DEFAULT 1,
+        `created_at`        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        `created_by`        VARCHAR(36)  NULL COMMENT 'user_id',
+        `created_by_name`   VARCHAR(200) NULL,
+        `motivo`            VARCHAR(500) NULL COMMENT 'Razón de esta versión',
+        `pipedrive_file_id` VARCHAR(100) NULL,
+        `pdf_hash`          VARCHAR(64)  NULL COMMENT 'SHA256 hex del PDF',
+        `pdf_size_bytes`    INT          NULL,
+        INDEX `idx_qpdf_quotation` (`quotation_id`),
+        INDEX `idx_qpdf_version`   (`quotation_id`, `version`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    ok(['table' => 'quotation_pdfs', 'status' => 'created_or_already_exists']);
+}
+
+if ($action === 'quotation_pdfs_add') {
+    requireAuth();
+    $b = body();
+    $quotationId = $b['quotation_id'] ?? null;
+    if (!$quotationId) err('Falta quotation_id', 400);
+    $pdo = db();
+    // Calcular próxima versión
+    $stmt = $pdo->prepare('SELECT COALESCE(MAX(version), 0) + 1 FROM quotation_pdfs WHERE quotation_id = ?');
+    $stmt->execute([$quotationId]);
+    $nextVersion = (int)$stmt->fetchColumn();
+    $ins = $pdo->prepare('INSERT INTO quotation_pdfs (quotation_id, version, created_by, created_by_name, motivo, pipedrive_file_id, pdf_hash, pdf_size_bytes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    $ins->execute([
+        $quotationId,
+        $nextVersion,
+        $b['created_by']        ?? null,
+        $b['created_by_name']   ?? null,
+        $b['motivo']            ?? null,
+        $b['pipedrive_file_id'] ?? null,
+        $b['pdf_hash']          ?? null,
+        $b['pdf_size_bytes']    ?? null,
+    ]);
+    ok(['id' => $pdo->lastInsertId(), 'version' => $nextVersion]);
+}
+
+if ($action === 'quotation_pdfs_list') {
+    requireAuth();
+    $quotationId = $_GET['quotation_id'] ?? null;
+    if (!$quotationId) err('Falta quotation_id', 400);
+    $rows = db()->prepare('SELECT * FROM quotation_pdfs WHERE quotation_id = ? ORDER BY version DESC');
+    $rows->execute([$quotationId]);
+    ok($rows->fetchAll(PDO::FETCH_ASSOC));
+}
+
 // ── Not found ─────────────────────────────────────────────────────────────────
 err("Acción '$action' no encontrada", 404);

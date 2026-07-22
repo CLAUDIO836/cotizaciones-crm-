@@ -14,6 +14,7 @@ import DeleteButton from '@/components/quotations/DeleteButton'
 import ApprovalLetterButton from '@/components/quotations/ApprovalLetterButton'
 import QuotationApprovalButton from '@/components/quotations/QuotationApprovalButton'
 import ResyncButton from '@/components/quotations/ResyncButton'
+import DocumentsTab from '@/components/quotations/DocumentsTab'
 
 const ETAPA_LABELS: Record<string, { label: string; color: string; bg: string }> = {
   lead:        { label: 'Lead',        color: '#6366f1', bg: '#eef2ff' },
@@ -349,6 +350,10 @@ export default async function CotizacionDetailPage({
               userId={user?.id ?? ''}
             />
           </div>
+        )}
+
+        {tab === 'documentos' && (
+          <DocumentsTab quotationId={id} />
         )}
       </div>
     </div>

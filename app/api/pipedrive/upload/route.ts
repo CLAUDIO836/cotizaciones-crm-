@@ -1,4 +1,5 @@
-import { fetchQuotation, crmPost, getToken } from '@/lib/api'
+import { fetchQuotation, crmPost, crmGet, getToken, getSession } from '@/lib/api'
+import { createHash } from 'crypto'
 import { htmlToPdf } from '@/lib/pdf/html-to-pdf'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -24,7 +25,7 @@ async function handleUpload(req: NextRequest) {
   const token = await getToken()
   if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
-  const { quotationId, pipelineId, fechaSalida, companyName, desde, hasta, resync, skipPdf } = await req.json()
+  const { quotationId, pipelineId, fechaSalida, companyName, desde, hasta, resync, skipPdf, motivo } = await req.json()
   if (!quotationId) {
     return NextResponse.json({ error: 'Falta quotationId' }, { status: 400 })
   }
@@ -214,5 +215,24 @@ async function handleUpload(req: NextRequest) {
     return NextResponse.json({ ok: true, dealId, pdfWarning: `PDF no subido: ${result.error ?? res.status}` })
   }
 
-  return NextResponse.json({ ok: true, dealId, fileId: result.data?.id })
+  const fileId: number | undefined = result.data?.id
+
+  // Registrar versión en historial
+  try {
+    const session = await getSession()
+    const pdfHash = createHash('sha256').update(pdfBuffer).digest('hex')
+    await crmPost('quotation_pdfs_add', {
+      quotation_id:       quotationId,
+      created_by:         session?.id ?? null,
+      created_by_name:    session?.name ?? null,
+      motivo:             motivo ?? null,
+      pipedrive_file_id:  fileId ? String(fileId) : null,
+      pdf_hash:           pdfHash,
+      pdf_size_bytes:     pdfBuffer.length,
+    }, {}, token)
+  } catch (logErr) {
+    console.warn('[upload] no se pudo registrar versión PDF:', logErr)
+  }
+
+  return NextResponse.json({ ok: true, dealId, fileId })
 }

@@ -258,6 +258,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
 
   const isEditing = !!quotation?.id
   const [loadingPdf, setLoadingPdf] = useState(false)
+  const [motivo, setMotivo] = useState('')
 
   async function saveQuotation(withPdf: boolean) {
     if (!clientId) { toast.error('Busca y selecciona un cliente por RUT'); return }
@@ -318,7 +319,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
             await fetch('/api/pipedrive/upload', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ quotationId: quotation.id, resync: true }),
+              body: JSON.stringify({ quotationId: quotation.id, resync: true, motivo: motivo || null }),
             })
             toast.success('Cotización actualizada — nuevo PDF subido a Pipedrive')
           } catch {
@@ -681,6 +682,21 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           </div>
         </div>
       </div>
+
+      {isEditing && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <label className="text-xs font-semibold text-blue-700 uppercase tracking-wide block mb-1.5">
+            Motivo del cambio (opcional, aparece en historial de documentos)
+          </label>
+          <input
+            type="text"
+            value={motivo}
+            onChange={e => setMotivo(e.target.value)}
+            placeholder="Ej: Ajuste de precio por solicitud del cliente"
+            className="w-full text-sm border border-blue-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+          />
+        </div>
+      )}
 
       <div className="flex gap-3 flex-wrap">
         {isEditing ? (
