@@ -13,7 +13,7 @@ export async function htmlToPdf(url: string, cookieToken?: string): Promise<Buff
   if (!htmlRes.ok) throw new Error(`HTML fetch ${htmlRes.status} → ${url.split('?')[0]}`)
   let html = await htmlRes.text()
 
-  // Convertir rutas relativas a absolutas para que Puppeteer cargue las imágenes
+  // Reemplazar rutas relativas con absolutas para que las imágenes carguen desde data: URL
   const origin = new URL(url).origin
   html = html.replace(/(src|href)="\/((?!\/)[^"]+)"/g, `$1="${origin}/$2"`)
 
@@ -31,8 +31,11 @@ export async function htmlToPdf(url: string, cookieToken?: string): Promise<Buff
   try {
     const page = await browser.newPage()
 
-    // Cargar el HTML directamente (sin navegación HTTP que requiera auth)
-    await page.setContent(html, { waitUntil: 'load', timeout: 30000 })
+    // Navegar a data: URL evita errores de status HTTP en la navegación principal
+    await page.goto(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`, {
+      waitUntil: 'networkidle0',
+      timeout: 30000,
+    })
 
     // Ocultar botones de impresión
     await page.evaluate(() => {
