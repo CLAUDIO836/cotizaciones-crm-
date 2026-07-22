@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 import { getSession, fetchQuotationsSummary, fetchPipelines, fetchCompanies, fetchProfiles } from '@/lib/api'
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
