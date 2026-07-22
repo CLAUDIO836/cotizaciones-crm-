@@ -96,9 +96,10 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
       <div className="flex gap-3 overflow-x-auto pb-4" style={{ minHeight: '70vh' }}>
         {months.map(({ month, year, label }) => {
           const cards = quotations.filter(q => Number(q.month) === month && Number(q.year) === year)
-          const totalMonto = cards.reduce((s, q) => s + (q.total ?? 0), 0)
-          const ganado = cards.filter(q => q.status === 'won').reduce((s, q) => s + (q.total ?? 0), 0)
-          const pendiente = cards.filter(q => q.status === 'open').reduce((s, q) => s + (q.total ?? 0), 0)
+          const totalMonto = cards.reduce((s, q) => s + Number(q.total ?? 0), 0)
+          const ganado = cards.filter(q => q.status === 'won').reduce((s, q) => s + Number(q.total ?? 0), 0)
+          const perdido = cards.filter(q => q.status === 'lost').reduce((s, q) => s + Number(q.total ?? 0), 0)
+          const pendiente = cards.filter(q => q.status === 'open').reduce((s, q) => s + Number(q.total ?? 0), 0)
           const isCurrent = month === now.getMonth() + 1 && year === now.getFullYear()
 
           return (
@@ -121,7 +122,7 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                   </span>
                 </div>
                 <p className="text-lg font-bold text-gray-900">{formatCLP(totalMonto)}</p>
-                <div className="flex gap-3 mt-1">
+                <div className="flex gap-3 mt-1 flex-wrap">
                   {ganado > 0 && (
                     <span className="text-xs text-green-600 font-medium flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
@@ -129,9 +130,15 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                     </span>
                   )}
                   {pendiente > 0 && (
-                    <span className="text-xs text-blue-600 font-medium flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
+                    <span className="text-xs text-gray-500 font-medium flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
                       {formatCLP(pendiente)}
+                    </span>
+                  )}
+                  {perdido > 0 && (
+                    <span className="text-xs text-red-500 font-medium flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+                      {formatCLP(perdido)}
                     </span>
                   )}
                 </div>

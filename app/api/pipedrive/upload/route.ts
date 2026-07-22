@@ -1,9 +1,6 @@
 import { fetchQuotation, crmPost, getToken } from '@/lib/api'
-import { renderToBuffer } from '@react-pdf/renderer'
-import { QuotationPDF } from '@/lib/pdf/generate'
-import { TKSQuotationPDF } from '@/lib/pdf/tks-quotation'
+import { htmlToPdf } from '@/lib/pdf/html-to-pdf'
 import { NextRequest, NextResponse } from 'next/server'
-import React from 'react'
 
 const PIPEDRIVE_TOKEN = process.env.PIPEDRIVE_API_TOKEN ?? ''
 const PIPEDRIVE_API   = 'https://api.pipedrive.com/v1'
@@ -93,40 +90,11 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({ title: finalTitle }),
   })
 
-  const items = (q.quotation_items ?? []).sort(
-    (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order
-  )
-
-  const isTKS = companyName === 'Transportes TKS'
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const PdfComponent = isTKS ? TKSQuotationPDF : QuotationPDF
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pdfElement = React.createElement(PdfComponent as any, {
-    data: {
-      number: String(dealId),
-      status: q.status,
-      issue_date: q.issue_date,
-      expiry_date: q.expiry_date,
-      subtotal: q.subtotal,
-      tax_pct: q.tax_pct,
-      total: q.total,
-      notes: q.notes,
-      terms: q.terms,
-      client: q.clients ?? { name: q.client_name, rut: q.client_rut },
-      vendedor: q.profiles ?? { name: q.profile_name },
-      items,
-      desde: q.desde,
-      hasta: q.hasta,
-      fecha_salida: q.fecha_salida,
-      hora_salida: q.hora_salida,
-      fecha_retorno: q.fecha_retorno,
-      hora_retorno: q.hora_retorno,
-      vehicle_type: q.vehicle_type,
-    },
-  })
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pdfBuffer = await renderToBuffer(pdfElement as any)
+  // Generar PDF desde el HTML de "Ver / Imprimir" (idéntico al que ve el usuario)
+  const appUrl = process.env.APP_URL ?? 'https://crm.transccl.cl'
+  const crmToken = await getToken()
+  const htmlUrl = `${appUrl}/api/cotizaciones/${quotationId}/html?token=${crmToken}`
+  const pdfBuffer = await htmlToPdf(htmlUrl)
 
   // Subir archivo a Pipedrive
   const formData = new FormData()

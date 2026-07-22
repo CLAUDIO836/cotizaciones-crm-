@@ -233,6 +233,8 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
 
   async function createNewClient(): Promise<string | null> {
     if (!newClientName.trim()) return null
+    if (!newClientCelular.trim() && !newClientTelFijo.trim()) { toast.error('El cliente debe tener al menos un teléfono'); return null }
+    if (!newClientEmail.trim()) { toast.error('El email del cliente es obligatorio'); return null }
     const res = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

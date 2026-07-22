@@ -156,6 +156,12 @@ export default async function CotizacionDetailPage({
             </div>
 
             <div className="bg-white rounded-xl border p-5 grid grid-cols-2 gap-4 text-sm">
+              {q.fecha_salida && (
+                <div className="col-span-2 pb-3 border-b">
+                  <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Fecha del servicio (cierre previsto)</p>
+                  <p className="font-bold text-gray-900 text-base">{formatDate(q.fecha_salida)}{q.hora_salida ? ` · ${q.hora_salida.slice(0,5)}` : ''}</p>
+                </div>
+              )}
               <div>
                 <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Fecha emisión</p>
                 <p className="font-medium text-gray-800">{q.issue_date ? formatDate(q.issue_date) : '—'}</p>
@@ -177,6 +183,25 @@ export default async function CotizacionDetailPage({
                 </div>
               )}
             </div>
+
+            {/* Contacto del negocio */}
+            {(q as {contact_name?: string; contact_cargo?: string; contact_email?: string; contact_phone_mobile?: string; contact_phone_landline?: string}).contact_name && (
+              <div className="bg-white rounded-xl border p-5">
+                <h2 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wide">Contacto</h2>
+                {(() => {
+                  const c = q as {contact_name?: string; contact_cargo?: string; contact_email?: string; contact_phone_mobile?: string; contact_phone_landline?: string}
+                  return (
+                    <>
+                      <p className="font-bold text-gray-900">{c.contact_name}</p>
+                      {c.contact_cargo && <p className="text-sm text-gray-500">{c.contact_cargo}</p>}
+                      {c.contact_email && <p className="text-sm text-gray-500">{c.contact_email}</p>}
+                      {c.contact_phone_mobile && <p className="text-sm text-gray-500">📱 {c.contact_phone_mobile}</p>}
+                      {c.contact_phone_landline && <p className="text-sm text-gray-500">☎ {c.contact_phone_landline}</p>}
+                    </>
+                  )
+                })()}
+              </div>
+            )}
 
             {(q.notes || q.terms) && (
               <div className="grid grid-cols-2 gap-4">
