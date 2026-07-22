@@ -1,6 +1,5 @@
 import { notFound } from 'next/navigation'
 import ApprovalForm from './ApprovalForm'
-import { crmGet } from '@/lib/api'
 
 function formatCLP(n: number) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(n)
@@ -9,8 +8,13 @@ function formatCLP(n: number) {
 export default async function AprobarPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
 
-  const r = await crmGet('approvals_get', { token })
-  const approval = r?.data as Record<string, string> | null
+  const CRM_API = process.env.CRM_API_URL ?? 'https://transccl.cl/crm-api.php'
+  let approval: Record<string, string> | null = null
+  try {
+    const res = await fetch(`${CRM_API}?action=approvals_get&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
+    const json = await res.json()
+    approval = json.data ?? null
+  } catch { /* fall through to notFound */ }
 
   if (!approval) notFound()
 
