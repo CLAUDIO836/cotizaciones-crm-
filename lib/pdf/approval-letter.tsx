@@ -198,8 +198,8 @@ export function ApprovalLetterPDF({ data }: { data: ApprovalLetterData }) {
           </View>
         )}
 
-        {/* Datos de facturación si difieren */}
-        {data.billing_name && (
+        {/* Datos de facturación si el RUT de facturación difiere del cliente */}
+        {data.billing_rut && data.billing_rut !== data.client_rut && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Datos de Facturación</Text>
             <View style={styles.row}><Text style={styles.label}>Razón social:</Text><Text style={styles.value}>{data.billing_name}</Text></View>

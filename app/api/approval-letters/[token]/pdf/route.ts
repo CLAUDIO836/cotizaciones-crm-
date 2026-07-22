@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { crmGet } from '@/lib/api'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { ApprovalLetterPDF } from '@/lib/pdf/approval-letter'
 import { TKSApprovalLetterPDF } from '@/lib/pdf/tks-approval-letter'
 import React from 'react'
 
+const CRM_API = process.env.CRM_API_URL ?? 'https://transccl.cl/crm-api.php'
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
 
-  const r = await crmGet('letters_get', { token })
-  const letter = r.data as Record<string, unknown>
+  const res = await fetch(`${CRM_API}?action=letters_get&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
+  const json = await res.json().catch(() => ({}))
+  const letter = json.data as Record<string, unknown>
   if (!letter) return new NextResponse('Not found', { status: 404 })
 
   const companyName = String(letter.company_name ?? '')
