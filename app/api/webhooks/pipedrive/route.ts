@@ -7,6 +7,8 @@ export async function POST(req: NextRequest) {
   const payload = await req.json().catch(() => null)
   if (!payload) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
 
+  console.log('[PD Webhook] event:', payload.event, '| deal:', payload.current?.id ?? payload.previous?.id, '| status:', payload.current?.status)
+
   const res = await fetch(`${CRM_API}?action=pipedrive_webhook&secret=${WEBHOOK_SECRET}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -14,5 +16,6 @@ export async function POST(req: NextRequest) {
   })
 
   const data = await res.json().catch(() => ({}))
+  console.log('[PD Webhook] PHP response:', JSON.stringify(data))
   return NextResponse.json(data)
 }
