@@ -95,7 +95,7 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
       {/* Columnas */}
       <div className="flex gap-3 overflow-x-auto pb-4" style={{ minHeight: '70vh' }}>
         {months.map(({ month, year, label }) => {
-          const cards = quotations.filter(q => q.month === month && q.year === year)
+          const cards = quotations.filter(q => Number(q.month) === month && Number(q.year) === year)
           const totalMonto = cards.reduce((s, q) => s + (q.total ?? 0), 0)
           const ganado = cards.filter(q => q.status === 'won').reduce((s, q) => s + (q.total ?? 0), 0)
           const pendiente = cards.filter(q => q.status === 'open').reduce((s, q) => s + (q.total ?? 0), 0)
