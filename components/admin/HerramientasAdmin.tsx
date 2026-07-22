@@ -11,6 +11,17 @@ interface CrmQuotation {
   total: number
 }
 
+interface SyncRow {
+  number: string
+  pipedrive_deal_id: string
+  crm_status: string
+  crm_total: number
+  pd_title: string
+  pd_status: string
+  pd_value: number
+  matched: boolean
+}
+
 export default function HerramientasAdmin() {
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<string | null>(null)
@@ -19,7 +30,7 @@ export default function HerramientasAdmin() {
   const [recovering, setRecovering] = useState(false)
   const [recoverResult, setRecoverResult] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
-  const [crmQuotations, setCrmQuotations] = useState<CrmQuotation[] | null>(null)
+  const [syncRows, setSyncRows] = useState<SyncRow[] | null>(null)
 
   async function runImport() {
     setImporting(true)
@@ -60,14 +71,14 @@ export default function HerramientasAdmin() {
 
   async function runSyncCheck() {
     setSyncing(true)
-    setCrmQuotations(null)
+    setSyncRows(null)
     try {
-      const res = await fetch('/api/admin/import-contacts?action=quotations_summary')
+      const res = await fetch('/api/admin/sync-check')
       const d = await res.json()
       if (!res.ok) throw new Error(d.error ?? 'Error')
-      const quotes: CrmQuotation[] = d.data ?? []
-      setCrmQuotations(quotes)
-      toast.success(`${quotes.length} cotizaciones en CRM`)
+      const rows: SyncRow[] = d.comparison ?? []
+      setSyncRows(rows)
+      toast.success(`${rows.length} cotizaciones · ${d.matched_count} cuadran con Pipedrive`)
     } catch (e: unknown) {
       toast.error(String(e))
     } finally {
@@ -134,39 +145,60 @@ export default function HerramientasAdmin() {
             {syncing ? 'Cargando...' : 'Ver cotizaciones'}
           </Button>
         </div>
-        {crmQuotations !== null && (
-          crmQuotations.length === 0
+        {syncRows !== null && (
+          syncRows.length === 0
             ? <p className="text-sm text-gray-500">No hay cotizaciones en el CRM.</p>
             : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b text-left text-gray-500">
-                      <th className="pb-2 pr-4">N°</th>
-                      <th className="pb-2 pr-4">Deal PD</th>
-                      <th className="pb-2 pr-4">Estado</th>
-                      <th className="pb-2 text-right">Total</th>
+                    <tr className="border-b text-left text-gray-500 text-xs">
+                      <th className="pb-2 pr-3">N° CRM</th>
+                      <th className="pb-2 pr-3">Estado CRM</th>
+                      <th className="pb-2 pr-3 text-right">Total CRM</th>
+                      <th className="pb-2 pr-3 w-6"></th>
+                      <th className="pb-2 pr-3">Deal Pipedrive</th>
+                      <th className="pb-2 pr-3">Estado PD</th>
+                      <th className="pb-2 text-right">Valor PD</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {crmQuotations.map((q) => (
-                      <tr key={q.number} className="border-b last:border-0">
-                        <td className="py-2 pr-4 font-mono font-medium">{q.number}</td>
-                        <td className="py-2 pr-4 text-gray-500">{q.pipedrive_deal_id || '—'}</td>
-                        <td className="py-2 pr-4">
-                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                            q.status === 'won' ? 'bg-green-100 text-green-700' :
-                            q.status === 'lost' ? 'bg-red-100 text-red-700' :
+                    {syncRows.map((row) => (
+                      <tr key={row.number} className={`border-b last:border-0 ${row.matched ? '' : 'bg-red-50'}`}>
+                        <td className="py-2 pr-3 font-mono font-medium text-xs">{row.number}</td>
+                        <td className="py-2 pr-3">
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
+                            row.crm_status === 'won' ? 'bg-green-100 text-green-700' :
+                            row.crm_status === 'lost' ? 'bg-red-100 text-red-700' :
                             'bg-yellow-100 text-yellow-700'
-                          }`}>{q.status}</span>
+                          }`}>{row.crm_status}</span>
                         </td>
-                        <td className="py-2 text-right font-mono">
-                          {q.total ? `$${q.total.toLocaleString('es-CL')}` : '—'}
+                        <td className="py-2 pr-3 text-right font-mono text-xs">
+                          {row.crm_total ? `$${row.crm_total.toLocaleString('es-CL')}` : '—'}
+                        </td>
+                        <td className="py-2 pr-3 text-center text-base">
+                          {row.matched ? '✅' : row.pipedrive_deal_id ? '⚠️' : '❌'}
+                        </td>
+                        <td className="py-2 pr-3 text-xs max-w-xs truncate" title={row.pd_title ?? ''}>
+                          {row.pd_title ?? (row.pipedrive_deal_id ? `ID: ${row.pipedrive_deal_id}` : '— Sin deal')}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {row.pd_status && (
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
+                              row.pd_status === 'won' ? 'bg-green-100 text-green-700' :
+                              row.pd_status === 'lost' ? 'bg-red-100 text-red-700' :
+                              'bg-yellow-100 text-yellow-700'
+                            }`}>{row.pd_status}</span>
+                          )}
+                        </td>
+                        <td className="py-2 text-right font-mono text-xs">
+                          {row.pd_value ? `$${row.pd_value.toLocaleString('es-CL')}` : '—'}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                <p className="text-xs text-gray-400 mt-2">✅ = cuadra con Pipedrive · ⚠️ = tiene deal ID pero no encontrado · ❌ = sin deal PD</p>
               </div>
             )
         )}

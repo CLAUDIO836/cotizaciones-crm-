@@ -32,21 +32,37 @@ export async function GET() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const crmQuotations: Array<{ number: string; pipedrive_deal_id: string; status: string; total: number }> = (crmRes as any).data ?? []
 
-  // 3. Build sets for comparison
-  const pdIds = new Set(pdDeals.map(d => String(d.id)))
+  // 3. Build maps for comparison
+  const pdMap = new Map(pdDeals.map(d => [String(d.id), d]))
   const crmPdIds = new Set(crmQuotations.map(q => String(q.pipedrive_deal_id)).filter(Boolean))
   const crmNumbers = new Set(crmQuotations.map(q => String(q.number)))
 
   // In Pipedrive but not in CRM
   const inPdNotCrm = pdDeals.filter(d => !crmPdIds.has(String(d.id)) && !crmNumbers.has(String(d.id)))
-  // In CRM but not in Pipedrive (pipedrive_deal_id set)
-  const inCrmNotPd = crmQuotations.filter(q => q.pipedrive_deal_id && !pdIds.has(String(q.pipedrive_deal_id)))
+  // In CRM but not in Pipedrive
+  const inCrmNotPd = crmQuotations.filter(q => q.pipedrive_deal_id && !pdMap.has(String(q.pipedrive_deal_id)))
+
+  // Comparison rows: each CRM quotation with its Pipedrive deal info
+  const comparison = crmQuotations.map(q => {
+    const pd = pdMap.get(String(q.pipedrive_deal_id))
+    return {
+      number: q.number,
+      pipedrive_deal_id: q.pipedrive_deal_id ?? null,
+      crm_status: q.status,
+      crm_total: q.total,
+      pd_title: pd?.title ?? null,
+      pd_status: pd?.status ?? null,
+      pd_value: pd?.value ?? null,
+      matched: !!pd,
+    }
+  })
 
   return NextResponse.json({
     pipedrive_total: pdDeals.length,
     crm_total: crmQuotations.length,
+    comparison,
     in_pipedrive_not_crm: inPdNotCrm.map(d => ({ id: d.id, title: d.title, status: d.status, value: d.value })),
     in_crm_not_pipedrive: inCrmNotPd.map(q => ({ number: q.number, status: q.status, total: q.total })),
-    matched: crmQuotations.filter(q => q.pipedrive_deal_id && pdIds.has(String(q.pipedrive_deal_id))).length,
+    matched_count: crmQuotations.filter(q => q.pipedrive_deal_id && pdMap.has(String(q.pipedrive_deal_id))).length,
   })
 }
