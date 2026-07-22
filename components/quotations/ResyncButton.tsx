@@ -42,8 +42,8 @@ export default function ResyncButton({ quotationId, pipelineId, fechaSalida, com
       } else {
         toast.error(json.error ?? 'Error al sincronizar')
       }
-    } catch {
-      toast.error('Error de conexión')
+    } catch (e) {
+      toast.error(`Error de conexión: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setLoading(false)
     }
