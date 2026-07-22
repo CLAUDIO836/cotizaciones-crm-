@@ -1,3 +1,5 @@
+export const maxDuration = 60
+
 import { fetchQuotation, crmPost, getToken } from '@/lib/api'
 import { htmlToPdf } from '@/lib/pdf/html-to-pdf'
 import { NextRequest, NextResponse } from 'next/server'

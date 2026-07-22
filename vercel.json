@@ -1,6 +1,1 @@
-{
-  "functions": {
-    "app/api/pipedrive/upload/route.ts": { "maxDuration": 60 },
-    "app/api/cotizaciones/[id]/pdf/route.ts": { "maxDuration": 60 }
-  }
-}
+{}
