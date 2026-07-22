@@ -109,6 +109,7 @@ interface Props {
     client_id: string
     client_name?: string
     client_rut?: string
+    contact_id?: string | null
     vendedor_id?: string
     company_id?: string
     pipeline_id?: string
@@ -201,7 +202,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   )
 
   const [companyId, setCompanyId] = useState(() => quotation?.company_id ?? (companies.length === 1 ? companies[0].id : ''))
-  const [contactId, setContactId] = useState<string | null>(null)
+  const [contactId, setContactId] = useState<string | null>(quotation?.contact_id ?? null)
 
   // Auto-calcular fecha de vencimiento según embudo
   useEffect(() => {
@@ -407,6 +408,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           defaultClientId={quotation?.client_id}
           defaultClientName={quotation?.client_name}
           defaultClientRut={quotation?.client_rut}
+          defaultContactId={quotation?.contact_id}
         />
 
         {/* Pipeline + Etapa */}

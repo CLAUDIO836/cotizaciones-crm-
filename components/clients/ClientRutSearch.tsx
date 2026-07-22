@@ -28,16 +28,17 @@ interface Props {
   defaultClientId?: string
   defaultClientName?: string
   defaultClientRut?: string
+  defaultContactId?: string | null
 }
 
-export default function ClientRutSearch({ onSelect, defaultClientId, defaultClientName, defaultClientRut }: Props) {
+export default function ClientRutSearch({ onSelect, defaultClientId, defaultClientName, defaultClientRut, defaultContactId }: Props) {
   const [rut, setRut] = useState(defaultClientRut ?? '')
   const [client, setClient] = useState<Client | null>(
     defaultClientId && defaultClientName
       ? { id: defaultClientId, name: defaultClientName, rut: defaultClientRut, contacts: [] }
       : null
   )
-  const [selectedContactId, setSelectedContactId] = useState<string | null>(null)
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(defaultContactId ?? null)
   const [notFound, setNotFound] = useState(false)
   const [searching, setSearching] = useState(false)
   const [showNewContact, setShowNewContact] = useState(false)

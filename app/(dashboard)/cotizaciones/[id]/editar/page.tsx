@@ -32,12 +32,21 @@ export default async function EditarCotizacionPage({ params }: { params: Promise
 
   if (!q) notFound()
 
+  // fecha_salida y fecha_retorno pueden tener hora separada; combinarlos para datetime-local
+  function combineDatetime(date?: string, time?: string) {
+    if (!date) return undefined
+    const d = date.slice(0, 10)
+    const t = time ? time.slice(0, 5) : '00:00'
+    return `${d}T${t}`
+  }
+
   const quotationData = {
     id: q.id,
     client_id: q.client_id ?? '',
     client_name: q.client_name ?? '',
     client_rut: q.client_rut ?? '',
-    vendedor_id: q.vendedor_id ?? '',
+    contact_id: q.contact_id ?? null,
+    vendedor_id: q.user_id ?? '',          // vendedor = user_id en la tabla
     company_id: q.company_id ?? '',
     pipeline_id: q.pipeline_id,
     etapa: q.etapa,
@@ -46,8 +55,8 @@ export default async function EditarCotizacionPage({ params }: { params: Promise
     expiry_date: q.expiry_date,
     desde: q.desde,
     hasta: q.hasta,
-    fecha_salida: q.fecha_salida,
-    fecha_destino: q.fecha_destino,
+    fecha_salida: combineDatetime(q.fecha_salida, q.hora_salida),
+    fecha_destino: combineDatetime(q.fecha_retorno, q.hora_retorno),
     descuento_pct: q.descuento_pct,
     observaciones: q.observaciones,
     notes: q.notes,
@@ -55,7 +64,7 @@ export default async function EditarCotizacionPage({ params }: { params: Promise
     tax_pct: q.tax_pct,
     items: (q.quotation_items ?? [])
       .sort((a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order)
-      .map((i: { codigo?: string; description: string; pasajeros?: number; quantity: number; unit_price: number }) => ({
+      .map((i: { codigo?: string; description: string; pasajeros?: number; quantity: number; unit_price: number; sort_order: number }) => ({
         codigo: i.codigo ?? '',
         description: i.description,
         pasajeros: i.pasajeros ?? 0,
