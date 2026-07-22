@@ -4,7 +4,7 @@ import puppeteer from 'puppeteer-core'
 // URL del Chromium remoto que usa @sparticuz/chromium-min en Vercel
 const CHROMIUM_URL = process.env.CHROMIUM_URL ?? ''
 
-export async function htmlToPdf(url: string): Promise<Buffer> {
+export async function htmlToPdf(url: string, cookieToken?: string): Promise<Buffer> {
   const executablePath = CHROMIUM_URL
     ? await chromium.executablePath(CHROMIUM_URL)
     : await chromium.executablePath()
@@ -18,6 +18,13 @@ export async function htmlToPdf(url: string): Promise<Buffer> {
 
   try {
     const page = await browser.newPage()
+
+    // Inyectar token como cookie para que el middleware y la ruta HTML puedan autenticar
+    if (cookieToken) {
+      const domain = new URL(url).hostname
+      await page.setCookie({ name: 'crm_token', value: cookieToken, domain, path: '/' })
+    }
+
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 })
 
     // Ocultar botones de impresión que no deben aparecer en el PDF

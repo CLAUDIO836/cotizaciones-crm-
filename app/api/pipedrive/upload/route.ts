@@ -72,9 +72,9 @@ async function handleUpload(req: NextRequest) {
 
   // Generar PDF desde el HTML de "Ver / Imprimir"
   const appUrl = process.env.APP_URL ?? 'https://crm.transccl.cl'
-  const crmToken = await getToken()
-  const htmlUrl = `${appUrl}/api/cotizaciones/${quotationId}/html?token=${crmToken}`
-  const pdfBuffer = await htmlToPdf(htmlUrl)
+  const crmToken = token  // ya obtenido al inicio del handler
+  const htmlUrl = `${appUrl}/api/cotizaciones/${quotationId}/html`
+  const pdfBuffer = await htmlToPdf(htmlUrl, crmToken ?? undefined)
 
   let dealId: number
 
