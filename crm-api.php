@@ -100,6 +100,39 @@ function requireAdmin(): array {
     return $user;
 }
 
+// ── RUT utilities (módulo 11 chileno) ─────────────────────────────────────────
+
+/** Extrae solo dígitos y K (mayúscula) — para comparación interna. */
+function rutKey(string $rut): string {
+    return strtoupper(preg_replace('/[^0-9kK]/i', '', $rut));
+}
+
+/** Formato canónico para guardar en BD: "76123456-K" (sin puntos, con guion). */
+function normalizeRut(string $rut): string {
+    $clean = rutKey($rut);
+    if (strlen($clean) < 2) return $rut;
+    return substr($clean, 0, -1) . '-' . substr($clean, -1);
+}
+
+/** Validación matemática módulo 11. Acepta cualquier formato. */
+function validateRut(string $rut): bool {
+    $clean = rutKey($rut);
+    if (strlen($clean) < 2) return false;
+    $body = substr($clean, 0, -1);
+    $dv   = substr($clean, -1);
+    if (!ctype_digit($body)) return false;
+    $num = intval($body);
+    if ($num < 1000000 || $num > 99999999) return false;
+    $sum = 0; $mul = 2;
+    for ($i = strlen($body) - 1; $i >= 0; $i--) {
+        $sum += intval($body[$i]) * $mul;
+        $mul = $mul === 7 ? 2 : $mul + 1;
+    }
+    $expected = 11 - ($sum % 11);
+    $calc = $expected === 11 ? '0' : ($expected === 10 ? 'K' : strval($expected));
+    return $dv === $calc;
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 $action = $_GET['action'] ?? '';
 
@@ -255,9 +288,16 @@ if ($action === 'clients_list') {
 
 if ($action === 'clients_search') {
     requireAuth();
-    $q = '%' . ($_GET['q'] ?? '') . '%';
-    $stmt = db()->prepare('SELECT * FROM clients WHERE name LIKE ? OR rut LIKE ? ORDER BY name LIMIT 20');
-    $stmt->execute([$q, $q]);
+    $raw  = $_GET['q'] ?? '';
+    $name_q = '%' . $raw . '%';
+    $rut_q  = '%' . rutKey($raw) . '%';
+    $stmt = db()->prepare(
+        "SELECT * FROM clients
+         WHERE name LIKE ?
+            OR REPLACE(REPLACE(REPLACE(rut,'.',''),'-',''),' ','') LIKE ?
+         ORDER BY name LIMIT 20"
+    );
+    $stmt->execute([$name_q, $rut_q]);
     ok($stmt->fetchAll());
 }
 
@@ -314,10 +354,41 @@ if ($action === 'contacts_update') {
 
 if ($action === 'clients_create') {
     requireAuth();
-    $b  = body();
+    $b   = body();
+    $rawRut = trim($b['rut'] ?? '');
+
+    // Validar y normalizar RUT si viene
+    $storedRut = null;
+    if ($rawRut !== '') {
+        if (!validateRut($rawRut)) {
+            http_response_code(422);
+            echo json_encode(['ok' => false, 'error' => 'rut_invalid', 'message' => 'El RUT ingresado no es válido (dígito verificador incorrecto).']);
+            exit;
+        }
+        $storedRut = normalizeRut($rawRut);
+
+        // Verificar duplicado
+        $dup = db()->prepare("SELECT id, name, rut FROM clients WHERE REPLACE(REPLACE(rut,'.',''),'-','') = ? LIMIT 1");
+        $dup->execute([rutKey($rawRut)]);
+        $existing = $dup->fetch(PDO::FETCH_ASSOC);
+        if ($existing) {
+            http_response_code(409);
+            echo json_encode([
+                'ok' => false, 'error' => 'rut_duplicate',
+                'message' => 'Este RUT ya está registrado.',
+                'existing_client' => [
+                    'id'   => $existing['id'],
+                    'name' => $existing['name'],
+                    'rut'  => normalizeRut($existing['rut'] ?? ''),
+                ],
+            ]);
+            exit;
+        }
+    }
+
     $id = uuid();
     db()->prepare('INSERT INTO clients (id,name,rut,email,phone,address) VALUES (?,?,?,?,?,?)')->execute([
-        $id, $b['name'] ?? '', $b['rut'] ?? null, $b['email'] ?? null, $b['phone'] ?? null, $b['address'] ?? null
+        $id, $b['name'] ?? '', $storedRut, $b['email'] ?? null, $b['phone'] ?? null, $b['address'] ?? null
     ]);
     $stmt = db()->prepare('SELECT * FROM clients WHERE id = ?');
     $stmt->execute([$id]);
@@ -329,8 +400,44 @@ if ($action === 'clients_update') {
     $b  = body();
     $id = $b['id'] ?? '';
     if (!$id) err('id requerido');
+
+    $rawRut = trim($b['rut'] ?? '');
+
+    $storedRut = null;
+    if ($rawRut !== '') {
+        if (!validateRut($rawRut)) {
+            http_response_code(422);
+            echo json_encode(['ok' => false, 'error' => 'rut_invalid', 'message' => 'El RUT ingresado no es válido (dígito verificador incorrecto).']);
+            exit;
+        }
+        $storedRut = normalizeRut($rawRut);
+
+        // Verificar duplicado excluyendo el mismo registro
+        $dup = db()->prepare(
+            "SELECT id, name, rut FROM clients
+             WHERE REPLACE(REPLACE(rut,'.',''),'-','') = ?
+               AND id <> ?
+             LIMIT 1"
+        );
+        $dup->execute([rutKey($rawRut), $id]);
+        $existing = $dup->fetch(PDO::FETCH_ASSOC);
+        if ($existing) {
+            http_response_code(409);
+            echo json_encode([
+                'ok' => false, 'error' => 'rut_duplicate',
+                'message' => 'Este RUT ya está registrado en otro cliente.',
+                'existing_client' => [
+                    'id'   => $existing['id'],
+                    'name' => $existing['name'],
+                    'rut'  => normalizeRut($existing['rut'] ?? ''),
+                ],
+            ]);
+            exit;
+        }
+    }
+
     db()->prepare('UPDATE clients SET name=?,rut=?,email=?,phone=?,address=? WHERE id=?')->execute([
-        $b['name'] ?? '', $b['rut'] ?? null, $b['email'] ?? null, $b['phone'] ?? null, $b['address'] ?? null, $id
+        $b['name'] ?? '', $storedRut, $b['email'] ?? null, $b['phone'] ?? null, $b['address'] ?? null, $id
     ]);
     ok();
 }

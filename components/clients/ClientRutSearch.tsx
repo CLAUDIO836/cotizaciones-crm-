@@ -4,7 +4,8 @@ import { useState, useRef, useEffect } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { Phone, Mail, Plus, User, Building2, Check } from 'lucide-react'
+import { Phone, Mail, Plus, User, Building2, Check, AlertTriangle } from 'lucide-react'
+import { autoFormatRut, validateRut } from '@/lib/rut'
 
 interface Contact {
   id: string
@@ -41,6 +42,7 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
   const [selectedContactId, setSelectedContactId] = useState<string | null>(defaultContactId ?? null)
   const [notFound, setNotFound] = useState(false)
   const [searching, setSearching] = useState(false)
+  const [rutError, setRutError] = useState('')
   const [showNewContact, setShowNewContact] = useState(false)
   const [showNewClient, setShowNewClient] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -77,16 +79,10 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
       .catch(() => {})
   }, [defaultClientId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function formatRut(value: string) {
-    const clean = value.replace(/[^0-9kK]/g, '')
-    if (clean.length <= 1) return clean
-    const body = clean.slice(0, -1)
-    const dv = clean.slice(-1)
-    return body.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + '-' + dv.toUpperCase()
-  }
-
   async function searchByRut(rawRut: string) {
     if (rawRut.length < 3) { setClient(null); setNotFound(false); return }
+    // No buscar si el RUT no es válido matemáticamente
+    if (!validateRut(rawRut)) return
     setSearching(true)
     const res = await fetch(`/api/clients?rut=${encodeURIComponent(rawRut.replace(/\./g, ''))}`)
     const json = await res.json()
@@ -114,8 +110,17 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
   }
 
   function handleRutChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const formatted = formatRut(e.target.value)
+    const formatted = autoFormatRut(e.target.value)
     setRut(formatted)
+    setRutError('')
+    setClient(null)
+    setNotFound(false)
+    if (!formatted.trim()) return
+    // Validar en tiempo real
+    if (formatted.length >= 3 && !validateRut(formatted)) {
+      setRutError('RUT inválido — revisa el dígito verificador')
+      return
+    }
     clearTimeout(timer.current)
     timer.current = setTimeout(() => searchByRut(formatted), 600)
   }
@@ -222,6 +227,12 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
             <span className="absolute right-3 top-2.5 text-xs text-gray-400">Buscando...</span>
           )}
         </div>
+        {rutError && (
+          <div className="flex items-center gap-1.5 text-xs text-red-600 mt-1">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            {rutError}
+          </div>
+        )}
       </div>
 
       {/* Cliente encontrado */}

@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { formatRut } from '@/lib/rut'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -14,12 +15,7 @@ export function formatCLP(amount: number): string {
 }
 
 export function formatRUT(rut: string): string {
-  const clean = rut.replace(/[^0-9kK]/g, '')
-  if (clean.length < 2) return clean
-  const body = clean.slice(0, -1)
-  const dv = clean.slice(-1).toUpperCase()
-  const formatted = body.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  return `${formatted}-${dv}`
+  return formatRut(rut)
 }
 
 export function formatDate(date: string | Date): string {
