@@ -361,6 +361,19 @@ if ($action === 'clients_merge') {
     ok(['merged' => true]);
 }
 
+if ($action === 'diagnostico_clientes') {
+    requireAuth();
+    $rows = db()->query("SELECT client_id, COUNT(*) as total FROM quotations WHERE is_deleted=0 GROUP BY client_id ORDER BY total DESC LIMIT 20")->fetchAll();
+    $clients = db()->query("SELECT id, name FROM clients")->fetchAll();
+    $map = [];
+    foreach ($clients as $c) $map[$c['id']] = $c['name'];
+    $result = [];
+    foreach ($rows as $r) {
+        $result[] = ['client_id' => $r['client_id'], 'client_name' => $map[$r['client_id']] ?? 'SIN CLIENTE', 'total_cotizaciones' => $r['total']];
+    }
+    ok($result);
+}
+
 if ($action === 'contacts_import_from_quotations') {
     // Para cada contacto en cotizaciones, asegura que su client_id coincide con el de la cotización.
     // También crea contactos faltantes si el nombre viene de Pipedrive (pd_person_id presente).
