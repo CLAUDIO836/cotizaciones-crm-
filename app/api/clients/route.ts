@@ -23,6 +23,15 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(r.data)
 }
 
+export async function DELETE(req: NextRequest) {
+  const token = await getToken()
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const id = req.nextUrl.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+  const r = await crmPost('clients_delete', { id }, {}, token)
+  return NextResponse.json(r)
+}
+
 export async function POST(req: NextRequest) {
   const token = await getToken()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

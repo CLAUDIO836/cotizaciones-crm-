@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
 } from '@/components/ui/dialog'
-import { Plus, Pencil, AlertTriangle } from 'lucide-react'
+import { Plus, Pencil, AlertTriangle, Trash2 } from 'lucide-react'
 import { formatRUT } from '@/lib/utils'
 
 function validateRUT(rut: string): boolean {
@@ -51,6 +51,8 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
   const [form, setForm] = useState({ name: '', rut: '', email: '', phone: '', address: '' })
   const [loading, setLoading] = useState(false)
   const [rutError, setRutError] = useState('')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   function openNew() {
     setEditing(null)
@@ -79,6 +81,21 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
       setRutError(`RUT ya registrado para "${duplicate.name}"`)
     } else {
       setRutError('')
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setDeletingId(id)
+    try {
+      const res = await fetch(`/api/clients?id=${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      setClients(prev => prev.filter(c => c.id !== id))
+      toast.success('Cliente eliminado')
+    } catch {
+      toast.error('No se pudo eliminar — puede tener cotizaciones asociadas')
+    } finally {
+      setDeletingId(null)
+      setConfirmDeleteId(null)
     }
   }
 
@@ -153,9 +170,26 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                   <td className="px-4 py-3 text-gray-600">{c.email ?? '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{c.phone ?? '—'}</td>
                   <td className="px-4 py-3">
-                    <button onClick={() => openEdit(c)} className="text-gray-400 hover:text-blue-600">
-                      <Pencil className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-2 justify-end">
+                      <button onClick={() => openEdit(c)} className="text-gray-400 hover:text-blue-600">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      {confirmDeleteId === c.id ? (
+                        <span className="flex items-center gap-1 text-xs">
+                          <button onClick={() => handleDelete(c.id)} disabled={deletingId === c.id}
+                            className="text-red-600 font-bold hover:underline">
+                            {deletingId === c.id ? '...' : 'Sí, eliminar'}
+                          </button>
+                          <button onClick={() => setConfirmDeleteId(null)} className="text-gray-400 hover:underline ml-1">
+                            No
+                          </button>
+                        </span>
+                      ) : (
+                        <button onClick={() => setConfirmDeleteId(c.id)} className="text-gray-300 hover:text-red-500">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))

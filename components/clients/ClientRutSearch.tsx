@@ -40,6 +40,12 @@ export default function ClientRutSearch({ onSelect }: Props) {
   // Nuevo cliente
   const [newClientName, setNewClientName] = useState('')
   const [newClientAddress, setNewClientAddress] = useState('')
+  const [newClientEmail, setNewClientEmail] = useState('')
+  const [newClientMobile, setNewClientMobile] = useState('')
+  const [newClientLandline, setNewClientLandline] = useState('')
+  const [newClientContactName, setNewClientContactName] = useState('')
+  const [newClientContactCargo, setNewClientContactCargo] = useState('')
+  const [savingClient, setSavingClient] = useState(false)
 
   // Nuevo contacto
   const [newContactName, setNewContactName] = useState('')
@@ -100,19 +106,53 @@ export default function ClientRutSearch({ onSelect }: Props) {
 
   async function saveNewClient() {
     if (!newClientName.trim()) return
+    if (!newClientMobile.trim() && !newClientLandline.trim()) { alert('Ingresa al menos un teléfono'); return }
+    if (!newClientEmail.trim()) { alert('El email es obligatorio'); return }
+    if (!newClientContactName.trim()) { alert('Ingresa el nombre del contacto'); return }
+    setSavingClient(true)
     const res = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newClientName.trim(), rut: rut || null, address: newClientAddress || null }),
+      body: JSON.stringify({
+        name: newClientName.trim(),
+        rut: rut || null,
+        address: newClientAddress || null,
+        email: newClientEmail || null,
+        telefono_celular: newClientMobile || null,
+        telefono_fijo: newClientLandline || null,
+        contacto: newClientContactName || null,
+      }),
     })
     const json = await res.json()
     const data = json.data ?? null
+    setSavingClient(false)
     if (!res.ok || !data) return
-    setClient({ ...data, contacts: [] })
+    // crear contacto automáticamente
+    const resC = await fetch('/api/clients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        _action: 'create_contact',
+        client_id: data.id,
+        name: newClientContactName.trim(),
+        cargo: newClientContactCargo || null,
+        email: newClientEmail || null,
+        phone_mobile: newClientMobile || null,
+        phone_landline: newClientLandline || null,
+      }),
+    })
+    const contactData = (await resC.json()).data ?? null
+    const contacts = contactData ? [contactData] : []
+    setClient({ ...data, contacts })
     setNotFound(false)
     setShowNewClient(false)
-    setShowNewContact(true)
-    onSelect(data.id, null)
+    if (contactData) {
+      setSelectedContactId(contactData.id)
+      onSelect(data.id, contactData.id)
+    } else {
+      setShowNewContact(true)
+      onSelect(data.id, null)
+    }
   }
 
   async function saveNewContact() {
@@ -250,16 +290,38 @@ export default function ClientRutSearch({ onSelect }: Props) {
       {/* RUT no encontrado — crear empresa */}
       {notFound && showNewClient && (
         <div className="border border-dashed rounded-xl p-4 space-y-3 bg-amber-50 border-amber-200">
-          <p className="text-sm font-medium text-amber-700">RUT no registrado — crear empresa nueva</p>
-          <div className="grid grid-cols-2 gap-2">
+          <p className="text-sm font-semibold text-amber-800">RUT no registrado — completar datos de la empresa</p>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-amber-700 uppercase tracking-wide">Datos empresa</p>
             <Input placeholder="Nombre empresa *" value={newClientName}
-              onChange={e => setNewClientName(e.target.value)} className="text-sm" />
+              onChange={e => setNewClientName(e.target.value)} className="text-sm bg-white" />
             <Input placeholder="Dirección" value={newClientAddress}
-              onChange={e => setNewClientAddress(e.target.value)} className="text-sm" />
+              onChange={e => setNewClientAddress(e.target.value)} className="text-sm bg-white" />
+            <Input placeholder="Email empresa *" type="email" value={newClientEmail}
+              onChange={e => setNewClientEmail(e.target.value)} className="text-sm bg-white" />
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Celular *" value={newClientMobile}
+                onChange={e => setNewClientMobile(e.target.value)} className="text-sm bg-white" />
+              <Input placeholder="Teléfono fijo" value={newClientLandline}
+                onChange={e => setNewClientLandline(e.target.value)} className="text-sm bg-white" />
+            </div>
           </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-amber-700 uppercase tracking-wide">Contacto principal *</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Nombre contacto *" value={newClientContactName}
+                onChange={e => setNewClientContactName(e.target.value)} className="text-sm bg-white" />
+              <Input placeholder="Cargo" value={newClientContactCargo}
+                onChange={e => setNewClientContactCargo(e.target.value)} className="text-sm bg-white" />
+            </div>
+          </div>
+
           <Button type="button" size="sm" style={{ background: '#1B8A4B' }} className="text-white"
-            onClick={saveNewClient} disabled={!newClientName.trim()}>
-            Crear empresa
+            onClick={saveNewClient}
+            disabled={savingClient || !newClientName.trim()}>
+            {savingClient ? 'Creando...' : 'Crear empresa y contacto'}
           </Button>
         </div>
       )}
