@@ -48,7 +48,9 @@ export default async function CotizacionDetailPage({
   const items = q.quotation_items ?? []
   const { label, color } = getStatusLabel(q.status)
   const etapa = ETAPA_LABELS[q.etapa ?? 'lead'] ?? ETAPA_LABELS.lead
-  const isTKS = ((q as unknown as { company?: string }).company ?? '').toUpperCase().includes('TKS')
+  const qAny = q as unknown as Record<string, unknown>
+  console.log('[TKS-DEBUG] company:', qAny.company, '| company_real_name:', qAny.company_real_name, '| pipeline_name:', qAny.pipeline_name, '| pipelines:', JSON.stringify(qAny.pipelines))
+  const isTKS = ((qAny.company ?? qAny.company_real_name ?? qAny.pipeline_name ?? '') as string).toUpperCase().includes('TKS')
   const activitiesWithName = activities
   const notesWithName = notes
 
