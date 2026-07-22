@@ -29,7 +29,8 @@ export async function GET() {
 
   // 2. Fetch all quotations from CRM
   const crmRes = await crmGet('quotations_summary', {}, token)
-  const crmQuotations: Array<{ number: string; pipedrive_deal_id: string; status: string; total: number }> = crmRes.data ?? []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const crmQuotations: Array<{ number: string; pipedrive_deal_id: string; status: string; total: number }> = (crmRes as any).data ?? []
 
   // 3. Build sets for comparison
   const pdIds = new Set(pdDeals.map(d => String(d.id)))
