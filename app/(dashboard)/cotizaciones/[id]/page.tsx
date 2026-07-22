@@ -8,7 +8,7 @@ import ActivitiesPanel from '@/components/quotations/ActivitiesPanel'
 import NotesPanel from '@/components/quotations/NotesPanel'
 import QuotationTabs from '@/components/quotations/QuotationTabs'
 import Link from 'next/link'
-import { ArrowLeft, FileDown, Edit, Globe } from 'lucide-react'
+import { ArrowLeft, Edit, Globe } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import DeleteButton from '@/components/quotations/DeleteButton'
 import ApprovalLetterButton from '@/components/quotations/ApprovalLetterButton'
@@ -86,12 +86,6 @@ export default async function CotizacionDetailPage({
             <Button variant="outline" size="sm">
               <Globe className="w-4 h-4 mr-1.5" />
               Ver / Imprimir
-            </Button>
-          </a>
-          <a href={`/api/cotizaciones/${id}/pdf`} target="_blank">
-            <Button variant="outline" size="sm">
-              <FileDown className="w-4 h-4 mr-1.5" />
-              PDF
             </Button>
           </a>
           {!isReadOnly && (

@@ -10,7 +10,7 @@ export async function htmlToPdf(url: string, cookieToken?: string): Promise<Buff
   if (cookieToken) fetchHeaders['Cookie'] = `crm_token=${cookieToken}`
 
   const htmlRes = await fetch(url, { headers: fetchHeaders, cache: 'no-store' })
-  if (!htmlRes.ok) throw new Error(`HTML fetch failed: ${htmlRes.status} ${htmlRes.statusText}`)
+  if (!htmlRes.ok) throw new Error(`HTML fetch ${htmlRes.status} → ${url.split('?')[0]}`)
   let html = await htmlRes.text()
 
   // Convertir rutas relativas a absolutas para que Puppeteer cargue las imágenes
