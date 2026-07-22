@@ -5,6 +5,18 @@ import puppeteer from 'puppeteer-core'
 const CHROMIUM_URL = process.env.CHROMIUM_URL ?? ''
 
 export async function htmlToPdf(url: string, cookieToken?: string): Promise<Buffer> {
+  // Fetch HTML server-side (evita problemas de auth en Puppeteer serverless)
+  const fetchHeaders: Record<string, string> = {}
+  if (cookieToken) fetchHeaders['Cookie'] = `crm_token=${cookieToken}`
+
+  const htmlRes = await fetch(url, { headers: fetchHeaders, cache: 'no-store' })
+  if (!htmlRes.ok) throw new Error(`HTML fetch failed: ${htmlRes.status} ${htmlRes.statusText}`)
+  let html = await htmlRes.text()
+
+  // Convertir rutas relativas a absolutas para que Puppeteer cargue las imágenes
+  const origin = new URL(url).origin
+  html = html.replace(/(src|href)="\/((?!\/)[^"]+)"/g, `$1="${origin}/$2"`)
+
   const executablePath = CHROMIUM_URL
     ? await chromium.executablePath(CHROMIUM_URL)
     : await chromium.executablePath()
@@ -19,15 +31,10 @@ export async function htmlToPdf(url: string, cookieToken?: string): Promise<Buff
   try {
     const page = await browser.newPage()
 
-    // Inyectar token como cookie para que el middleware y la ruta HTML puedan autenticar
-    if (cookieToken) {
-      const domain = new URL(url).hostname
-      await page.setCookie({ name: 'crm_token', value: cookieToken, domain, path: '/' })
-    }
+    // Cargar el HTML directamente (sin navegación HTTP que requiera auth)
+    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 })
 
-    await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 })
-
-    // Ocultar botones de impresión que no deben aparecer en el PDF
+    // Ocultar botones de impresión
     await page.evaluate(() => {
       const btns = document.querySelectorAll('.no-print, [data-no-print]')
       btns.forEach(el => ((el as HTMLElement).style.display = 'none'))
