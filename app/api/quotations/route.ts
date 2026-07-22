@@ -1,6 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { crmPost, getToken } from '@/lib/api'
 
+const PD_TOKEN = process.env.PIPEDRIVE_API_TOKEN ?? ''
+const PD_BASE  = 'https://api.pipedrive.com/v1'
+
+async function syncToPipedrive(action: string, dealId: string, status?: string) {
+  if (!PD_TOKEN || !dealId) return
+  try {
+    if (action === 'delete') {
+      await fetch(`${PD_BASE}/deals/${dealId}?api_token=${PD_TOKEN}`, { method: 'DELETE' })
+    } else if (action === 'set_status' && (status === 'won' || status === 'lost')) {
+      await fetch(`${PD_BASE}/deals/${dealId}?api_token=${PD_TOKEN}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+    } else if (action === 'set_status' && status === 'open') {
+      await fetch(`${PD_BASE}/deals/${dealId}?api_token=${PD_TOKEN}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'open' }),
+      })
+    }
+  } catch (e) {
+    console.error('[PD Sync] error:', e)
+  }
+}
+
 export async function POST(req: NextRequest) {
   const token = await getToken()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -23,6 +49,10 @@ export async function POST(req: NextRequest) {
     : 'quotations_create'
   try {
     const r = await crmPost(action, body, {}, token)
+    // Sync to Pipedrive after successful CRM update
+    if (body.pipedrive_deal_id) {
+      await syncToPipedrive(body._action, body.pipedrive_deal_id, body.status)
+    }
     return NextResponse.json(r.data)
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)

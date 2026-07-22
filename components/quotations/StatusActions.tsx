@@ -13,13 +13,14 @@ interface Props {
   userId: string
   total: number
   status: string
+  pipedriveDealId?: string
   inline?: boolean
 }
 
 const ERP_IMPORT_URL = process.env.NEXT_PUBLIC_ERP_IMPORT_URL ?? 'https://erp.transccl.cl/api/crm-import'
 const ERP_TOKEN      = process.env.NEXT_PUBLIC_CRM_SYNC_TOKEN ?? ''
 
-export default function StatusActions({ quotationId, quotationNumber, clientId, userId, total, status, inline }: Props) {
+export default function StatusActions({ quotationId, quotationNumber, clientId, userId, total, status, pipedriveDealId, inline }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
 
@@ -27,7 +28,7 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
     const res = await fetch('/api/quotations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ _action: 'set_status', id: quotationId, status: newStatus }),
+      body: JSON.stringify({ _action: 'set_status', id: quotationId, status: newStatus, pipedrive_deal_id: pipedriveDealId }),
     })
     if (!res.ok) throw new Error('Error')
   }

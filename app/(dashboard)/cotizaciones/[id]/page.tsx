@@ -92,7 +92,7 @@ export default async function CotizacionDetailPage({
             </Button>
           </a>
           {!isReadOnly && (
-            <DeleteButton quotationId={id} />
+            <DeleteButton quotationId={id} pipedriveDealId={q.pipedrive_deal_id} />
           )}
           {!isReadOnly && (
             <Link href={`/cotizaciones/${id}/editar`}>
@@ -103,7 +103,7 @@ export default async function CotizacionDetailPage({
             </Link>
           )}
           {!isReadOnly && (
-            <StatusActions quotationId={q.id} quotationNumber={q.number} clientId={q.client_id ?? ''} userId={q.user_id ?? ''} total={q.total} status={q.status} inline />
+            <StatusActions quotationId={q.id} quotationNumber={q.number} clientId={q.client_id ?? ''} userId={q.user_id ?? ''} total={q.total} status={q.status} pipedriveDealId={q.pipedrive_deal_id} inline />
           )}
         </div>
       </div>

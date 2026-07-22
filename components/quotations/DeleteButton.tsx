@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-export default function DeleteButton({ quotationId }: { quotationId: string }) {
+export default function DeleteButton({ quotationId, pipedriveDealId }: { quotationId: string; pipedriveDealId?: string }) {
   const [confirming, setConfirming] = useState(false)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -16,7 +16,7 @@ export default function DeleteButton({ quotationId }: { quotationId: string }) {
     const res = await fetch('/api/quotations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ _action: 'delete', id: quotationId }),
+      body: JSON.stringify({ _action: 'delete', id: quotationId, pipedrive_deal_id: pipedriveDealId }),
     })
     if (!res.ok) { toast.error('Error al eliminar'); setLoading(false); return }
     toast.success('Cotización eliminada')
