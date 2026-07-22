@@ -1,11 +1,41 @@
 import chromium from '@sparticuz/chromium-min'
 import puppeteer from 'puppeteer-core'
 
-// URL del Chromium remoto que usa @sparticuz/chromium-min en Vercel
 const CHROMIUM_URL = process.env.CHROMIUM_URL ?? ''
 
+async function inlineImages(html: string, origin: string): Promise<string> {
+  // Extraer todas las URLs de imágenes absolutas
+  const imgRegex = /src="(https?:\/\/[^"]+\.(png|jpg|jpeg|gif|svg|webp))"/gi
+  const matches = [...html.matchAll(imgRegex)]
+  const urls = [...new Set(matches.map(m => m[1]))]
+
+  const replacements = await Promise.all(
+    urls.map(async (imgUrl) => {
+      try {
+        const res = await fetch(imgUrl, { cache: 'no-store' })
+        if (!res.ok) return { url: imgUrl, data: null }
+        const buf = await res.arrayBuffer()
+        const mime = res.headers.get('content-type') ?? 'image/png'
+        const b64 = Buffer.from(buf).toString('base64')
+        return { url: imgUrl, data: `data:${mime};base64,${b64}` }
+      } catch {
+        return { url: imgUrl, data: null }
+      }
+    })
+  )
+
+  for (const { url: imgUrl, data } of replacements) {
+    if (data) {
+      html = html.replaceAll(`src="${imgUrl}"`, `src="${data}"`)
+    }
+  }
+
+  // También convertir rutas relativas a absolutas por si queda alguna
+  html = html.replace(/(src|href)="\/((?!\/)[^"]+)"/g, `$1="${origin}/$2"`)
+  return html
+}
+
 export async function htmlToPdf(url: string, cookieToken?: string): Promise<Buffer> {
-  // Fetch HTML server-side (evita problemas de auth en Puppeteer serverless)
   const fetchHeaders: Record<string, string> = {}
   if (cookieToken) fetchHeaders['Cookie'] = `crm_token=${cookieToken}`
 
@@ -13,9 +43,12 @@ export async function htmlToPdf(url: string, cookieToken?: string): Promise<Buff
   if (!htmlRes.ok) throw new Error(`HTML fetch ${htmlRes.status} → ${url.split('?')[0]}`)
   let html = await htmlRes.text()
 
-  // Reemplazar rutas relativas con absolutas para que las imágenes carguen desde data: URL
+  // Primero reemplazar rutas relativas con absolutas
   const origin = new URL(url).origin
   html = html.replace(/(src|href)="\/((?!\/)[^"]+)"/g, `$1="${origin}/$2"`)
+
+  // Incrustar imágenes como base64 para que funcionen en data: URL sin requests externos
+  html = await inlineImages(html, origin)
 
   const executablePath = CHROMIUM_URL
     ? await chromium.executablePath(CHROMIUM_URL)
@@ -31,15 +64,11 @@ export async function htmlToPdf(url: string, cookieToken?: string): Promise<Buff
   try {
     const page = await browser.newPage()
 
-    // data: URL + domcontentloaded evita errores de 404 en recursos (imágenes)
     await page.goto(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`, {
       waitUntil: 'domcontentloaded',
       timeout: 30000,
     })
-    // Esperar a que las imágenes absolutas carguen
-    await new Promise(r => setTimeout(r, 6000))
 
-    // Ocultar botones de impresión
     await page.evaluate(() => {
       const btns = document.querySelectorAll('.no-print, [data-no-print]')
       btns.forEach(el => ((el as HTMLElement).style.display = 'none'))
