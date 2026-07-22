@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { crmPost, getToken } from '@/lib/api'
+import { crmPost, fetchQuotation, getToken } from '@/lib/api'
 
 export async function POST(req: NextRequest) {
   const token = await getToken()
@@ -9,12 +9,15 @@ export async function POST(req: NextRequest) {
   if (!quotation_id) return NextResponse.json({ error: 'quotation_id required' }, { status: 400 })
 
   try {
+    const q = await fetchQuotation(quotation_id, undefined)
+    const qAny = (q ?? {}) as Record<string, unknown>
+    const isTKS = ((qAny.company ?? qAny.company_real_name ?? qAny.pipeline_name ?? '') as string).toUpperCase().includes('TKS')
+
     const r = await crmPost('approvals_create', { quotation_id }, {}, token)
     const d = r.data as Record<string, unknown>
     if (d?.already_exists) {
       return NextResponse.json({ error: 'already_exists', token: d.token }, { status: 409 })
     }
-    const isTKS = String(d.company_name ?? '').includes('TKS')
     const baseUrl = isTKS
       ? 'https://aprobaciones.transportestks.com'
       : (process.env.NEXT_PUBLIC_BASE_URL ?? req.nextUrl.origin)
