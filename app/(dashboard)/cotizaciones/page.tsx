@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { getSession, fetchQuotationsSummary, fetchPipelines, fetchCompanies, fetchProfiles } from '@/lib/api'
+import AutoRefresh from '@/components/AutoRefresh'
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -59,6 +60,7 @@ export default async function CotizacionesPage({
 
   return (
     <div className="flex flex-col h-full">
+      <AutoRefresh intervalMs={5000} />
       {/* Top bar — estilo PipeDrive */}
       <div className="bg-white border-b px-6 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">

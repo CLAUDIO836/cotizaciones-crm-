@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { getSession, fetchQuotation, fetchActivities, fetchNotes, fetchPipelines } from '@/lib/api'
+import AutoRefresh from '@/components/AutoRefresh'
 import { notFound } from 'next/navigation'
 import { formatCLP, formatDate, getStatusLabel } from '@/lib/utils'
 import StatusActions from '@/components/quotations/StatusActions'
@@ -51,6 +52,7 @@ export default async function CotizacionDetailPage({
 
   return (
     <div className="flex flex-col h-full">
+      <AutoRefresh intervalMs={5000} />
       {/* Header */}
       <div className="bg-white border-b px-6 py-4 flex items-center gap-4">
         <Link href="/cotizaciones" className="text-gray-400 hover:text-gray-600 transition-colors">
