@@ -4,6 +4,13 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 
+interface CrmQuotation {
+  number: string
+  pipedrive_deal_id: string
+  status: string
+  total: number
+}
+
 export default function HerramientasAdmin() {
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<string | null>(null)
@@ -11,6 +18,8 @@ export default function HerramientasAdmin() {
   const [restoreResult, setRestoreResult] = useState<string | null>(null)
   const [recovering, setRecovering] = useState(false)
   const [recoverResult, setRecoverResult] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [crmQuotations, setCrmQuotations] = useState<CrmQuotation[] | null>(null)
 
   async function runImport() {
     setImporting(true)
@@ -46,6 +55,23 @@ export default function HerramientasAdmin() {
       toast.error(String(e))
     } finally {
       setRestoring(false)
+    }
+  }
+
+  async function runSyncCheck() {
+    setSyncing(true)
+    setCrmQuotations(null)
+    try {
+      const res = await fetch('/api/admin/import-contacts?action=quotations_summary')
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error ?? 'Error')
+      const quotes: CrmQuotation[] = d.data ?? []
+      setCrmQuotations(quotes)
+      toast.success(`${quotes.length} cotizaciones en CRM`)
+    } catch (e: unknown) {
+      toast.error(String(e))
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -99,6 +125,51 @@ export default function HerramientasAdmin() {
         <Button onClick={runRecover} disabled={recovering} className="bg-blue-600 hover:bg-blue-700 text-white">
           {recovering ? 'Recuperando desde Pipedrive...' : 'Recuperar desde Pipedrive'}
         </Button>
+      </div>
+
+      <div className="bg-white rounded-xl border p-6 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-gray-800">Cotizaciones en CRM</h2>
+          <Button onClick={runSyncCheck} disabled={syncing} variant="outline" size="sm">
+            {syncing ? 'Cargando...' : 'Ver cotizaciones'}
+          </Button>
+        </div>
+        {crmQuotations !== null && (
+          crmQuotations.length === 0
+            ? <p className="text-sm text-gray-500">No hay cotizaciones en el CRM.</p>
+            : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-gray-500">
+                      <th className="pb-2 pr-4">N°</th>
+                      <th className="pb-2 pr-4">Deal PD</th>
+                      <th className="pb-2 pr-4">Estado</th>
+                      <th className="pb-2 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {crmQuotations.map((q) => (
+                      <tr key={q.number} className="border-b last:border-0">
+                        <td className="py-2 pr-4 font-mono font-medium">{q.number}</td>
+                        <td className="py-2 pr-4 text-gray-500">{q.pipedrive_deal_id || '—'}</td>
+                        <td className="py-2 pr-4">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                            q.status === 'won' ? 'bg-green-100 text-green-700' :
+                            q.status === 'lost' ? 'bg-red-100 text-red-700' :
+                            'bg-yellow-100 text-yellow-700'
+                          }`}>{q.status}</span>
+                        </td>
+                        <td className="py-2 text-right font-mono">
+                          {q.total ? `$${q.total.toLocaleString('es-CL')}` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+        )}
       </div>
 
       <div className="bg-red-50 border border-red-200 rounded-xl p-6 space-y-3">
