@@ -59,8 +59,9 @@ const CCL_POLICIES = [
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const baseUrl = new URL(req.url).origin
   const { id } = await params
+  const urlToken = new URL(req.url).searchParams.get('token') ?? undefined
 
-  const q = await fetchQuotation(id)
+  const q = await fetchQuotation(id, urlToken)
   if (!q) return new Response('Not found', { status: 404 })
 
   const isTKS = q.company === 'Transportes TKS'

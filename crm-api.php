@@ -396,11 +396,17 @@ if ($action === 'quotations_get') {
                c.email   AS client_email, c.phone   AS client_phone,
                c.address AS client_address,
                p.name    AS profile_name, p.email   AS profile_email,
-               pl.name   AS pipeline_name
+               pl.name   AS pipeline_name,
+               ct.name          AS contact_name,
+               ct.cargo         AS contact_cargo,
+               ct.email         AS contact_email,
+               ct.phone_mobile  AS contact_phone_mobile,
+               ct.phone_landline AS contact_phone_landline
         FROM quotations q
         LEFT JOIN clients   c  ON c.id  = q.client_id
         LEFT JOIN profiles  p  ON p.id  = q.user_id
         LEFT JOIN pipelines pl ON pl.id = q.pipeline_id
+        LEFT JOIN contacts  ct ON ct.id = q.contact_id
         WHERE q.id = ?
     ');
     $stmt->execute([$id]);
@@ -951,6 +957,22 @@ if ($action === 'admin_fix_quotation') {
                 )->fetchAll();
                 ok(['block' => 'verify', 'columns' => $cols, 'indexes' => $idxs, 'distribution' => $dist, 'sample_recent_5' => $sample]);
             }
+            if ($num === 'migrate_fix_pipeline_fk') {
+                // Eliminar FK constraint quotations_ibfk_3 (pipeline_id → pipelines.id)
+                // que impide guardar IDs de Pipedrive que no existen en tabla local 'pipelines'
+                $pdo = db();
+                $fks = $pdo->query(
+                    "SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+                     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quotations'
+                       AND CONSTRAINT_TYPE = 'FOREIGN KEY' AND CONSTRAINT_NAME = 'quotations_ibfk_3'"
+                )->fetchAll();
+                if (empty($fks)) {
+                    ok(['msg' => 'FK quotations_ibfk_3 no existe, nada que hacer']);
+                }
+                $pdo->exec("ALTER TABLE `quotations` DROP FOREIGN KEY `quotations_ibfk_3`");
+                ok(['msg' => 'FK quotations_ibfk_3 eliminado. pipeline_id ahora acepta cualquier entero.']);
+            }
+
             // ── FIN MIGRACIÓN FASE 2 ─────────────────────────────────────────
             // NOTA: Una vez ejecutados y confirmados los bloques de fase2,
             // eliminar los bloques 'migrate_phase2_*' de este archivo o

@@ -1,8 +1,8 @@
-export const maxDuration = 60
-
 import { fetchQuotation, crmPost, getToken } from '@/lib/api'
 import { htmlToPdf } from '@/lib/pdf/html-to-pdf'
 import { NextRequest, NextResponse } from 'next/server'
+
+export const maxDuration = 60
 
 const PIPEDRIVE_TOKEN = process.env.PIPEDRIVE_API_TOKEN ?? ''
 const PIPEDRIVE_API   = 'https://api.pipedrive.com/v1'
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   const token = await getToken()
   if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
-  const { quotationId, pipelineId, fechaSalida, companyName, desde, hasta } = await req.json()
+  const { quotationId, pipelineId, fechaSalida, companyName, desde, hasta, resync } = await req.json()
   if (!quotationId) {
     return NextResponse.json({ error: 'Falta quotationId' }, { status: 400 })
   }
@@ -45,8 +45,12 @@ export async function POST(req: NextRequest) {
     'Transportes TKS': 'TKS',
     'TrackingCCL': 'TCCL',
   }
-  const prefix = COMPANY_PREFIX[companyName ?? ''] ?? 'CCL'
-  const ruta = (desde && hasta) ? ` - ${desde.split(',')[0].trim()} / ${hasta.split(',')[0].trim()}` : ''
+  const effectiveCompanyName = companyName ?? (q.companies as { name?: string })?.name ?? ''
+  const prefix = COMPANY_PREFIX[effectiveCompanyName] ?? 'CCL'
+  const effectiveDesde = desde ?? (q as { desde?: string }).desde ?? ''
+  const effectiveHasta = hasta ?? (q as { hasta?: string }).hasta ?? ''
+  const ruta = (effectiveDesde && effectiveHasta) ? ` - ${effectiveDesde.split(',')[0].trim()} / ${effectiveHasta.split(',')[0].trim()}` : ''
+  const effectiveFechaSalida = fechaSalida ?? (q as { fecha_salida?: string }).fecha_salida ?? ''
 
   // Formatear fecha salida para el título: "2026-08-15" → "15/08/2026"
   function formatFecha(f?: string) {
@@ -55,50 +59,61 @@ export async function POST(req: NextRequest) {
     if (d.length !== 3) return ''
     return `${d[2]}/${d[1]}/${d[0]}`
   }
-  const fechaLabel = fechaSalida ? ` - ${formatFecha(fechaSalida)}` : ''
+  const fechaLabel = effectiveFechaSalida ? ` - ${formatFecha(effectiveFechaSalida)}` : ''
 
-  // Crear negocio en Pipedrive (título provisional, se actualiza con dealId después)
-  const dealBody: Record<string, unknown> = {
-    title: `${prefix}-TEMP${fechaLabel}${ruta}`,
-    value: q.total ?? 0,
-    currency: 'CLP',
-  }
-  if (pipedriveUserId) dealBody.user_id = pipedriveUserId
-  if (pipelineId) dealBody.pipeline_id = Number(pipelineId)
-  if (fechaSalida) dealBody.expected_close_date = fechaSalida.slice(0, 10)
-
-  const dealRes = await fetch(`${PIPEDRIVE_API}/deals?api_token=${PIPEDRIVE_TOKEN}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(dealBody),
-  })
-  const dealJson = await dealRes.json()
-  const dealId = dealJson.data?.id
-
-  if (!dealId) {
-    return NextResponse.json({ error: 'Error creando negocio en Pipedrive', detail: dealJson }, { status: 500 })
-  }
-
-  // Título final con número real de Pipedrive
-  const finalTitle = `${prefix}-${dealId}${fechaLabel} - ${(q.clients as { name?: string })?.name ?? q.client_name ?? 'Sin cliente'}${ruta}`
-
-  // Guardar deal ID y actualizar número de cotización con el ID del negocio
-  await crmPost('quotations_update', { id: quotationId, pipedrive_deal_id: String(dealId), number: String(dealId) }, {}, token)
-
-  // Actualizar título del negocio en Pipedrive con número real
-  await fetch(`${PIPEDRIVE_API}/deals/${dealId}?api_token=${PIPEDRIVE_TOKEN}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: finalTitle }),
-  })
-
-  // Generar PDF desde el HTML de "Ver / Imprimir" (idéntico al que ve el usuario)
+  // Generar PDF desde el HTML de "Ver / Imprimir"
   const appUrl = process.env.APP_URL ?? 'https://crm.transccl.cl'
   const crmToken = await getToken()
   const htmlUrl = `${appUrl}/api/cotizaciones/${quotationId}/html?token=${crmToken}`
   const pdfBuffer = await htmlToPdf(htmlUrl)
 
-  // Subir archivo a Pipedrive
+  let dealId: number
+
+  // RE-SYNC: el negocio ya existe en Pipedrive → actualizar título y reemplazar PDF
+  if (resync && q.pipedrive_deal_id) {
+    dealId = Number(q.pipedrive_deal_id)
+    const finalTitle = `${prefix}-${dealId}${fechaLabel} - ${(q.clients as { name?: string })?.name ?? 'Sin cliente'}${ruta}`
+
+    await fetch(`${PIPEDRIVE_API}/deals/${dealId}?api_token=${PIPEDRIVE_TOKEN}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: finalTitle, value: q.total ?? 0 }),
+    })
+  } else {
+    // NUEVO NEGOCIO
+    const dealBody: Record<string, unknown> = {
+      title: `${prefix}-TEMP${fechaLabel}${ruta}`,
+      value: q.total ?? 0,
+      currency: 'CLP',
+    }
+    if (pipedriveUserId) dealBody.user_id = pipedriveUserId
+    if (pipelineId) dealBody.pipeline_id = Number(pipelineId)
+    if (effectiveFechaSalida) dealBody.expected_close_date = effectiveFechaSalida.slice(0, 10)
+
+    const dealRes = await fetch(`${PIPEDRIVE_API}/deals?api_token=${PIPEDRIVE_TOKEN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dealBody),
+    })
+    const dealJson = await dealRes.json()
+    dealId = dealJson.data?.id
+
+    if (!dealId) {
+      return NextResponse.json({ error: 'Error creando negocio en Pipedrive', detail: dealJson }, { status: 500 })
+    }
+
+    const finalTitle = `${prefix}-${dealId}${fechaLabel} - ${(q.clients as { name?: string })?.name ?? 'Sin cliente'}${ruta}`
+
+    await crmPost('quotations_update', { id: quotationId, pipedrive_deal_id: String(dealId), number: String(dealId) }, {}, token)
+
+    await fetch(`${PIPEDRIVE_API}/deals/${dealId}?api_token=${PIPEDRIVE_TOKEN}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: finalTitle }),
+    })
+  }
+
+  // Subir PDF a Pipedrive
   const formData = new FormData()
   formData.append('file', new Blob([new Uint8Array(pdfBuffer)], { type: 'application/pdf' }), `${prefix}-${dealId}.pdf`)
   formData.append('deal_id', String(dealId))

@@ -100,8 +100,8 @@ export async function fetchQuotationsSummary(filters: Record<string, string> = {
   return (r.data as QuotationSummary[]) ?? []
 }
 
-export async function fetchQuotation(id: string) {
-  const r = await crmGet('quotations_get', { id })
+export async function fetchQuotation(id: string, token?: string) {
+  const r = await crmGet('quotations_get', { id }, token)
   return r.data as Quotation | null
 }
 

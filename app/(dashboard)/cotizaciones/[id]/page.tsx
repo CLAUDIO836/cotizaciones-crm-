@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import DeleteButton from '@/components/quotations/DeleteButton'
 import ApprovalLetterButton from '@/components/quotations/ApprovalLetterButton'
 import QuotationApprovalButton from '@/components/quotations/QuotationApprovalButton'
+import ResyncButton from '@/components/quotations/ResyncButton'
 
 const ETAPA_LABELS: Record<string, { label: string; color: string; bg: string }> = {
   lead:        { label: 'Lead',        color: '#6366f1', bg: '#eef2ff' },
@@ -93,6 +94,12 @@ export default async function CotizacionDetailPage({
               PDF
             </Button>
           </a>
+          {!isReadOnly && (
+            <ResyncButton
+              quotationId={id}
+              pipedriveDealId={q.pipedrive_deal_id}
+            />
+          )}
           {!isReadOnly && (
             <DeleteButton quotationId={id} pipedriveDealId={q.pipedrive_deal_id} />
           )}
