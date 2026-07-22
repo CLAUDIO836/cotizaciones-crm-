@@ -1,20 +1,36 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
-// Refresca los Server Components en segundo plano sin recargar la página.
-// Pipedrive actualiza MySQL en ~1-2s; con intervalo de 5s el usuario ve el cambio
-// en menos de 7 segundos sin tocar nada.
+// Polling liviano: cada 5 segundos consulta el hash de estado del listado.
+// Si el servidor devuelve un hash distinto al anterior, recarga la página.
+// Así el usuario nunca tiene que recargar manualmente.
 export default function AutoRefresh({ intervalMs = 5000 }: { intervalMs?: number }) {
-  const router = useRouter()
+  const lastHash = useRef<string | null>(null)
 
   useEffect(() => {
-    const id = setInterval(() => {
-      router.refresh()
-    }, intervalMs)
+    const check = async () => {
+      try {
+        const res = await fetch('/api/quotations/hash', { cache: 'no-store' })
+        if (!res.ok) return
+        const { hash } = await res.json()
+        if (lastHash.current === null) {
+          lastHash.current = hash
+          return
+        }
+        if (hash !== lastHash.current) {
+          lastHash.current = hash
+          window.location.reload()
+        }
+      } catch {
+        // silencioso — no interrumpir al usuario si falla la red
+      }
+    }
+
+    const id = setInterval(check, intervalMs)
+    check() // ejecutar inmediatamente al montar
     return () => clearInterval(id)
-  }, [router, intervalMs])
+  }, [intervalMs])
 
   return null
 }
