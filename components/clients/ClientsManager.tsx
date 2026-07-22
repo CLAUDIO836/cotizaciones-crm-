@@ -9,8 +9,30 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
 } from '@/components/ui/dialog'
-import { Plus, Pencil } from 'lucide-react'
+import { Plus, Pencil, AlertTriangle } from 'lucide-react'
 import { formatRUT } from '@/lib/utils'
+
+function validateRUT(rut: string): boolean {
+  const clean = rut.replace(/[.\-\s]/g, '').toUpperCase()
+  if (clean.length < 2) return false
+  const body = clean.slice(0, -1)
+  const dv = clean.slice(-1)
+  if (!/^\d+$/.test(body)) return false
+  const num = parseInt(body, 10)
+  if (num < 1000000 || num > 99999999) return false
+  let sum = 0, mul = 2
+  for (let i = body.length - 1; i >= 0; i--) {
+    sum += parseInt(body[i]) * mul
+    mul = mul === 7 ? 2 : mul + 1
+  }
+  const expected = 11 - (sum % 11)
+  const calc = expected === 11 ? '0' : expected === 10 ? 'K' : String(expected)
+  return dv === calc
+}
+
+function normalizeRUT(rut: string): string {
+  return rut.replace(/[.\-\s]/g, '').toUpperCase()
+}
 
 interface Client {
   id: string
@@ -28,21 +50,42 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
   const [editing, setEditing] = useState<Client | null>(null)
   const [form, setForm] = useState({ name: '', rut: '', email: '', phone: '', address: '' })
   const [loading, setLoading] = useState(false)
+  const [rutError, setRutError] = useState('')
 
   function openNew() {
     setEditing(null)
     setForm({ name: '', rut: '', email: '', phone: '', address: '' })
+    setRutError('')
     setOpen(true)
   }
 
   function openEdit(c: Client) {
     setEditing(c)
     setForm({ name: c.name, rut: c.rut ?? '', email: c.email ?? '', phone: c.phone ?? '', address: c.address ?? '' })
+    setRutError('')
     setOpen(true)
+  }
+
+  function handleRutChange(value: string) {
+    setForm(f => ({ ...f, rut: value }))
+    if (!value.trim()) { setRutError(''); return }
+    if (!validateRUT(value)) {
+      setRutError('RUT inválido')
+      return
+    }
+    const normalized = normalizeRUT(value)
+    const duplicate = clients.find(c => c.rut && normalizeRUT(c.rut) === normalized && c.id !== editing?.id)
+    if (duplicate) {
+      setRutError(`RUT ya registrado para "${duplicate.name}"`)
+    } else {
+      setRutError('')
+    }
   }
 
   async function handleSave() {
     if (!form.name.trim()) { toast.error('El nombre es requerido'); return }
+    if (rutError) { toast.error(rutError); return }
+    if (form.rut.trim() && !validateRUT(form.rut)) { toast.error('El RUT ingresado no es válido'); return }
     setLoading(true)
     try {
       const payload = {
@@ -133,7 +176,18 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
             </div>
             <div className="space-y-1.5">
               <Label>RUT</Label>
-              <Input value={form.rut} onChange={e => setForm(f => ({ ...f, rut: e.target.value }))} placeholder="76.000.000-0" />
+              <Input
+                value={form.rut}
+                onChange={e => handleRutChange(e.target.value)}
+                placeholder="76.000.000-0"
+                className={rutError ? 'border-red-400 focus-visible:ring-red-300' : ''}
+              />
+              {rutError && (
+                <div className="flex items-center gap-1.5 text-xs text-red-600">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  {rutError}
+                </div>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Email</Label>
