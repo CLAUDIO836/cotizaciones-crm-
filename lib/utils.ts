@@ -23,11 +23,14 @@ export function formatRUT(rut: string): string {
 }
 
 export function formatDate(date: string | Date): string {
+  if (!date) return '—'
+  const d = new Date(date)
+  if (isNaN(d.getTime()) || d.getFullYear() < 1980) return '—'
   return new Intl.DateTimeFormat('es-CL', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
-  }).format(new Date(date))
+  }).format(d)
 }
 
 export function getStatusLabel(status: string) {

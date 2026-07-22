@@ -49,7 +49,7 @@ export default function KanbanView({ quotations, isAdmin }: Props) {
     <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: '60vh' }}>
       {COLUMNS.map(col => {
         const cards = quotations.filter(q => q.status === col.key)
-        const total = cards.reduce((s, q) => s + (q.total ?? 0), 0)
+        const total = cards.reduce((s, q) => s + (Number(q.total) || 0), 0)
 
         return (
           <div key={col.key} className="flex-shrink-0 w-72 flex flex-col gap-3">

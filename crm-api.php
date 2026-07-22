@@ -443,7 +443,7 @@ if ($action === 'quotations_create') {
         $id, $number,
         $b['status'] ?? 'open', $b['etapa'] ?? 'lead',
         $b['company'] ?? 'Transccl', $b['company_id'] ?? null,
-        $b['issue_date'] ?? date('Y-m-d'), $b['expiry_date'] ?? null,
+        ($b['issue_date'] ?: date('Y-m-d')), $b['expiry_date'] ?? null,
         $b['subtotal'] ?? 0, $b['tax_pct'] ?? 19, $b['total'] ?? 0,
         $b['notes'] ?? null, $b['terms'] ?? null,
         $b['desde'] ?? null, $b['hasta'] ?? null,
