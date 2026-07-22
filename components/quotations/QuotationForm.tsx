@@ -391,9 +391,11 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           {pipelines.length > 0 && (
             <div className="space-y-1.5">
               <Label>Embudo</Label>
-              <Select value={pipelineId} onValueChange={v => setPipelineId(v ?? '')}>
+              <Select value={pipelineId || null} onValueChange={v => setPipelineId(v ?? '')}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar embudo..." />
+                  <SelectValue placeholder="Seleccionar embudo...">
+                    {pipelines.find(p => p.id === pipelineId)?.name}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {pipelines.map(p => (
