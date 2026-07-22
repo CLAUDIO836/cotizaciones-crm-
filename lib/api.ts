@@ -222,6 +222,7 @@ export interface Quotation {
   pipelines?: { name: string }
   client_name?: string
   client_rut?: string
+  vendedor_id?: string
   profile_name?: string
   profile_email?: string
   pipeline_name?: string

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -25,11 +25,18 @@ interface Client {
 
 interface Props {
   onSelect: (clientId: string, contactId: string | null) => void
+  defaultClientId?: string
+  defaultClientName?: string
+  defaultClientRut?: string
 }
 
-export default function ClientRutSearch({ onSelect }: Props) {
-  const [rut, setRut] = useState('')
-  const [client, setClient] = useState<Client | null>(null)
+export default function ClientRutSearch({ onSelect, defaultClientId, defaultClientName, defaultClientRut }: Props) {
+  const [rut, setRut] = useState(defaultClientRut ?? '')
+  const [client, setClient] = useState<Client | null>(
+    defaultClientId && defaultClientName
+      ? { id: defaultClientId, name: defaultClientName, rut: defaultClientRut, contacts: [] }
+      : null
+  )
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [searching, setSearching] = useState(false)
@@ -54,6 +61,20 @@ export default function ClientRutSearch({ onSelect }: Props) {
   const [newContactLandline, setNewContactLandline] = useState('')
   const [newContactCargo, setNewContactCargo] = useState('')
   const [savingContact, setSavingContact] = useState(false)
+
+  // Si viene con cliente predeterminado, cargar sus contactos
+  useEffect(() => {
+    if (!defaultClientId) return
+    fetch(`/api/clients?id=${defaultClientId}`)
+      .then(r => r.json())
+      .then(json => {
+        const data = json.data ?? null
+        if (data) {
+          setClient({ ...data, contacts: data.contacts ?? [] })
+        }
+      })
+      .catch(() => {})
+  }, [defaultClientId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function formatRut(value: string) {
     const clean = value.replace(/[^0-9kK]/g, '')

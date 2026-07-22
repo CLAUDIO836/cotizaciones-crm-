@@ -107,6 +107,10 @@ interface Props {
   quotation?: {
     id: string
     client_id: string
+    client_name?: string
+    client_rut?: string
+    vendedor_id?: string
+    company_id?: string
     pipeline_id?: string
     etapa?: string
     vehicle_type?: string
@@ -196,7 +200,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     quotation?.items?.length ? quotation.items : [{ ...DEFAULT_ITEM }]
   )
 
-  const [companyId, setCompanyId] = useState(() => companies.length === 1 ? companies[0].id : '')
+  const [companyId, setCompanyId] = useState(() => quotation?.company_id ?? (companies.length === 1 ? companies[0].id : ''))
   const [contactId, setContactId] = useState<string | null>(null)
 
   // Auto-calcular fecha de vencimiento según embudo
@@ -209,8 +213,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     setExpiryDate(d.toISOString().split('T')[0])
   }, [pipelineId, issueDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Vendedor — vacío para mostrar placeholder y forzar selección
-  const [selectedUserId, setSelectedUserId] = useState('')
+  const [selectedUserId, setSelectedUserId] = useState(quotation?.vendedor_id ?? '')
 
   // Nuevo cliente inline
   const [newClientName, setNewClientName] = useState('')
@@ -252,6 +255,8 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     return json.data?.id ?? null
   }
 
+  const isEditing = !!quotation?.id
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!clientId) { toast.error('Busca y selecciona un cliente por RUT'); return }
@@ -263,12 +268,11 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     try {
       const finalClientId = clientId
 
-      // El número temporal lo genera el backend a partir del UUID interno.
-      // El número comercial definitivo será el deal_id de Pipedrive.
       const qRes = await fetch('/api/quotations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          ...(isEditing ? { id: quotation.id } : {}),
           client_id: finalClientId,
           user_id: selectedUserId,
           pipeline_id: pipelineId || null,
@@ -307,30 +311,43 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
       }
       const qData = await qRes.json()
 
-      // Crear negocio en Pipedrive y subir PDF
-      try {
-        const uploadRes = await fetch('/api/pipedrive/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            quotationId: qData.id,
-            pipelineId: pipelineId || null,
-            fechaSalida: fechaSalida || null,
-            companyName: companies.find(c => c.id === companyId)?.name ?? null,
-            desde: desde || null,
-            hasta: hasta || null,
-          }),
-        })
-        const uploadJson = await uploadRes.json()
-        if (uploadJson.dealId) {
-          toast.success(`Cotización creada — Negocio #${uploadJson.dealId} creado en Pipedrive`)
-        } else {
-          toast.success('Cotización creada')
+      if (isEditing) {
+        // Al editar: re-sincronizar PDF con el deal existente en Pipedrive
+        try {
+          await fetch('/api/pipedrive/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ quotationId: quotation.id, resync: true }),
+          })
+        } catch { /* resync is best-effort */ }
+        toast.success('Cotización actualizada')
+        router.push(`/cotizaciones/${quotation.id}`)
+      } else {
+        // Al crear: crear deal en Pipedrive y subir PDF
+        try {
+          const uploadRes = await fetch('/api/pipedrive/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              quotationId: qData.id,
+              pipelineId: pipelineId || null,
+              fechaSalida: fechaSalida || null,
+              companyName: companies.find(c => c.id === companyId)?.name ?? null,
+              desde: desde || null,
+              hasta: hasta || null,
+            }),
+          })
+          const uploadJson = await uploadRes.json()
+          if (uploadJson.dealId) {
+            toast.success(`Cotización creada — Negocio #${uploadJson.dealId} creado en Pipedrive`)
+          } else {
+            toast.success('Cotización creada')
+          }
+        } catch {
+          toast.success('Cotización creada (sin conexión a Pipedrive)')
         }
-      } catch {
-        toast.success('Cotización creada (sin conexión a Pipedrive)')
+        router.push(`/cotizaciones/${qData.id}`)
       }
-      router.push(`/cotizaciones/${qData.id}`)
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Error al guardar la cotización')
     } finally {
@@ -387,6 +404,9 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
         <h2 className="font-semibold text-gray-900 text-sm uppercase tracking-wide text-gray-500">Cliente</h2>
         <ClientRutSearch
           onSelect={(cId, ctId) => { setClientId(cId); setContactId(ctId) }}
+          defaultClientId={quotation?.client_id}
+          defaultClientName={quotation?.client_name}
+          defaultClientRut={quotation?.client_rut}
         />
 
         {/* Pipeline + Etapa */}

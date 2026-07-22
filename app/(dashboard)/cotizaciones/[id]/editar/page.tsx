@@ -35,6 +35,10 @@ export default async function EditarCotizacionPage({ params }: { params: Promise
   const quotationData = {
     id: q.id,
     client_id: q.client_id ?? '',
+    client_name: q.client_name ?? '',
+    client_rut: q.client_rut ?? '',
+    vendedor_id: q.vendedor_id ?? '',
+    company_id: q.company_id ?? '',
     pipeline_id: q.pipeline_id,
     etapa: q.etapa,
     vehicle_type: q.vehicle_type,
