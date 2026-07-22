@@ -1,6 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+
+function getBrandBadge(company: string | undefined) {
+  const c = (company ?? '').toUpperCase()
+  if (c.includes('TKS'))      return { label: 'TKS',      bg: '#fef2f2', color: '#C8102E' }
+  if (c.includes('TRACKING')) return { label: 'TRACKING',  bg: '#eff6ff', color: '#1d4ed8' }
+  return                               { label: 'CCL',      bg: '#f0fdf4', color: '#1B8A4B' }
+}
 import Link from 'next/link'
 import { formatCLP, formatDate } from '@/lib/utils'
 import { Calendar, User } from 'lucide-react'
@@ -62,7 +69,7 @@ function QuotationCard({
   isDragging?: boolean
 }) {
   const st = STATUS_STYLE[q.status] ?? STATUS_STYLE.open
-  const isTKS = (q.company ?? '').toUpperCase().includes('TKS')
+  const brand = getBrandBadge(q.company)
   return (
     <div
       className="bg-white rounded-xl border p-4 cursor-grab active:cursor-grabbing"
@@ -77,9 +84,9 @@ function QuotationCard({
         <div className="flex items-center gap-1.5">
           <span
             className="text-xs font-bold px-2 py-0.5 rounded-full"
-            style={{ background: isTKS ? '#fef2f2' : '#f0fdf4', color: isTKS ? '#C8102E' : '#1B8A4B' }}
+            style={{ background: brand.bg, color: brand.color }}
           >
-            {isTKS ? 'TKS' : 'CCL'}
+            {brand.label}
           </span>
           <span
             className="text-xs font-medium px-2 py-0.5 rounded-full"

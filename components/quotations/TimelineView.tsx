@@ -1,6 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+
+function getBrandBadge(company: string | undefined) {
+  const c = (company ?? '').toUpperCase()
+  if (c.includes('TKS'))      return { label: 'TKS',      bg: '#fef2f2', color: '#C8102E' }
+  if (c.includes('TRACKING')) return { label: 'TRACKING',  bg: '#eff6ff', color: '#1d4ed8' }
+  return                               { label: 'CCL',      bg: '#f0fdf4', color: '#1B8A4B' }
+}
 import Link from 'next/link'
 import { formatCLP, getStatusLabel } from '@/lib/utils'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
@@ -157,7 +164,7 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                   const vColor = q.vendedor_name ? getVendedorColor(q.vendedor_name) : 'var(--pipe-orange)'
                   const progressPct = q.status === 'won' ? 100 : q.status === 'lost' ? 0 : 50
 
-                  const isTKS = (q.company ?? '').toUpperCase().includes('TKS')
+                  const brand = getBrandBadge(q.company)
                   return (
                     <Link key={q.id} href={`/cotizaciones/${q.id}`}>
                       <div className="bg-white rounded-xl border hover:shadow-md transition-all cursor-pointer overflow-hidden group"
@@ -170,8 +177,8 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                                 {statusLabel}
                               </span>
                               <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold"
-                                style={{ background: isTKS ? '#fef2f2' : '#f0fdf4', color: isTKS ? '#C8102E' : '#1B8A4B' }}>
-                                {isTKS ? 'TKS' : 'CCL'}
+                                style={{ background: brand.bg, color: brand.color }}>
+                                {brand.label}
                               </span>
                             </div>
                             <span className="text-xs font-mono text-gray-400 truncate">{q.number}</span>

@@ -49,7 +49,14 @@ export default async function CotizacionDetailPage({
   const { label, color } = getStatusLabel(q.status)
   const etapa = ETAPA_LABELS[q.etapa ?? 'lead'] ?? ETAPA_LABELS.lead
   const qAny = q as unknown as Record<string, unknown>
-  const isTKS = ((qAny.company ?? qAny.company_real_name ?? qAny.pipeline_name ?? '') as string).toUpperCase().includes('TKS')
+  const companyStr = ((qAny.company ?? qAny.company_real_name ?? qAny.pipeline_name ?? '') as string).toUpperCase()
+  const isTKS      = companyStr.includes('TKS')
+  const isTracking = companyStr.includes('TRACKING')
+  const brandBadge = isTKS
+    ? { label: 'TKS',      bg: '#fef2f2', color: '#C8102E' }
+    : isTracking
+      ? { label: 'TRACKING', bg: '#eff6ff', color: '#1d4ed8' }
+      : { label: 'CCL',      bg: '#f0fdf4', color: '#1B8A4B' }
   const activitiesWithName = activities
   const notesWithName = notes
 
@@ -78,9 +85,9 @@ export default async function CotizacionDetailPage({
             </span>
             <span
               className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold"
-              style={{ background: isTKS ? '#fef2f2' : '#f0fdf4', color: isTKS ? '#C8102E' : '#1B8A4B' }}
+              style={{ background: brandBadge.bg, color: brandBadge.color }}
             >
-              {isTKS ? 'TKS' : 'CCL'}
+              {brandBadge.label}
             </span>
           </div>
           <p className="text-sm text-gray-400 mt-0.5">
