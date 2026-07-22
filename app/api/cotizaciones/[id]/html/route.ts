@@ -227,7 +227,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         <div class="ruta-item"><label>Desde</label><span>${q.desde ?? '—'}</span></div>
         <div class="ruta-item"><label>Hasta</label><span>${q.hasta ?? '—'}</span></div>
         <div class="ruta-item"><label>Fecha salida</label><span>${fmtDateTime(q.fecha_salida)}</span></div>
-        <div class="ruta-item"><label>Fecha retorno</label><span>${fmtDateTime(q.fecha_destino)}</span></div>
+        <div class="ruta-item"><label>Fecha retorno</label><span>${fmtDateTime((q as {fecha_retorno?: string}).fecha_retorno)}</span></div>
       </div>
     </div>
     <div class="box">
