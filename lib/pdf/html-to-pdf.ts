@@ -32,7 +32,7 @@ export async function htmlToPdf(url: string, cookieToken?: string): Promise<Buff
     const page = await browser.newPage()
 
     // Cargar el HTML directamente (sin navegación HTTP que requiera auth)
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 })
+    await page.setContent(html, { waitUntil: 'load', timeout: 30000 })
 
     // Ocultar botones de impresión
     await page.evaluate(() => {
