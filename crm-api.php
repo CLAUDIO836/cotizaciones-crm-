@@ -1332,6 +1332,14 @@ if ($action === 'approvals_get') {
     ok($row);
 }
 
+if ($action === 'approvals_delete') {
+    requireAuth();
+    $b = body();
+    $token = $b['token'] ?? $_GET['token'] ?? '';
+    db()->prepare('DELETE FROM quotation_approvals WHERE token = ?')->execute([$token]);
+    ok();
+}
+
 if ($action === 'approvals_respond') {
     $b = body();
     $token = $b['token'] ?? $_GET['token'] ?? '';
