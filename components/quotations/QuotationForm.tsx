@@ -196,7 +196,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     quotation?.items?.length ? quotation.items : [{ ...DEFAULT_ITEM }]
   )
 
-  const [companyId, setCompanyId] = useState('')
+  const [companyId, setCompanyId] = useState(() => companies.length === 1 ? companies[0].id : '')
   const [contactId, setContactId] = useState<string | null>(null)
 
   // Auto-calcular fecha de vencimiento según embudo
@@ -344,7 +344,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           {companies.length > 0 && (
             <div className="space-y-1.5">
               <Label className="text-blue-700 font-semibold">Empresa *</Label>
-              <Select value={companyId} onValueChange={v => setCompanyId(v ?? '')}>
+              <Select value={companyId || null} onValueChange={v => setCompanyId(v ?? '')}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar empresa..." />
                 </SelectTrigger>
@@ -359,7 +359,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           {sellers.length > 0 && (
             <div className="space-y-1.5">
               <Label className="text-blue-700 font-semibold">Vendedor *</Label>
-              <Select value={selectedUserId} onValueChange={v => setSelectedUserId(v ?? userId)}>
+              <Select value={selectedUserId || null} onValueChange={v => setSelectedUserId(v ?? userId)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar vendedor..." />
                 </SelectTrigger>
