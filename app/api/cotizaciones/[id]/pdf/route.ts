@@ -18,7 +18,7 @@ export async function GET(
 
   const items = (q.quotation_items ?? []).sort((a: {sort_order: number}, b: {sort_order: number}) => a.sort_order - b.sort_order)
 
-  const isTKS = (q.company ?? (q as Record<string,unknown>).company_real_name ?? "").toString().includes("TKS")
+  const isTKS = (q.company ?? (q as unknown as Record<string,unknown>).company_real_name ?? "").toString().includes("TKS")
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pdfElement: any
