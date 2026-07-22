@@ -48,8 +48,8 @@ export default async function CotizacionDetailPage({
   const items = q.quotation_items ?? []
   const { label, color } = getStatusLabel(q.status)
   const etapa = ETAPA_LABELS[q.etapa ?? 'lead'] ?? ETAPA_LABELS.lead
-  const companyName = (q as unknown as { companies?: { name?: string } }).companies?.name ?? (q as unknown as { company?: string }).company ?? ''
-  const isTKS = companyName.includes('TKS')
+  const pipelineName = (q as unknown as { pipelines?: { name?: string } }).pipelines?.name ?? q.pipeline_name ?? ''
+  const isTKS = pipelineName.toUpperCase().includes('TKS')
   const activitiesWithName = activities
   const notesWithName = notes
 
