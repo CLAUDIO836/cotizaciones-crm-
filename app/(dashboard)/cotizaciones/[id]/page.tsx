@@ -48,6 +48,8 @@ export default async function CotizacionDetailPage({
   const items = q.quotation_items ?? []
   const { label, color } = getStatusLabel(q.status)
   const etapa = ETAPA_LABELS[q.etapa ?? 'lead'] ?? ETAPA_LABELS.lead
+  const companyName = (q as unknown as { companies?: { name?: string } }).companies?.name ?? (q as unknown as { company?: string }).company ?? ''
+  const isTKS = companyName.includes('TKS')
   const activitiesWithName = activities
   const notesWithName = notes
 
@@ -73,6 +75,12 @@ export default async function CotizacionDetailPage({
               style={{ background: etapa.bg, color: etapa.color }}
             >
               {etapa.label}
+            </span>
+            <span
+              className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold"
+              style={{ background: isTKS ? '#fef2f2' : '#f0fdf4', color: isTKS ? '#C8102E' : '#1B8A4B' }}
+            >
+              {isTKS ? 'TKS' : 'CCL'}
             </span>
           </div>
           <p className="text-sm text-gray-400 mt-0.5">
