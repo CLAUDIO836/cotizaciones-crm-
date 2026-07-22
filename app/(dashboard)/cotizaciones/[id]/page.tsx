@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 import { getSession, fetchQuotation, fetchActivities, fetchNotes, fetchPipelines } from '@/lib/api'
 import { notFound } from 'next/navigation'
 import { formatCLP, formatDate, getStatusLabel } from '@/lib/utils'

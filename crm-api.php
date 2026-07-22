@@ -479,31 +479,49 @@ if ($action === 'quotations_update') {
     $id = $b['id'] ?? '';
     if (!$id) err('id requerido');
 
-    $stmt = db()->prepare('
-        UPDATE quotations SET
-          number=COALESCE(?,number), status=?, etapa=?, company=?, company_id=?, issue_date=?, expiry_date=?,
-          subtotal=?, tax_pct=?, total=?, notes=?, terms=?,
-          desde=?, hasta=?, desde_lat=?, desde_lng=?, hasta_lat=?, hasta_lng=?,
-          distancia_km=?, fecha_salida=?, hora_salida=?, fecha_retorno=?, hora_retorno=?,
-          client_id=?, pipeline_id=?, pipedrive_deal_id=?
-        WHERE id=?
-    ');
-    $stmt->execute([
-        $b['number'] ?? null,
-        $b['status'] ?? 'open', $b['etapa'] ?? 'lead',
-        $b['company'] ?? 'Transccl', $b['company_id'] ?? null,
-        $b['issue_date'] ?? null, $b['expiry_date'] ?? null,
-        $b['subtotal'] ?? 0, $b['tax_pct'] ?? 19, $b['total'] ?? 0,
-        $b['notes'] ?? null, $b['terms'] ?? null,
-        $b['desde'] ?? null, $b['hasta'] ?? null,
-        $b['desde_lat'] ?? null, $b['desde_lng'] ?? null,
-        $b['hasta_lat'] ?? null, $b['hasta_lng'] ?? null,
-        $b['distancia_km'] ?? null,
-        $b['fecha_salida'] ?? null, $b['hora_salida'] ?? null,
-        $b['fecha_retorno'] ?? null, $b['hora_retorno'] ?? null,
-        $b['client_id'] ?? null, null,
-        $b['pipedrive_deal_id'] ?? null, $id,
-    ]);
+    // Solo actualizar campos que vienen explícitamente en el body
+    $fields = [
+        'number'           => 'COALESCE(?,number)',
+        'status'           => '?',
+        'etapa'            => '?',
+        'company'          => '?',
+        'company_id'       => '?',
+        'issue_date'       => '?',
+        'expiry_date'      => '?',
+        'subtotal'         => '?',
+        'tax_pct'          => '?',
+        'total'            => '?',
+        'notes'            => '?',
+        'terms'            => '?',
+        'desde'            => '?',
+        'hasta'            => '?',
+        'desde_lat'        => '?',
+        'desde_lng'        => '?',
+        'hasta_lat'        => '?',
+        'hasta_lng'        => '?',
+        'distancia_km'     => '?',
+        'fecha_salida'     => '?',
+        'hora_salida'      => '?',
+        'fecha_retorno'    => '?',
+        'hora_retorno'     => '?',
+        'client_id'        => '?',
+        'pipedrive_deal_id'=> '?',
+        'vehicle_type'     => '?',
+        'observaciones'    => '?',
+        'contact_id'       => '?',
+        'descuento_pct'    => '?',
+    ];
+    $setClauses = [];
+    $params = [];
+    foreach ($fields as $col => $expr) {
+        if (array_key_exists($col, $b)) {
+            $setClauses[] = "$col = " . ($col === 'number' ? 'COALESCE(?,number)' : '?');
+            $params[] = $b[$col];
+        }
+    }
+    if (empty($setClauses)) { ok(); }
+    $params[] = $id;
+    db()->prepare('UPDATE quotations SET ' . implode(', ', $setClauses) . ' WHERE id = ?')->execute($params);
 
     // Reemplazar items
     if (isset($b['items']) && is_array($b['items'])) {
