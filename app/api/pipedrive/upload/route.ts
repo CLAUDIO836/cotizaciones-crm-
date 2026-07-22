@@ -119,6 +119,59 @@ async function handleUpload(req: NextRequest) {
     })
   }
 
+  // ── PASO 1b: Vincular organización y persona al deal ────────────────────────
+  const contactName = (q as { contact_name?: string }).contact_name ?? ''
+  const contactEmail = (q as { contact_email?: string }).contact_email ?? ''
+  const contactPhone = (q as { contact_phone_mobile?: string }).contact_phone_mobile ?? ''
+
+  async function pdSearch(endpoint: string, term: string): Promise<number | null> {
+    const r = await fetch(`${PIPEDRIVE_API}/${endpoint}/search?term=${encodeURIComponent(term)}&limit=1&api_token=${PIPEDRIVE_TOKEN}`)
+    const j = await r.json()
+    return j.data?.items?.[0]?.item?.id ?? null
+  }
+
+  async function pdCreate(endpoint: string, body: Record<string, unknown>): Promise<number | null> {
+    const r = await fetch(`${PIPEDRIVE_API}/${endpoint}?api_token=${PIPEDRIVE_TOKEN}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+    const j = await r.json()
+    return j.data?.id ?? null
+  }
+
+  try {
+    // Organización
+    let orgId: number | null = null
+    if (clientName) {
+      orgId = await pdSearch('organizations', clientName)
+      if (!orgId) orgId = await pdCreate('organizations', { name: clientName })
+    }
+
+    // Persona (contacto)
+    let personId: number | null = null
+    if (contactName) {
+      personId = await pdSearch('persons', contactEmail || contactName)
+      if (!personId) {
+        const personBody: Record<string, unknown> = { name: contactName }
+        if (orgId) personBody.org_id = orgId
+        if (contactEmail) personBody.email = [{ value: contactEmail, primary: true }]
+        if (contactPhone) personBody.phone = [{ value: contactPhone, primary: true }]
+        personId = await pdCreate('persons', personBody)
+      }
+    }
+
+    // Vincular al deal
+    if (orgId || personId) {
+      const linkBody: Record<string, unknown> = {}
+      if (orgId) linkBody.org_id = orgId
+      if (personId) linkBody.person_id = personId
+      await fetch(`${PIPEDRIVE_API}/deals/${dealId}?api_token=${PIPEDRIVE_TOKEN}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(linkBody),
+      })
+    }
+  } catch (orgErr) {
+    console.warn('[upload] org/person link failed:', orgErr)
+  }
+
   // ── PASO 2: Generar PDF ──────────────────────────────────────────────────────
   const appUrl = process.env.APP_URL ?? 'https://crm.transccl.cl'
   const htmlUrl = `${appUrl}/api/cotizaciones/${quotationId}/html?token=${encodeURIComponent(token)}`
