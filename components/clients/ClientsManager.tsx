@@ -135,8 +135,25 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
     }
   }
 
+  // Detectar RUTs duplicados
+  const rutCount: Record<string, number> = {}
+  for (const c of clients) {
+    if (c.rut) {
+      const k = normalizeRUT(c.rut)
+      rutCount[k] = (rutCount[k] ?? 0) + 1
+    }
+  }
+  const duplicateRuts = new Set(Object.entries(rutCount).filter(([, n]) => n > 1).map(([k]) => k))
+  const duplicateCount = duplicateRuts.size
+
   return (
     <div className="space-y-4">
+      {duplicateCount > 0 && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span><strong>{duplicateCount} RUT{duplicateCount > 1 ? 's' : ''} duplicado{duplicateCount > 1 ? 's' : ''}</strong> — elimina los registros duplicados para mantener la base de datos limpia.</span>
+        </div>
+      )}
       <div className="flex justify-end">
         <Button onClick={openNew}>
           <Plus className="w-4 h-4 mr-2" />
@@ -163,9 +180,17 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                 </td>
               </tr>
             ) : (
-              clients.map(c => (
-                <tr key={c.id} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
+              clients.map(c => {
+                const isDup = c.rut ? duplicateRuts.has(normalizeRUT(c.rut)) : false
+                return (
+                <tr key={c.id} className="border-b last:border-0 hover:bg-gray-50"
+                  style={isDup ? { background: '#fff1f2' } : undefined}>
+                  <td className="px-4 py-3 font-medium text-gray-900">
+                    <div className="flex items-center gap-2">
+                      {c.name}
+                      {isDup && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-600"><AlertTriangle className="w-3 h-3" />Duplicado</span>}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-gray-600">{c.rut ? formatRUT(c.rut) : '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{c.email ?? '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{c.phone ?? '—'}</td>
@@ -192,7 +217,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                     </div>
                   </td>
                 </tr>
-              ))
+                )})
             )}
           </tbody>
         </table>
