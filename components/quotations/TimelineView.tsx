@@ -16,6 +16,7 @@ interface Quotation {
   vendedor_name?: string
   pipeline_name?: string
   pipeline_color?: string
+  company?: string
   year?: number
   month?: number
 }
@@ -156,6 +157,7 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                   const vColor = q.vendedor_name ? getVendedorColor(q.vendedor_name) : 'var(--pipe-orange)'
                   const progressPct = q.status === 'won' ? 100 : q.status === 'lost' ? 0 : 50
 
+                  const isTKS = (q.company ?? '').toUpperCase().includes('TKS')
                   return (
                     <Link key={q.id} href={`/cotizaciones/${q.id}`}>
                       <div className="bg-white rounded-xl border hover:shadow-md transition-all cursor-pointer overflow-hidden group"
@@ -163,9 +165,15 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                         <div className="p-4">
                           {/* Top row */}
                           <div className="flex items-start justify-between gap-2 mb-2">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${color}`}>
-                              {statusLabel}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>
+                                {statusLabel}
+                              </span>
+                              <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold"
+                                style={{ background: isTKS ? '#fef2f2' : '#f0fdf4', color: isTKS ? '#C8102E' : '#1B8A4B' }}>
+                                {isTKS ? 'TKS' : 'CCL'}
+                              </span>
+                            </div>
                             <span className="text-xs font-mono text-gray-400 truncate">{q.number}</span>
                           </div>
 
