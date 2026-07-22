@@ -8,6 +8,15 @@ const PIPEDRIVE_TOKEN = process.env.PIPEDRIVE_API_TOKEN ?? ''
 const PIPEDRIVE_API   = 'https://api.pipedrive.com/v1'
 
 export async function POST(req: NextRequest) {
+  try {
+    return await handleUpload(req)
+  } catch (err) {
+    console.error('[pipedrive/upload] unhandled error:', err)
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
+async function handleUpload(req: NextRequest) {
   if (!PIPEDRIVE_TOKEN) {
     return NextResponse.json({ error: 'PIPEDRIVE_API_TOKEN no configurado' }, { status: 500 })
   }
