@@ -36,9 +36,13 @@ export default function ResyncButton({ quotationId, pipelineId, fechaSalida, com
       })
       const json = await res.json()
       if (json.ok) {
-        toast.success(pipedriveDealId
-          ? `PDF re-subido al negocio #${json.dealId ?? pipedriveDealId} en Pipedrive`
-          : `Negocio #${json.dealId} creado en Pipedrive`)
+        if (json.pdfWarning) {
+          toast.warning(`Negocio #${json.dealId} en Pipedrive — PDF pendiente: ${json.pdfWarning}`)
+        } else {
+          toast.success(pipedriveDealId
+            ? `PDF re-subido al negocio #${json.dealId ?? pipedriveDealId} en Pipedrive`
+            : `Negocio #${json.dealId} creado en Pipedrive`)
+        }
       } else {
         toast.error(json.error ?? 'Error al sincronizar')
       }
