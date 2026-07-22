@@ -346,7 +346,9 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
               <Label className="text-blue-700 font-semibold">Empresa *</Label>
               <Select value={companyId || null} onValueChange={v => setCompanyId(v ?? '')}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar empresa..." />
+                  <SelectValue placeholder="Seleccionar empresa...">
+                    {companies.find(c => c.id === companyId)?.name}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {companies.map(c => (
@@ -361,7 +363,9 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
               <Label className="text-blue-700 font-semibold">Vendedor *</Label>
               <Select value={selectedUserId || null} onValueChange={v => setSelectedUserId(v ?? userId)}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar vendedor..." />
+                  <SelectValue placeholder="Seleccionar vendedor...">
+                    {sellers.find(s => s.id === selectedUserId)?.name}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {sellers.map(s => (
