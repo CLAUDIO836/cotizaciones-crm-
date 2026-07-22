@@ -53,6 +53,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
   const [rutError, setRutError] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [mergingId, setMergingId] = useState<string | null>(null)
 
   function openNew() {
     setEditing(null)
@@ -81,6 +82,25 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
       setRutError(`RUT ya registrado para "${duplicate.name}"`)
     } else {
       setRutError('')
+    }
+  }
+
+  async function handleMergeDelete(deleteId: string, keepId: string) {
+    setMergingId(deleteId)
+    try {
+      const res = await fetch('/api/clients/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keep_id: keepId, delete_id: deleteId }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error ?? 'Error')
+      setClients(prev => prev.filter(c => c.id !== deleteId))
+      toast.success(`Duplicado eliminado — ${d.reassigned} cotización(es) reasignadas`)
+    } catch (e: unknown) {
+      toast.error(String(e))
+    } finally {
+      setMergingId(null)
     }
   }
 
@@ -199,7 +219,20 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                       <button onClick={() => openEdit(c)} className="text-gray-400 hover:text-blue-600">
                         <Pencil className="w-4 h-4" />
                       </button>
-                      {confirmDeleteId === c.id ? (
+                      {isDup ? (
+                        (() => {
+                          const keepClient = clients.find(o => o.id !== c.id && o.rut && normalizeRUT(o.rut) === normalizeRUT(c.rut ?? ''))
+                          return keepClient ? (
+                            <button
+                              onClick={() => handleMergeDelete(c.id, keepClient.id)}
+                              disabled={mergingId === c.id}
+                              className="text-xs font-semibold px-2 py-1 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
+                            >
+                              {mergingId === c.id ? 'Eliminando...' : 'Eliminar duplicado'}
+                            </button>
+                          ) : null
+                        })()
+                      ) : confirmDeleteId === c.id ? (
                         <span className="flex items-center gap-1 text-xs">
                           <button onClick={() => handleDelete(c.id)} disabled={deletingId === c.id}
                             className="text-red-600 font-bold hover:underline">
