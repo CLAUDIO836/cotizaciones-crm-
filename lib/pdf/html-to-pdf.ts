@@ -37,7 +37,7 @@ export async function htmlToPdf(url: string, cookieToken?: string): Promise<Buff
       timeout: 30000,
     })
     // Esperar a que las imágenes absolutas carguen
-    await new Promise(r => setTimeout(r, 3000))
+    await new Promise(r => setTimeout(r, 6000))
 
     // Ocultar botones de impresión
     await page.evaluate(() => {
