@@ -133,10 +133,10 @@ const VEHICLES_CCL = [
 ]
 
 const VEHICLES_TKS = [
-  { key: 'bus',     label: 'Bus (40–60 pax)',     img: '/vehicles/tks-bus-grande.jpg', desc: 'Servicio de transporte en Bus (40–60 pasajeros)' },
-  { key: 'taxibus', label: 'Taxibús (25–33 pax)', img: '/vehicles/tks-bus.jpg',        desc: 'Servicio de transporte en Taxibús (25–33 pasajeros)' },
-  { key: 'minibus', label: 'Minibús (14–19 pax)', img: '/vehicles/tks-taxibus.jpg',    desc: 'Servicio de transporte en Minibús (14–19 pasajeros)' },
-  { key: 'minivan', label: 'Minivan (7–10 pax)',  img: '/vehicles/tks-minivan.jpg',    desc: 'Servicio de transporte en Minivan (7–10 pasajeros)' },
+  { key: 'bus',     label: 'Bus (40–60 pax)',     img: '/vehicles/tks-bus-grande.jpg', desc: 'Servicio de transporte en Bus (40–60 pasajeros) – Flota 2009 al 2016' },
+  { key: 'taxibus', label: 'Taxibús (25–33 pax)', img: '/vehicles/tks-bus.jpg',        desc: 'Servicio de transporte en Taxibús (25–33 pasajeros) – Flota 2014 al 2018' },
+  { key: 'minibus', label: 'Minibús (14–19 pax)', img: '/vehicles/tks-taxibus.jpg',    desc: 'Servicio de transporte en Minibús (14–19 pasajeros) – Flota 2014 al 2026' },
+  { key: 'minivan', label: 'Minivan (7–10 pax)',  img: '/vehicles/tks-minivan.jpg',    desc: 'Servicio de transporte en Minivan (7–10 pasajeros) – Flota 2014 al 2026' },
 ]
 
 const ETAPAS = [
