@@ -277,6 +277,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           issue_date: issueDate,
           expiry_date: expiryDate || null,
           company_id: companyId || null,
+          company: companies.find(c => c.id === companyId)?.name ?? null,
           contact_id: contactId || null,
           desde: desde || null,
           hasta: hasta || null,
