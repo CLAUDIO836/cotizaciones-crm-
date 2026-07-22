@@ -30,6 +30,7 @@ interface Quotation {
   vendedor_name?: string
   pipeline_name?: string
   pipeline_color?: string
+  company?: string
 }
 
 interface Props {
@@ -61,6 +62,7 @@ function QuotationCard({
   isDragging?: boolean
 }) {
   const st = STATUS_STYLE[q.status] ?? STATUS_STYLE.open
+  const isTKS = (q.company ?? '').toUpperCase().includes('TKS')
   return (
     <div
       className="bg-white rounded-xl border p-4 cursor-grab active:cursor-grabbing"
@@ -72,12 +74,20 @@ function QuotationCard({
     >
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs font-mono text-gray-400">{q.number}</p>
-        <span
-          className="text-xs font-medium px-2 py-0.5 rounded-full"
-          style={{ background: st.bg, color: st.color }}
-        >
-          {st.label}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span
+            className="text-xs font-bold px-2 py-0.5 rounded-full"
+            style={{ background: isTKS ? '#fef2f2' : '#f0fdf4', color: isTKS ? '#C8102E' : '#1B8A4B' }}
+          >
+            {isTKS ? 'TKS' : 'CCL'}
+          </span>
+          <span
+            className="text-xs font-medium px-2 py-0.5 rounded-full"
+            style={{ background: st.bg, color: st.color }}
+          >
+            {st.label}
+          </span>
+        </div>
       </div>
       <p className="font-semibold text-gray-900 text-sm leading-tight mb-2">
         {q.client_name ?? 'Sin cliente'}
