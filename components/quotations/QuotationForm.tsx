@@ -261,13 +261,12 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     try {
       const finalClientId = clientId
 
-      const number = `TEMP-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
-
+      // El número temporal lo genera el backend a partir del UUID interno.
+      // El número comercial definitivo será el deal_id de Pipedrive.
       const qRes = await fetch('/api/quotations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          number,
           client_id: finalClientId,
           user_id: selectedUserId,
           pipeline_id: pipelineId || null,

@@ -347,6 +347,19 @@ if ($action === 'pipelines_update') {
 }
 
 // ── QUOTATIONS ───────────────────────────────────────────────────────────────
+if ($action === 'quotations_hash') {
+    $user = requireAuth();
+    $isAdmin = $user['role'] === 'admin';
+    if ($isAdmin) {
+        $row = db()->query("SELECT MD5(GROUP_CONCAT(id,status,etapa,total ORDER BY id)) as hash FROM quotations WHERE is_deleted=0")->fetch();
+    } else {
+        $stmt = db()->prepare("SELECT MD5(GROUP_CONCAT(id,status,etapa,total ORDER BY id)) as hash FROM quotations WHERE is_deleted=0 AND user_id=?");
+        $stmt->execute([$user['id']]);
+        $row = $stmt->fetch();
+    }
+    ok(['hash' => $row['hash'] ?? md5(time())]);
+}
+
 if ($action === 'quotations_summary') {
     $user = requireAuth();
     $isAdmin = $user['role'] === 'admin';
@@ -379,13 +392,14 @@ if ($action === 'quotations_get') {
     $id = $_GET['id'] ?? '';
     $stmt = db()->prepare('
         SELECT q.*,
-               c.name AS client_name, c.rut AS client_rut, c.email AS client_email,
-               c.phone AS client_phone, c.address AS client_address,
-               p.name AS profile_name,
-               pl.name AS pipeline_name
+               c.name    AS client_name,  c.rut     AS client_rut,
+               c.email   AS client_email, c.phone   AS client_phone,
+               c.address AS client_address,
+               p.name    AS profile_name, p.email   AS profile_email,
+               pl.name   AS pipeline_name
         FROM quotations q
-        LEFT JOIN clients  c  ON c.id  = q.client_id
-        LEFT JOIN profiles p  ON p.id  = q.user_id
+        LEFT JOIN clients   c  ON c.id  = q.client_id
+        LEFT JOIN profiles  p  ON p.id  = q.user_id
         LEFT JOIN pipelines pl ON pl.id = q.pipeline_id
         WHERE q.id = ?
     ');
@@ -397,7 +411,7 @@ if ($action === 'quotations_get') {
     $stmt2->execute([$id]);
     $q['quotation_items'] = $stmt2->fetchAll();
     $q['clients']   = ['name' => $q['client_name'], 'rut' => $q['client_rut'], 'email' => $q['client_email'], 'phone' => $q['client_phone'], 'address' => $q['client_address']];
-    $q['profiles']  = ['name' => $q['profile_name']];
+    $q['profiles']  = ['name' => $q['profile_name'], 'email' => $q['profile_email']];
     $q['pipelines'] = ['name' => $q['pipeline_name']];
     ok($q);
 }
@@ -407,10 +421,11 @@ if ($action === 'quotations_create') {
     $b = body();
     $id = uuid();
     try {
-    // Auto number
-    $year = date('Y');
-    $count = (int)(db()->query("SELECT COUNT(*)+1 AS n FROM quotations WHERE YEAR(created_at) = $year")->fetch()['n']);
-    $number = 'COT-' . $year . '-' . str_pad($count, 4, '0', STR_PAD_LEFT);
+    // Número temporal generado exclusivamente en el backend a partir del UUID interno.
+    // Formato: TMP-{primeros 8 caracteres del UUID en mayúsculas}.
+    // Garantiza unicidad sin depender del cliente. Se reemplaza por el deal_id de
+    // Pipedrive una vez que el negocio se crea exitosamente.
+    $number = 'TMP-' . strtoupper(substr(str_replace('-', '', $id), 0, 8));
 
     // Normalizar fecha_salida y fecha_retorno (pueden venir como datetime-local "YYYY-MM-DDTHH:MM")
     $fechaSalida = $b['fecha_salida'] ?? null;
@@ -439,8 +454,9 @@ if ($action === 'quotations_create') {
         INSERT INTO quotations (id,number,status,etapa,company,company_id,issue_date,expiry_date,
           subtotal,tax_pct,total,notes,terms,desde,hasta,desde_lat,desde_lng,hasta_lat,hasta_lng,
           distancia_km,fecha_salida,hora_salida,fecha_retorno,hora_retorno,user_id,client_id,pipeline_id,pipedrive_deal_id,
-          vehicle_type,observaciones,contact_id,descuento_pct)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          vehicle_type,observaciones,contact_id,descuento_pct,
+          pd_sync_status,pdf_upload_status)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ')->execute([
         $id, $number,
         $b['status'] ?? 'open', $b['etapa'] ?? 'lead',
@@ -455,9 +471,10 @@ if ($action === 'quotations_create') {
         $fechaSalida ?: null, $horaSalida ?: null,
         $fechaRetorno ?: null, $horaRetorno ?: null,
         $b['user_id'] ?: $user['id'], $b['client_id'] ?? null,
-        null, $b['pipedrive_deal_id'] ?? null,
+        $b['pipeline_id'] ?? null, null,  // pipeline_id del form; pipedrive_deal_id pendiente (lo asigna el upload)
         $b['vehicle_type'] ?? null, $b['observaciones'] ?? null,
         $b['contact_id'] ?? null, $b['descuento_pct'] ?? 0,
+        'pending', 'pending',  // estado inicial para cotizaciones nuevas
     ]);
 
     // Insert items
@@ -507,11 +524,19 @@ if ($action === 'quotations_update') {
         'fecha_retorno'    => '?',
         'hora_retorno'     => '?',
         'client_id'        => '?',
-        'pipedrive_deal_id'=> '?',
-        'vehicle_type'     => '?',
-        'observaciones'    => '?',
-        'contact_id'       => '?',
-        'descuento_pct'    => '?',
+        'pipedrive_deal_id'  => '?',
+        'vehicle_type'       => '?',
+        'observaciones'      => '?',
+        'contact_id'         => '?',
+        'descuento_pct'      => '?',
+        'pd_sync_status'     => '?',
+        'pd_sync_error'      => '?',
+        'pd_sync_attempts'   => '?',
+        'pd_last_attempt_at' => '?',
+        'pdf_upload_status'  => '?',
+        'pdf_upload_error'   => '?',
+        'pdf_upload_attempts'=> '?',
+        'pdf_last_attempt_at'=> '?',
     ];
     $setClauses = [];
     $params = [];
@@ -552,7 +577,7 @@ if ($action === 'admin_fix_quotation') {
     // Endpoint temporal para restaurar datos borrados accidentalmente
     if (($_GET['secret'] ?? '') !== 'transccl-admin-fix-2024') err('Unauthorized', 401);
     $b = body();
-    $id = $b['id'] ?? '';
+    $id = $_GET['id'] ?? $b['id'] ?? '';
     if (!$id) err('id requerido');
     $fields = ['number','status','etapa','company','company_id','issue_date','expiry_date',
         'subtotal','tax_pct','total','notes','terms','desde','hasta','desde_lat','desde_lng',
@@ -617,6 +642,10 @@ if ($action === 'admin_fix_quotation') {
             if ($num === 'synclog_last5') {
                 $rows = db()->query("SELECT id,source,action,event_type,event_id,quotation_id,deal_id,http_status,result,error,processed_at FROM sync_log ORDER BY processed_at DESC LIMIT 5")->fetchAll();
                 ok(['sync_log' => $rows, 'total' => (int)db()->query("SELECT COUNT(*) FROM sync_log")->fetchColumn()]);
+            }
+            if ($num === 'synclog_payload1') {
+                $row = db()->query("SELECT id, payload, before_data, after_data FROM sync_log ORDER BY processed_at DESC LIMIT 1")->fetch();
+                ok(['row' => $row]);
             }
             if ($num === 'migrate_phase1_backup') {
                 $results = [];
@@ -761,6 +790,171 @@ if ($action === 'admin_fix_quotation') {
                 $count = (int)$pdo->query("SELECT COUNT(*) FROM `quotations_summary`")->fetchColumn();
                 ok(['block' => 'view', 'rows_visible' => $count, 'view_definition' => $viewDef]);
             }
+            // ── MIGRACIÓN FASE 2 ─────────────────────────────────────────────
+            if ($num === 'migrate_phase2_backup') {
+                // Respaldo de seguridad antes de Fase 2 con timestamp del día
+                $pdo = db();
+                $suffix = date('Ymd');
+                $target = "quotations_backup_$suffix";
+                $exists = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='$target'")->fetchColumn();
+                if ($exists) {
+                    $orig = (int)$pdo->query("SELECT COUNT(*) FROM quotations")->fetchColumn();
+                    $bak  = (int)$pdo->query("SELECT COUNT(*) FROM `$target`")->fetchColumn();
+                    ok(['block' => 'backup', 'status' => 'already_exists', 'table' => $target, 'original_rows' => $orig, 'backup_rows' => $bak]);
+                }
+                $pdo->exec("CREATE TABLE `$target` LIKE quotations");
+                $pdo->exec("INSERT INTO `$target` SELECT * FROM quotations");
+                $orig = (int)$pdo->query("SELECT COUNT(*) FROM quotations")->fetchColumn();
+                $bak  = (int)$pdo->query("SELECT COUNT(*) FROM `$target`")->fetchColumn();
+                ok(['block' => 'backup', 'status' => 'created', 'table' => $target, 'original_rows' => $orig, 'backup_rows' => $bak, 'match' => $orig === $bak]);
+            }
+
+            if ($num === 'migrate_phase2_alter') {
+                // Agrega las 8 columnas de estado de sincronización — idempotente
+                $pdo = db();
+                $existing = array_flip(
+                    $pdo->query("SELECT COLUMN_NAME FROM information_schema.COLUMNS
+                                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quotations'"
+                    )->fetchAll(PDO::FETCH_COLUMN)
+                );
+                $cols = [
+                    // Sincronización deal en Pipedrive
+                    'pd_sync_status'      => "ENUM('pending','synced','error') NOT NULL DEFAULT 'pending' COMMENT 'Estado sync CRM→Pipedrive deal'",
+                    'pd_sync_error'       => "TEXT NULL COMMENT 'Último error al crear/actualizar negocio en Pipedrive'",
+                    'pd_sync_attempts'    => "INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Intentos de sync con Pipedrive'",
+                    'pd_last_attempt_at'  => "DATETIME NULL COMMENT 'Fecha del último intento de sync'",
+                    // Carga del PDF adjunto
+                    'pdf_upload_status'   => "ENUM('pending','uploaded','error','unknown') NOT NULL DEFAULT 'pending' COMMENT 'Estado carga PDF en Pipedrive'",
+                    'pdf_upload_error'    => "TEXT NULL COMMENT 'Último error al subir PDF a Pipedrive'",
+                    'pdf_upload_attempts' => "INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Intentos de carga de PDF'",
+                    'pdf_last_attempt_at' => "DATETIME NULL COMMENT 'Fecha del último intento de carga de PDF'",
+                ];
+                $added = []; $skipped = [];
+                foreach ($cols as $col => $def) {
+                    if (isset($existing[$col])) { $skipped[] = $col; continue; }
+                    $pdo->exec("ALTER TABLE `quotations` ADD COLUMN `$col` $def");
+                    $added[] = $col;
+                }
+                $after = $pdo->query(
+                    "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, COLUMN_COMMENT
+                     FROM information_schema.COLUMNS
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME   = 'quotations'
+                       AND (COLUMN_NAME LIKE 'pd_%' OR COLUMN_NAME LIKE 'pdf_%')
+                     ORDER BY ORDINAL_POSITION"
+                )->fetchAll();
+                ok(['block' => 'alter_table', 'added' => $added, 'skipped_already_exist' => $skipped, 'columns_after' => $after]);
+            }
+
+            if ($num === 'migrate_phase2_backfill') {
+                // Actualización inicial controlada de registros históricos.
+                // pd_sync_status:
+                //   - si ya tiene pipedrive_deal_id → 'synced' (ya están en Pipedrive)
+                //   - si no tiene pipedrive_deal_id  → 'pending' (nunca se sincronizaron)
+                // pdf_upload_status:
+                //   - todos los históricos → 'unknown' (no sabemos si el PDF fue adjuntado)
+                //   - las cotizaciones nuevas empezarán en 'pending' desde la aplicación
+                $pdo = db();
+
+                // Verificar que las columnas ya existen antes de actualizar
+                $existing = array_flip(
+                    $pdo->query("SELECT COLUMN_NAME FROM information_schema.COLUMNS
+                                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quotations'
+                                   AND COLUMN_NAME IN ('pd_sync_status','pdf_upload_status')"
+                    )->fetchAll(PDO::FETCH_COLUMN)
+                );
+                if (!isset($existing['pd_sync_status']) || !isset($existing['pdf_upload_status'])) {
+                    err('Ejecuta primero migrate_phase2_alter');
+                }
+
+                // pd_sync_status: synced si tiene deal_id, pending si no
+                $pdo->exec("UPDATE quotations SET pd_sync_status = 'synced' WHERE pipedrive_deal_id IS NOT NULL AND pipedrive_deal_id != ''");
+                $pdo->exec("UPDATE quotations SET pd_sync_status = 'pending' WHERE pipedrive_deal_id IS NULL OR pipedrive_deal_id = ''");
+
+                // pdf_upload_status: unknown para todos los históricos
+                $pdo->exec("UPDATE quotations SET pdf_upload_status = 'unknown'");
+
+                // Conteos de verificación
+                $counts = $pdo->query(
+                    "SELECT
+                        pd_sync_status,
+                        pdf_upload_status,
+                        COUNT(*) AS n
+                     FROM quotations
+                     GROUP BY pd_sync_status, pdf_upload_status
+                     ORDER BY pd_sync_status, pdf_upload_status"
+                )->fetchAll();
+
+                $totals = [
+                    'total'              => (int)$pdo->query("SELECT COUNT(*) FROM quotations")->fetchColumn(),
+                    'with_deal_id'       => (int)$pdo->query("SELECT COUNT(*) FROM quotations WHERE pipedrive_deal_id IS NOT NULL AND pipedrive_deal_id != ''")->fetchColumn(),
+                    'without_deal_id'    => (int)$pdo->query("SELECT COUNT(*) FROM quotations WHERE pipedrive_deal_id IS NULL OR pipedrive_deal_id = ''")->fetchColumn(),
+                    'pd_synced'          => (int)$pdo->query("SELECT COUNT(*) FROM quotations WHERE pd_sync_status='synced'")->fetchColumn(),
+                    'pd_pending'         => (int)$pdo->query("SELECT COUNT(*) FROM quotations WHERE pd_sync_status='pending'")->fetchColumn(),
+                    'pdf_unknown'        => (int)$pdo->query("SELECT COUNT(*) FROM quotations WHERE pdf_upload_status='unknown'")->fetchColumn(),
+                ];
+                ok(['block' => 'backfill', 'breakdown' => $counts, 'totals' => $totals]);
+            }
+
+            if ($num === 'migrate_phase2_indexes') {
+                // Índices para búsqueda eficiente de registros pendientes/en error.
+                //
+                // Estrategia elegida: índices compuestos por estado + fecha de intento.
+                // Razón: las consultas de reintento buscan SIEMPRE por estado primero
+                // y luego ordenan por fecha. Un índice compuesto (status, last_attempt_at)
+                // sirve para ambas condiciones en una sola operación de índice.
+                // Dos índices simples exigirían que MySQL eligiera uno y filtrara el otro.
+                //
+                // idx_pd_sync:  para cron/reintento → WHERE pd_sync_status='pending' ORDER BY pd_last_attempt_at
+                // idx_pdf_sync: para cron/reintento → WHERE pdf_upload_status='pending' ORDER BY pdf_last_attempt_at
+                $pdo = db();
+                $existing = array_unique(
+                    array_column($pdo->query("SHOW INDEX FROM `quotations`")->fetchAll(PDO::FETCH_ASSOC), 'Key_name')
+                );
+                $toAdd = [
+                    'idx_pd_sync'  => "ALTER TABLE `quotations` ADD INDEX `idx_pd_sync`  (`pd_sync_status`,  `pd_last_attempt_at`)",
+                    'idx_pdf_sync' => "ALTER TABLE `quotations` ADD INDEX `idx_pdf_sync` (`pdf_upload_status`, `pdf_last_attempt_at`)",
+                ];
+                $added = []; $skipped = [];
+                foreach ($toAdd as $name => $sql) {
+                    if (in_array($name, $existing)) { $skipped[] = $name; continue; }
+                    $pdo->exec($sql);
+                    $added[] = $name;
+                }
+                $after = $pdo->query("SHOW INDEX FROM `quotations`")->fetchAll();
+                ok(['block' => 'indexes', 'added' => $added, 'skipped' => $skipped, 'indexes_after' => $after]);
+            }
+
+            if ($num === 'migrate_phase2_verify') {
+                // Verificación final: estructura + distribución de valores
+                $pdo = db();
+                $cols = $pdo->query(
+                    "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, COLUMN_COMMENT
+                     FROM information_schema.COLUMNS
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME   = 'quotations'
+                       AND (COLUMN_NAME LIKE 'pd_%' OR COLUMN_NAME LIKE 'pdf_%')
+                     ORDER BY ORDINAL_POSITION"
+                )->fetchAll();
+                $idxs = array_values(array_unique(
+                    array_column($pdo->query("SHOW INDEX FROM `quotations`")->fetchAll(PDO::FETCH_ASSOC), 'Key_name')
+                ));
+                $dist = $pdo->query(
+                    "SELECT pd_sync_status, pdf_upload_status, COUNT(*) AS n
+                     FROM quotations
+                     GROUP BY pd_sync_status, pdf_upload_status
+                     ORDER BY pd_sync_status, pdf_upload_status"
+                )->fetchAll();
+                $sample = $pdo->query(
+                    "SELECT id, number, pipedrive_deal_id, pd_sync_status, pdf_upload_status
+                     FROM quotations ORDER BY created_at DESC LIMIT 5"
+                )->fetchAll();
+                ok(['block' => 'verify', 'columns' => $cols, 'indexes' => $idxs, 'distribution' => $dist, 'sample_recent_5' => $sample]);
+            }
+            // ── FIN MIGRACIÓN FASE 2 ─────────────────────────────────────────
+            // NOTA: Una vez ejecutados y confirmados los bloques de fase2,
+            // eliminar los bloques 'migrate_phase2_*' de este archivo o
+            // moverlos detrás de una verificación de flag en base de datos.
             // ── FIN MIGRACIÓN FASE 1 ──────────────────────────────────────────
             if ($num === 'fix_view') {
                 // Recrear la VIEW usando fecha_salida para year/month (fecha del servicio)
@@ -811,45 +1005,117 @@ if ($action === 'pipedrive_webhook') {
     if ($incomingSecret !== $secret && $incomingSecret !== 'pd-webhook-transccl-2024') {
         http_response_code(401); echo json_encode(['error' => 'Unauthorized']); exit;
     }
-    $payload = body();
-    $event   = $payload['event'] ?? '';
-    $current = $payload['current'] ?? $payload['data']['current'] ?? [];
-    $previous = $payload['previous'] ?? $payload['data']['previous'] ?? [];
-    // Para deleted.deal el id está en previous o en meta
-    $dealId  = (string)($current['id'] ?? $previous['id'] ?? $payload['meta']['id'] ?? '');
-    if (!$dealId) ok(['skipped' => 'no deal id']);
+
+    $rawBody = file_get_contents('php://input');
+    $payload = json_decode($rawBody, true) ?: [];
+
+    $meta     = $payload['meta'] ?? [];
+
+    // Pipedrive v2.0: datos actuales en payload['data'], acción en meta['action']
+    // Pipedrive v1.0: datos actuales en payload['current'], acción en payload['event']
+    $current  = $payload['current'] ?? $payload['data'] ?? [];
+    $previous = $payload['previous'] ?? [];
+
+    // Normalizar evento: v1="updated.deal"|"deleted.deal", v2="change"|"delete"|"add"
+    $event    = $payload['event'] ?? $meta['action'] ?? '';
+
+    // Deal ID: v2 usa data.id (int) y meta.entity_id (string). NO usar meta.id (es UUID del evento)
+    $dealId   = (string)($current['id'] ?? $meta['entity_id'] ?? $previous['id'] ?? '');
+
+    // Guardar en sync_log SIEMPRE — incluso si no encontramos la cotización
+    $logStmt = db()->prepare(
+        'INSERT INTO sync_log (source, action, event_type, event_id, deal_id, payload, processed_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(3))'
+    );
+    $eventId = $meta['id'] ?? $meta['v'] ?? null;
+    $logStmt->execute(['pipedrive', 'webhook_received', $event, (string)$eventId, $dealId, $rawBody]);
+    $logId = db()->lastInsertId();
+
+    if (!$dealId) {
+        db()->prepare("UPDATE sync_log SET result=? WHERE id=?")->execute(['skipped: no deal id', $logId]);
+        ok(['skipped' => 'no deal id', 'log_id' => $logId]);
+    }
 
     // Buscar cotización por pipedrive_deal_id
-    $stmt = db()->prepare('SELECT id, status, etapa FROM quotations WHERE pipedrive_deal_id = ? LIMIT 1');
+    $stmt = db()->prepare('SELECT id, status, etapa FROM quotations WHERE pipedrive_deal_id = ? AND is_deleted = 0 LIMIT 1');
     $stmt->execute([$dealId]);
     $quot = $stmt->fetch();
-    if (!$quot) ok(['skipped' => 'quotation not found for deal ' . $dealId]);
+
+    if (!$quot) {
+        db()->prepare("UPDATE sync_log SET result=? WHERE id=?")->execute(['skipped: quotation not found for deal ' . $dealId, $logId]);
+        ok(['skipped' => 'quotation not found for deal ' . $dealId, 'log_id' => $logId]);
+    }
+
+    // Actualizar log con quotation_id
+    db()->prepare("UPDATE sync_log SET quotation_id=? WHERE id=?")->execute([$quot['id'], $logId]);
 
     $updates = [];
     $params  = [];
+    $beforeData = json_encode(['status' => $quot['status'], 'etapa' => $quot['etapa']]);
 
-    // Deal eliminado en Pipedrive → eliminar del CRM
-    if (str_contains($event, 'deleted')) {
-        db()->prepare('DELETE FROM quotations WHERE id = ?')->execute([$quot['id']]);
-        ok(['deleted' => $quot['id'], 'deal' => $dealId, 'action' => 'deleted_from_crm']);
+    // Deal eliminado en Pipedrive → eliminación lógica
+    // v1: event="deleted.deal"  |  v2: meta.action="delete"
+    if ($event === 'delete' || str_contains($event, 'deleted')) {
+        db()->prepare(
+            'UPDATE quotations SET is_deleted=1, deleted_at=NOW(), deleted_source=?, last_sync_source=?, last_sync_at=NOW(3) WHERE id=?'
+        )->execute(['pipedrive', 'pipedrive', $quot['id']]);
+        db()->prepare("UPDATE sync_log SET result=?, after_data=? WHERE id=?")->execute(
+            ['logical_delete_ok', json_encode(['is_deleted' => 1]), $logId]
+        );
+        ok(['deleted_logical' => $quot['id'], 'deal' => $dealId, 'log_id' => $logId]);
     }
 
-    // Sync status: won/lost/open
+    // Sync status: open/won/lost
+    // Pipedrive v2.0 "won" event: event="updated.deal", current.status="won"
+    // Pipedrive v2.0 "lost" event: event="updated.deal", current.status="lost"
     $pdStatus = $current['status'] ?? null;
     if ($pdStatus && in_array($pdStatus, ['won', 'lost', 'open'])) {
-        $crmStatus = $pdStatus === 'open' ? 'open' : $pdStatus;
-        if ($crmStatus !== $quot['status']) {
+        if ($pdStatus !== $quot['status']) {
             $updates[] = 'status = ?';
-            $params[]  = $crmStatus;
+            $params[]  = $pdStatus;
         }
     }
 
-    if ($updates) {
-        $params[] = $quot['id'];
-        db()->prepare('UPDATE quotations SET ' . implode(', ', $updates) . ' WHERE id = ?')->execute($params);
+    // Etapa (stage_id numérico)
+    $pdStageId = $current['stage_id'] ?? null;
+    if ($pdStageId && $pdStageId !== ($quot['pd_stage_id'] ?? null)) {
+        $updates[] = 'pd_stage_id = ?';
+        $params[]  = (int)$pdStageId;
     }
 
-    ok(['updated' => $quot['id'], 'deal' => $dealId]);
+    // Valor total
+    $pdValue = $current['value'] ?? null;
+    if ($pdValue !== null && $pdValue !== $previous['value']) {
+        $updates[] = 'total = ?';    $params[] = (float)$pdValue;
+        $updates[] = 'subtotal = ?'; $params[] = (float)$pdValue;
+    }
+
+    // Siempre actualizar last_sync_source y pd_updated_at
+    // Convertir ISO 8601 "2026-07-22T03:15:44Z" → "2026-07-22 03:15:44" para MySQL DATETIME
+    $pdUpdateTime = $current['update_time'] ?? null;
+    if ($pdUpdateTime) {
+        $pdUpdateTime = str_replace(['T', 'Z'], [' ', ''], $pdUpdateTime);
+        $pdUpdateTime = substr($pdUpdateTime, 0, 19); // "YYYY-MM-DD HH:MM:SS"
+    } else {
+        $pdUpdateTime = date('Y-m-d H:i:s');
+    }
+    $updates[] = 'last_sync_source = ?';  $params[] = 'pipedrive';
+    $updates[] = 'last_sync_at = NOW(3)'; // sin parámetro — función MySQL directa
+    $updates[] = 'pd_updated_at = ?';     $params[] = $pdUpdateTime;
+
+    $params[] = $quot['id'];
+    $sqlSet = implode(', ', $updates);
+    try {
+        db()->prepare('UPDATE quotations SET ' . $sqlSet . ' WHERE id = ?')->execute($params);
+        $afterData = json_encode(['status' => $pdStatus, 'pd_stage_id' => $pdStageId]);
+        db()->prepare("UPDATE sync_log SET result='updated', before_data=?, after_data=? WHERE id=?")
+            ->execute([$beforeData, $afterData, $logId]);
+        ok(['updated' => $quot['id'], 'deal' => $dealId, 'event' => $event, 'new_status' => $pdStatus, 'log_id' => $logId]);
+    } catch (Exception $e) {
+        db()->prepare("UPDATE sync_log SET result='error', error=? WHERE id=?")
+            ->execute([$e->getMessage() . ' | SQL: ' . $sqlSet . ' | params: ' . json_encode($params), $logId]);
+        ok(['error' => $e->getMessage(), 'sql' => $sqlSet, 'params' => $params, 'log_id' => $logId]);
+    }
 }
 
 if ($action === 'quotations_delete') {
