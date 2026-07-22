@@ -300,22 +300,24 @@ export default function ClientRutSearch({ onSelect }: Props) {
               onChange={e => setNewClientAddress(e.target.value)} className="text-sm bg-white" />
             <Input placeholder="Email empresa *" type="email" value={newClientEmail}
               onChange={e => setNewClientEmail(e.target.value)} className="text-sm bg-white" />
-            <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="Celular *" value={newClientMobile}
-                onChange={e => setNewClientMobile(e.target.value)} className="text-sm bg-white" />
-              <Input placeholder="Teléfono fijo" value={newClientLandline}
-                onChange={e => setNewClientLandline(e.target.value)} className="text-sm bg-white" />
-            </div>
+            <Input placeholder="Teléfono fijo empresa" value={newClientLandline}
+              onChange={e => setNewClientLandline(e.target.value)} className="text-sm bg-white" />
           </div>
 
           <div className="space-y-2">
             <p className="text-xs font-medium text-amber-700 uppercase tracking-wide">Contacto principal *</p>
+            <Input placeholder="Nombre contacto *" value={newClientContactName}
+              onChange={e => setNewClientContactName(e.target.value)} className="text-sm bg-white" />
             <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="Nombre contacto *" value={newClientContactName}
-                onChange={e => setNewClientContactName(e.target.value)} className="text-sm bg-white" />
-              <Input placeholder="Cargo" value={newClientContactCargo}
-                onChange={e => setNewClientContactCargo(e.target.value)} className="text-sm bg-white" />
+              <Input placeholder="Teléfono fijo" value={newClientLandline}
+                onChange={e => setNewClientLandline(e.target.value)} className="text-sm bg-white" />
+              <Input placeholder="Celular *" value={newClientMobile}
+                onChange={e => setNewClientMobile(e.target.value)} className="text-sm bg-white" />
             </div>
+            <Input placeholder="Email contacto" type="email" value={newClientEmail}
+              onChange={e => setNewClientEmail(e.target.value)} className="text-sm bg-white" />
+            <Input placeholder="Cargo" value={newClientContactCargo}
+              onChange={e => setNewClientContactCargo(e.target.value)} className="text-sm bg-white" />
           </div>
 
           <Button type="button" size="sm" style={{ background: '#1B8A4B' }} className="text-white"
