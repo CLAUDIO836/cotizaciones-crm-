@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     'Transportes TKS': 'TKS',
     'TrackingCCL': 'TCCL',
   }
-  const effectiveCompanyName = companyName ?? (q.companies as { name?: string })?.name ?? ''
+  const effectiveCompanyName = companyName ?? (q as unknown as { companies?: { name?: string } }).companies?.name ?? ''
   const prefix = COMPANY_PREFIX[effectiveCompanyName] ?? 'CCL'
   const effectiveDesde = desde ?? (q as { desde?: string }).desde ?? ''
   const effectiveHasta = hasta ?? (q as { hasta?: string }).hasta ?? ''
