@@ -374,6 +374,34 @@ if ($action === 'diagnostico_clientes') {
     ok($result);
 }
 
+if ($action === 'restaurar_client_ids') {
+    requireAuth();
+    // Verificar que existe la tabla backup
+    $exists = db()->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='quotations_backup_20260721'")->fetchColumn();
+    if (!$exists) err('No existe tabla de backup quotations_backup_20260721');
+
+    // Restaurar solo el campo client_id desde el backup (no tocar nada más)
+    $stmt = db()->prepare("
+        UPDATE quotations q
+        JOIN quotations_backup_20260721 b ON b.id = q.id
+        SET q.client_id = b.client_id
+        WHERE b.client_id IS NOT NULL AND q.client_id != b.client_id
+    ");
+    $stmt->execute();
+    $fixed = $stmt->rowCount();
+
+    // Resultado después de restaurar
+    $rows = db()->query("SELECT client_id, COUNT(*) as total FROM quotations WHERE is_deleted=0 GROUP BY client_id ORDER BY total DESC LIMIT 30")->fetchAll();
+    $clients = db()->query("SELECT id, name FROM clients")->fetchAll();
+    $map = [];
+    foreach ($clients as $c) $map[$c['id']] = $c['name'];
+    $dist = [];
+    foreach ($rows as $r) {
+        $dist[] = ['client_name' => $map[$r['client_id']] ?? 'SIN CLIENTE', 'total' => $r['total']];
+    }
+    ok(['client_ids_restaurados' => $fixed, 'distribucion_actual' => $dist]);
+}
+
 if ($action === 'contacts_import_from_quotations') {
     // Para cada contacto en cotizaciones, asegura que su client_id coincide con el de la cotización.
     // También crea contactos faltantes si el nombre viene de Pipedrive (pd_person_id presente).
