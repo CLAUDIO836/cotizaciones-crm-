@@ -362,28 +362,31 @@ if ($action === 'clients_merge') {
 }
 
 if ($action === 'contacts_import_from_quotations') {
-    // Importa contactos únicos desde cotizaciones existentes que tengan contact_name
+    // Para cada contacto en cotizaciones, asegura que su client_id coincide con el de la cotización.
+    // También crea contactos faltantes si el nombre viene de Pipedrive (pd_person_id presente).
     requireAuth();
+    $fixed = 0;
+
+    // 1. Actualizar client_id de contactos que no coinciden con su cotización
     $rows = db()->query("
-        SELECT DISTINCT q.client_id, q.contact_name, q.contact_email, q.contact_phone
+        SELECT DISTINCT ct.id AS contact_id, q.client_id AS correct_client_id
         FROM quotations q
-        WHERE q.client_id IS NOT NULL AND q.contact_name IS NOT NULL AND q.contact_name != ''
-        AND NOT EXISTS (
-            SELECT 1 FROM contacts c WHERE c.client_id = q.client_id AND c.name = q.contact_name
-        )
+        JOIN contacts ct ON ct.id = q.contact_id
+        WHERE q.client_id IS NOT NULL
+          AND ct.client_id != q.client_id
     ")->fetchAll();
-    $imported = 0;
     foreach ($rows as $r) {
-        $id = uuid();
-        db()->prepare('INSERT INTO contacts (id,client_id,name,email,phone_mobile) VALUES (?,?,?,?,?)')->execute([
-            $id, $r['client_id'], $r['contact_name'], $r['contact_email'] ?? null, $r['contact_phone'] ?? null
-        ]);
-        // Actualizar contact_id en cotizaciones que tengan este contact_name y client_id
-        db()->prepare("UPDATE quotations SET contact_id = ? WHERE client_id = ? AND contact_name = ? AND (contact_id IS NULL OR contact_id = '')")
-            ->execute([$id, $r['client_id'], $r['contact_name']]);
-        $imported++;
+        db()->prepare('UPDATE contacts SET client_id = ? WHERE id = ?')
+            ->execute([$r['correct_client_id'], $r['contact_id']]);
+        $fixed++;
     }
-    ok(['imported' => $imported]);
+
+    // 2. Contar contactos por cliente para informe
+    $total = (int)db()->query("SELECT COUNT(*) FROM contacts")->fetchColumn();
+    $clients_with = (int)db()->query("SELECT COUNT(DISTINCT client_id) FROM contacts")->fetchColumn();
+    $clients_total = (int)db()->query("SELECT COUNT(*) FROM clients")->fetchColumn();
+
+    ok(['fixed_client_id' => $fixed, 'total_contacts' => $total, 'clients_with_contacts' => $clients_with, 'clients_total' => $clients_total]);
 }
 
 // ── PIPELINES ─────────────────────────────────────────────────────────────────

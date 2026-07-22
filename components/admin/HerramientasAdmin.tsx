@@ -15,9 +15,10 @@ export default function HerramientasAdmin() {
       const res = await fetch('/api/admin/import-contacts', { method: 'POST' })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error ?? 'Error')
-      const n = d.data?.imported ?? d.imported ?? 0
-      setResult(`✓ ${n} contacto(s) importado(s) desde cotizaciones`)
-      toast.success(`Importación completa: ${n} contactos`)
+      const data = d.data ?? d
+      const msg = `✓ ${data.fixed_client_id ?? 0} enlaces corregidos · ${data.total_contacts ?? '?'} contactos total · ${data.clients_with_contacts ?? '?'}/${data.clients_total ?? '?'} clientes con contacto`
+      setResult(msg)
+      toast.success('Verificación completa')
     } catch (e: unknown) {
       toast.error(String(e))
     } finally {
