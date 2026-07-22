@@ -317,6 +317,32 @@ if ($action === 'clients_update') {
     ok();
 }
 
+if ($action === 'clients_delete') {
+    requireAuth();
+    $b  = body();
+    $id = $b['id'] ?? '';
+    if (!$id) err('id requerido');
+    $count = db()->prepare('SELECT COUNT(*) FROM quotations WHERE client_id = ? AND is_deleted = 0')->execute([$id]) ? db()->query("SELECT COUNT(*) FROM quotations WHERE client_id = '$id' AND is_deleted = 0")->fetchColumn() : 0;
+    if ($count > 0) err('El cliente tiene cotizaciones asociadas');
+    db()->prepare('DELETE FROM contacts WHERE client_id = ?')->execute([$id]);
+    db()->prepare('DELETE FROM clients WHERE id = ?')->execute([$id]);
+    ok();
+}
+
+if ($action === 'clients_merge') {
+    requireAuth();
+    $b         = body();
+    $keep_id   = $b['keep_id']   ?? '';
+    $delete_id = $b['delete_id'] ?? '';
+    if (!$keep_id || !$delete_id) err('keep_id y delete_id requeridos');
+    // Reasignar cotizaciones y contactos al cliente principal
+    db()->prepare('UPDATE quotations SET client_id = ? WHERE client_id = ?')->execute([$keep_id, $delete_id]);
+    db()->prepare('UPDATE contacts SET client_id = ? WHERE client_id = ?')->execute([$keep_id, $delete_id]);
+    // Eliminar el duplicado
+    db()->prepare('DELETE FROM clients WHERE id = ?')->execute([$delete_id]);
+    ok(['merged' => true]);
+}
+
 // ── PIPELINES ─────────────────────────────────────────────────────────────────
 if ($action === 'pipelines_list') {
     requireAuth();
