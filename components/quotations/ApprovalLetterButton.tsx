@@ -61,7 +61,8 @@ export default function ApprovalLetterButton({ quotationId }: { quotationId: str
       setLetter(null)
       setShowConfirmDelete(false)
     } else {
-      setError('Error al eliminar')
+      const data = await res.json().catch(() => ({}))
+      setError(data.error ?? `Error al eliminar (HTTP ${res.status})`)
     }
   }
 

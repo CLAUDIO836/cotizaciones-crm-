@@ -11,6 +11,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { token } = await params
   const authToken = await getToken()
   if (!authToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  await crmPost('letters_delete', { token }, {}, authToken)
-  return NextResponse.json({ ok: true })
+  try {
+    await crmPost('letters_delete', { token }, {}, authToken)
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
 }
