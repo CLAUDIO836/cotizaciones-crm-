@@ -14,7 +14,10 @@ export async function POST(req: NextRequest) {
     if (d?.already_exists) {
       return NextResponse.json({ error: 'already_exists', token: d.token }, { status: 409 })
     }
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? req.nextUrl.origin
+    const isTKS = String(d.company_name ?? '').includes('TKS')
+    const baseUrl = isTKS
+      ? 'https://aprobaciones.transportestks.com'
+      : (process.env.NEXT_PUBLIC_BASE_URL ?? req.nextUrl.origin)
     return NextResponse.json({ ok: true, token: d.token, url: `${baseUrl}/aprobar/${d.token}` })
   } catch (e: unknown) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
