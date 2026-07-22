@@ -9,17 +9,12 @@ async function syncToPipedrive(action: string, dealId: string, status?: string) 
   try {
     if (action === 'delete') {
       await fetch(`${PD_BASE}/deals/${dealId}?api_token=${PD_TOKEN}`, { method: 'DELETE' })
-    } else if (action === 'set_status' && (status === 'won' || status === 'lost')) {
+    } else if (action === 'set_status') {
+      // Pipedrive API v1 usa PUT (no PATCH) para actualizar deals
       await fetch(`${PD_BASE}/deals/${dealId}?api_token=${PD_TOKEN}`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
-      })
-    } else if (action === 'set_status' && status === 'open') {
-      await fetch(`${PD_BASE}/deals/${dealId}?api_token=${PD_TOKEN}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'open' }),
       })
     }
   } catch (e) {
