@@ -150,7 +150,7 @@ export function ApprovalLetterPDF({ data }: { data: ApprovalLetterData }) {
         <View style={styles.header}>
           <View>
             <Text style={styles.company}>{company}</Text>
-            <Text style={styles.companyRut}>RUT: 77.123.456-7</Text>
+            <Text style={styles.companyRut}>RUT: 76.282.952-3</Text>
           </View>
           <View>
             <Text style={styles.docTitle}>CARTA DE APROBACIÓN DE SERVICIO</Text>

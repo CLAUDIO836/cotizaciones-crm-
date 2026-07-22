@@ -28,7 +28,6 @@ function formatCLP(n: number) {
 type Letter = Record<string, string | number | null>
 
 export default function SigningForm({ letter }: { letter: Letter }) {
-  const [wantsBilling, setWantsBilling] = useState(false)
   const [signedName, setSignedName] = useState('')
   const [signedRut, setSignedRut] = useState('')
   const [billing, setBilling] = useState({ billing_name: '', billing_rut: '', billing_address: '', billing_glosa: '' })
@@ -41,12 +40,17 @@ export default function SigningForm({ letter }: { letter: Letter }) {
       setError('Debes ingresar tu nombre y RUT para firmar.')
       return
     }
+    if (!billing.billing_rut.trim()) {
+      setError('Debes ingresar el RUT de facturación.')
+      return
+    }
     setLoading(true)
     setError('')
 
-    const body: Record<string, string> = { signed_name: signedName.trim(), signed_rut: signedRut.trim() }
-    if (wantsBilling && billing.billing_name) {
-      Object.assign(body, billing)
+    const body: Record<string, string> = {
+      signed_name: signedName.trim(),
+      signed_rut: signedRut.trim(),
+      ...billing,
     }
 
     const res = await fetch(`/api/approval-letters/${letter.token}/sign`, {
@@ -118,30 +122,16 @@ export default function SigningForm({ letter }: { letter: Letter }) {
 
       {/* Facturación */}
       <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 24 }}>
-        <div
-          style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer' }}
-          onClick={() => setWantsBilling(v => !v)}
-        >
-          <div style={{
-            width: 20, height: 20, borderRadius: 5, border: `2px solid ${wantsBilling ? '#1B8A4B' : '#d1d5db'}`,
-            background: wantsBilling ? '#1B8A4B' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1
-          }}>
-            {wantsBilling && <svg width="12" height="12" fill="none" viewBox="0 0 24 24"><path stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>}
-          </div>
-          <div>
-            <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: '#111827' }}>Requiero factura a nombre de otra empresa</p>
-            <p style={{ margin: '2px 0 0', fontSize: 12, color: '#6b7280' }}>Si no selecciona esta opción, la factura será emitida a nombre de <strong>{letter.client_name}</strong>{letter.client_rut ? ` RUT ${letter.client_rut}` : ''}.</p>
-          </div>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>Datos de Facturación</h2>
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
+          Ingrese los datos para emitir la factura del servicio.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <Field label="Razón social / Nombre *" value={billing.billing_name} onChange={v => setBilling(b => ({ ...b, billing_name: v }))} placeholder={letter.client_name as string} />
+          <Field label="RUT de facturación *" value={billing.billing_rut} onChange={v => setBilling(b => ({ ...b, billing_rut: v }))} placeholder={letter.client_rut as string ?? '12.345.678-9'} />
+          <Field label="Dirección" value={billing.billing_address} onChange={v => setBilling(b => ({ ...b, billing_address: v }))} />
+          <Field label="Glosa / detalle factura" value={billing.billing_glosa} onChange={v => setBilling(b => ({ ...b, billing_glosa: v }))} />
         </div>
-
-        {wantsBilling && (
-          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <Field label="Razón social *" value={billing.billing_name} onChange={v => setBilling(b => ({ ...b, billing_name: v }))} />
-            <Field label="RUT empresa *" value={billing.billing_rut} onChange={v => setBilling(b => ({ ...b, billing_rut: v }))} />
-            <Field label="Dirección" value={billing.billing_address} onChange={v => setBilling(b => ({ ...b, billing_address: v }))} />
-            <Field label="Glosa / detalle factura" value={billing.billing_glosa} onChange={v => setBilling(b => ({ ...b, billing_glosa: v }))} />
-          </div>
-        )}
       </div>
 
       {/* Firma */}

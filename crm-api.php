@@ -1403,7 +1403,10 @@ if ($action === 'letters_create') {
         $q['fecha_retorno'], $q['hora_retorno'],
         $q['total'], $q['company'] ?? 'Transccl SpA',
     ]);
-    ok(['id' => $id, 'token' => $token]);
+    // Return full letter data including pipedrive_deal_id for immediate use
+    $stmt2 = db()->prepare('SELECT al.*, q.pipedrive_deal_id, q.number AS quotation_number FROM approval_letters al LEFT JOIN quotations q ON q.id=al.quotation_id WHERE al.id=?');
+    $stmt2->execute([$id]);
+    ok($stmt2->fetch());
 }
 
 if ($action === 'letters_get') {
