@@ -97,13 +97,21 @@ export default async function CotizacionDetailPage({
             {q.profiles?.name && ` · ${q.profiles.name}`}
           </p>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap justify-end">
           <a href={`/api/cotizaciones/${id}/html`} target="_blank">
             <Button variant="outline" size="sm">
               <Globe className="w-4 h-4 mr-1.5" />
               Ver / Imprimir
             </Button>
           </a>
+          {pipeline?.name?.toLowerCase().includes('diario') && !isTKS && (
+            <a href={`/api/cotizaciones/${id}/propuesta`} target="_blank">
+              <Button variant="outline" size="sm" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
+                <Globe className="w-4 h-4 mr-1.5" />
+                Propuesta Comercial
+              </Button>
+            </a>
+          )}
           {!isReadOnly && (
             <ResyncButton
               quotationId={id}
