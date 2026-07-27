@@ -46,11 +46,19 @@ export default async function CotizacionesPage({
     isAdmin ? fetchProfiles() : Promise.resolve([]),
   ])
 
+  // Enriquecer cotizaciones con pipeline_name desde Pipedrive (la tabla local está vacía)
+  const pipelineMap = Object.fromEntries(pipelines.map(p => [p.id, p]))
+  const enrichedQuotations = quotations.map(q => ({
+    ...q,
+    pipeline_name: q.pipeline_name ?? pipelineMap[q.pipeline_id ?? '']?.name ?? null,
+    pipeline_color: (q as { pipeline_color?: string }).pipeline_color ?? pipelineMap[q.pipeline_id ?? '']?.color ?? null,
+  }))
+
   // Totales para mostrar en los filtros
-  const total = quotations.length
-  const won = quotations.filter(q => q.status === 'won').length
-  const open = quotations.filter(q => q.status === 'open').length
-  const lost = quotations.filter(q => q.status === 'lost').length
+  const total = enrichedQuotations.length
+  const won = enrichedQuotations.filter(q => q.status === 'won').length
+  const open = enrichedQuotations.filter(q => q.status === 'open').length
+  const lost = enrichedQuotations.filter(q => q.status === 'lost').length
 
   const views = [
     { key: 'timeline', label: 'Por mes' },
@@ -117,14 +125,14 @@ export default async function CotizacionesPage({
       {/* Content */}
       <div className="flex-1 p-6 overflow-auto">
         {view === 'timeline' && (
-          <TimelineView quotations={quotations} isAdmin={isAdmin} />
+          <TimelineView quotations={enrichedQuotations} isAdmin={isAdmin} />
         )}
         {view === 'kanban' && (
-          <EtapaKanban quotations={quotations} isAdmin={isAdmin} />
+          <EtapaKanban quotations={enrichedQuotations} isAdmin={isAdmin} />
         )}
         {view === 'list' && (
           <QuotationsList
-            quotations={quotations}
+            quotations={enrichedQuotations}
             vendedores={vendedores}
             isAdmin={isAdmin}
             currentFilters={params}
