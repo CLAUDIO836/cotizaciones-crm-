@@ -169,53 +169,51 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                     <Link key={q.id} href={`/cotizaciones/${q.id}`}>
                       <div className="bg-white rounded-xl border hover:shadow-md transition-all cursor-pointer overflow-hidden group"
                         style={{ borderColor: '#e5e7eb' }}>
-                        <div className="p-4">
+                        <div className="px-3 py-2">
                           {/* Top row */}
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <span className={`inline-flex px-1.5 py-0 rounded-full text-xs font-semibold ${color}`}>
                                 {statusLabel}
                               </span>
-                              <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold"
+                              <span className="inline-flex px-1.5 py-0 rounded-full text-xs font-bold"
                                 style={{ background: brand.bg, color: brand.color }}>
                                 {brand.label}
                               </span>
+                              {q.pipeline_name && (
+                                <span className="flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                    style={{ background: q.pipeline_color ?? '#1B8A4B' }} />
+                                  <span className="text-xs font-medium truncate"
+                                    style={{ color: q.pipeline_color ?? '#1B8A4B' }}>
+                                    {q.pipeline_name}
+                                  </span>
+                                </span>
+                              )}
                             </div>
-                            <span className="text-xs font-mono text-gray-400 truncate">{q.number}</span>
+                            <span className="text-xs font-mono text-gray-400 truncate flex-shrink-0">{q.number}</span>
                           </div>
 
-                          {/* Pipeline badge */}
-                          {q.pipeline_name && (
-                            <div className="flex items-center gap-1.5 mb-2">
-                              <span className="w-2 h-2 rounded-full flex-shrink-0"
-                                style={{ background: q.pipeline_color ?? 'var(--pipe-orange)' }} />
-                              <span className="text-xs font-medium truncate"
-                                style={{ color: q.pipeline_color ?? 'var(--pipe-orange)' }}>
-                                {q.pipeline_name}
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Client name — main title */}
-                          <p className="font-bold text-gray-900 text-sm leading-tight mb-0.5 group-hover:text-orange-600 transition-colors line-clamp-2">
+                          {/* Client name */}
+                          <p className="font-bold text-gray-900 text-sm leading-tight mb-0.5 group-hover:text-orange-600 transition-colors line-clamp-1">
                             {q.client_name ?? 'Sin cliente'}
                           </p>
 
-                          {/* Amount */}
-                          <p className="text-xl font-bold mt-2 mb-3" style={{ color: 'var(--pipe-orange)' }}>
-                            {formatCLP(q.total)}
-                          </p>
-
-                          {/* Vendedor */}
-                          {isAdmin && q.vendedor_name && (
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold uppercase flex-shrink-0"
-                                style={{ background: vColor }}>
-                                {q.vendedor_name[0]}
+                          {/* Amount + Vendedor en la misma fila */}
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-base font-bold" style={{ color: 'var(--pipe-orange)' }}>
+                              {formatCLP(q.total)}
+                            </p>
+                            {isAdmin && q.vendedor_name && (
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold uppercase"
+                                  style={{ background: vColor }}>
+                                  {q.vendedor_name[0]}
+                                </div>
+                                <span className="text-xs text-gray-500 truncate max-w-[70px]">{q.vendedor_name}</span>
                               </div>
-                              <span className="text-xs text-gray-500 truncate">{q.vendedor_name}</span>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
 
                         {/* Progress bar — like PipeDrive */}
