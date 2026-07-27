@@ -90,12 +90,12 @@ export default async function CotizacionDetailPage({
             >
               {brandBadge.label}
             </span>
-            {q.pipeline_name && (
+            {(pipeline?.name ?? q.pipeline_name) && (
               <span
                 className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium"
                 style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }}
               >
-                {q.pipeline_name}
+                {pipeline?.name ?? q.pipeline_name}
               </span>
             )}
           </div>
@@ -112,7 +112,7 @@ export default async function CotizacionDetailPage({
               Ver / Imprimir
             </Button>
           </a>
-          {!isTKS && (q.pipeline_name ?? '').toLowerCase().includes('diario') && (
+          {!isTKS && (pipeline?.name ?? q.pipeline_name ?? '').toLowerCase().includes('diario') && (
             <a href={`/api/cotizaciones/${id}/propuesta`} target="_blank">
               <Button variant="outline" size="sm" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
                 <Globe className="w-4 h-4 mr-1.5" />
