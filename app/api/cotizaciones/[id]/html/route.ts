@@ -1,11 +1,24 @@
 import { fetchQuotation } from '@/lib/api'
 import { formatCLP, formatDate } from '@/lib/utils'
 
-function fmtDateTime(val: string | null | undefined) {
+function fmtDate(val: string | null | undefined) {
   if (!val) return '—'
-  return new Date(val).toLocaleString('es-CL', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
-  })
+  // Parsear solo la parte de fecha para evitar conversión de zona horaria
+  const d = val.slice(0, 10).split('-')
+  if (d.length !== 3) return val
+  return `${d[2]}/${d[1]}/${d[0]}`
+}
+
+function fmtTime(val: string | null | undefined) {
+  if (!val) return ''
+  return val.slice(0, 5) // "HH:MM"
+}
+
+function fmtDateHora(fecha: string | null | undefined, hora: string | null | undefined) {
+  const d = fmtDate(fecha)
+  const t = fmtTime(hora)
+  if (d === '—') return '—'
+  return t ? `${d} — ${t} hrs` : d
 }
 
 const VEHICLE_IMAGES_CCL: Record<string, string> = {
@@ -233,8 +246,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <div class="ruta-item"><label>Desde</label><span>${q.desde ?? '—'}</span></div>
         <div class="ruta-item"><label>Hasta</label><span>${q.hasta ?? '—'}</span></div>
-        <div class="ruta-item"><label>Fecha salida</label><span>${fmtDateTime(q.fecha_salida)}</span></div>
-        <div class="ruta-item"><label>Fecha retorno</label><span>${fmtDateTime((q as {fecha_retorno?: string}).fecha_retorno)}</span></div>
+        <div class="ruta-item"><label>Fecha salida</label><span>${fmtDateHora(q.fecha_salida, (q as {hora_salida?: string}).hora_salida)}</span></div>
+        <div class="ruta-item"><label>Fecha retorno</label><span>${fmtDateHora((q as {fecha_retorno?: string}).fecha_retorno, (q as {hora_retorno?: string}).hora_retorno)}</span></div>
       </div>
     </div>
     <div class="box">
