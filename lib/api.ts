@@ -90,10 +90,27 @@ export async function fetchClients() {
   return (r.data as Client[]) ?? []
 }
 
-export async function fetchPipelines(all = false) {
-  // Pipelines cambian muy raramente — cachear 5 minutos
-  const r = await crmFetch('GET', 'pipelines_list', all ? { all: '1' } : {}, undefined, await getToken(), 300)
-  return (r.data as Pipeline[]) ?? []
+export async function fetchPipelines(_all = false) {
+  // Pipelines vienen de Pipedrive (misma fuente que el formulario de nueva cotización)
+  const token = process.env.PIPEDRIVE_API_TOKEN
+  if (!token) return []
+  try {
+    const res = await fetch(`https://api.pipedrive.com/v1/pipelines?api_token=${token}`, {
+      next: { revalidate: 300 },
+    })
+    const json = await res.json()
+    return ((json.data ?? []) as { id: number; name: string; active: boolean }[])
+      .filter(p => p.active !== false)
+      .map(p => ({
+        id: String(p.id),
+        name: p.name,
+        color: '#1B8A4B',
+        active: true,
+        sort_order: p.id,
+      })) as Pipeline[]
+  } catch {
+    return []
+  }
 }
 
 export async function fetchCompanies() {
