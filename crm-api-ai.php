@@ -8,6 +8,21 @@
  * Usa las mismas funciones de crm-api.php: db(), uuid(), ok(), err(), body(), requireAuth()
  */
 
+// Suppress HTML error output so errors come back as JSON
+ini_set('display_errors', '0');
+set_error_handler(function(int $errno, string $errstr, string $errfile, int $errline): bool {
+    http_response_code(500);
+    echo json_encode(['error' => "PHP[$errno]: $errstr in $errfile:$errline"]);
+    exit;
+});
+register_shutdown_function(function(): void {
+    $e = error_get_last();
+    if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        http_response_code(500);
+        echo json_encode(['error' => "Fatal: {$e['message']} in {$e['file']}:{$e['line']}"]);
+    }
+});
+
 // ── Helpers locales ───────────────────────────────────────────────────────────
 
 function ai_is_admin(array $user): bool {
@@ -154,7 +169,7 @@ if ($action === 'ai_conversations_list') {
             LIMIT 200
         ");
         $stmt->execute($up);
-    } catch (Exception $e) {
+    } catch (\Throwable $e) {
         err('SQL error: ' . $e->getMessage(), 500);
     }
     $rows = $stmt->fetchAll();
@@ -196,7 +211,7 @@ if ($action === 'ai_conversations_get') {
             WHERE c.id = ?
         ");
         $stmt->execute([$id]);
-    } catch (Exception $e) {
+    } catch (\Throwable $e) {
         err('SQL error: ' . $e->getMessage(), 500);
     }
     $conv = $stmt->fetch();
