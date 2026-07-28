@@ -65,45 +65,38 @@ export default async function CotizacionDetailPage({
     <div className="flex flex-col h-full">
       <AutoRefresh intervalMs={5000} />
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4 flex items-center gap-4">
-        <Link href="/cotizaciones" className="text-gray-400 hover:text-gray-600 transition-colors">
+      <div className="bg-white border-b px-6 py-2 flex items-center gap-3">
+        <Link href="/cotizaciones" className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0">
           <ArrowLeft className="w-5 h-5" />
         </Link>
-        <div className="flex-1">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl font-bold text-gray-900">{q.number}</h1>
-            <span
-              className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium"
-              style={{ background: color.includes('green') ? '#dcfce7' : color.includes('red') ? '#fee2e2' : '#dbeafe', color: color.includes('green') ? '#16a34a' : color.includes('red') ? '#D33A2C' : '#2563eb' }}
-            >
-              {label}
-            </span>
-            <span
-              className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium"
-              style={{ background: etapa.bg, color: etapa.color }}
-            >
-              {etapa.label}
-            </span>
-            <span
-              className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold"
-              style={{ background: brandBadge.bg, color: brandBadge.color }}
-            >
-              {brandBadge.label}
-            </span>
-            {(pipeline?.name ?? q.pipeline_name) && (
-              <span
-                className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium"
-                style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }}
-              >
-                {pipeline?.name ?? q.pipeline_name}
+        <div className="min-w-0 flex-1 flex items-center gap-3">
+          {/* Bloque título — máx ~10cm = 380px */}
+          <div className="flex-shrink-0" style={{ maxWidth: 380 }}>
+            <div className="flex items-center gap-1.5 flex-nowrap overflow-hidden">
+              <span className="text-base font-bold text-gray-900 flex-shrink-0">#{q.number}</span>
+              <span className="inline-flex px-1.5 py-0 rounded-full text-xs font-semibold flex-shrink-0"
+                style={{ background: color.includes('green') ? '#dcfce7' : color.includes('red') ? '#fee2e2' : '#dbeafe', color: color.includes('green') ? '#16a34a' : color.includes('red') ? '#D33A2C' : '#2563eb' }}>
+                {label}
               </span>
-            )}
+              <span className="inline-flex px-1.5 py-0 rounded-full text-xs font-semibold flex-shrink-0"
+                style={{ background: etapa.bg, color: etapa.color }}>
+                {etapa.label}
+              </span>
+              <span className="inline-flex px-1.5 py-0 rounded-full text-xs font-bold flex-shrink-0"
+                style={{ background: brandBadge.bg, color: brandBadge.color }}>
+                {brandBadge.label}
+              </span>
+              {(pipeline?.name ?? q.pipeline_name) && (
+                <span className="inline-flex px-1.5 py-0 rounded-full text-xs font-semibold flex-shrink-0 truncate"
+                  style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd', maxWidth: 120 }}>
+                  {pipeline?.name ?? q.pipeline_name}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 leading-tight truncate">
+              {q.clients?.name}{q.issue_date && ` · ${formatDate(q.issue_date)}`}{q.profiles?.name && ` · ${q.profiles.name}`}
+            </p>
           </div>
-          <p className="text-sm text-gray-400 mt-0.5">
-            {q.clients?.name}
-            {q.issue_date && ` · ${formatDate(q.issue_date)}`}
-            {q.profiles?.name && ` · ${q.profiles.name}`}
-          </p>
         </div>
         <div className="flex gap-2 items-center flex-wrap justify-end">
           <a href={`/api/cotizaciones/${id}/html`} target="_blank">
