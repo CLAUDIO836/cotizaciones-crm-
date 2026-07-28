@@ -93,7 +93,53 @@ interface Client {
   contacto?: string; telefono_fijo?: string; telefono_celular?: string; email?: string
 }
 interface Pipeline { id: string; name: string; color: string }
-interface Item { codigo: string; description: string; pasajeros: number; quantity: number; unit_price: number }
+interface Item {
+  codigo: string
+  description: string
+  pasajeros: number
+  quantity: number
+  unit_price: number
+  // campos extra para Traslado Diario (UI-only, se serializan en description)
+  ruta_nombre?: string
+  desde_item?: string
+  hasta_item?: string
+  hora_salida_item?: string
+  hora_retorno_item?: string
+}
+
+// Parsear description si viene serializada como JSON para modo Diario
+function parseItemDescription(item: Item): Item {
+  try {
+    const parsed = JSON.parse(item.description)
+    if (parsed && typeof parsed === 'object' && parsed.__diario) {
+      return {
+        ...item,
+        ruta_nombre: parsed.ruta ?? '',
+        desde_item: parsed.desde ?? '',
+        hasta_item: parsed.hasta ?? '',
+        hora_salida_item: parsed.hora_salida ?? '',
+        hora_retorno_item: parsed.hora_retorno ?? '',
+        description: item.description, // mantener raw para el server
+      }
+    }
+  } catch { /* description normal */ }
+  return item
+}
+
+// Serializar campos diario a description JSON
+function serializeItemDescription(item: Item): string {
+  if (item.ruta_nombre !== undefined) {
+    return JSON.stringify({
+      __diario: true,
+      ruta: item.ruta_nombre ?? '',
+      desde: item.desde_item ?? '',
+      hasta: item.hasta_item ?? '',
+      hora_salida: item.hora_salida_item ?? '',
+      hora_retorno: item.hora_retorno_item ?? '',
+    })
+  }
+  return item.description
+}
 
 interface Seller { id: string; name: string; email?: string }
 interface Company { id: string; name: string }
@@ -167,6 +213,10 @@ const ETAPAS = [
 ]
 
 const DEFAULT_ITEM: Item = { codigo: '', description: '', pasajeros: 0, quantity: 1, unit_price: 0 }
+const DEFAULT_DIARIO_ITEM: Item = {
+  codigo: '', description: '', pasajeros: 0, quantity: 21, unit_price: 0,
+  ruta_nombre: '', desde_item: '', hasta_item: '', hora_salida_item: '', hora_retorno_item: '',
+}
 
 export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation }: Props) {
   const router = useRouter()
@@ -210,9 +260,14 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   const [notes, setNotes] = useState(quotation?.notes ?? '')
   const [terms, setTerms] = useState(quotation?.terms ?? '')
 
-  // Ítems
+  // Detectar si el pipeline inicial ya es Diario (para el item por defecto)
+  const initialIsDiario = pipelines.find(p => p.id === (quotation?.pipeline_id ?? ''))?.name?.toLowerCase().includes('diario') ?? false
+
+  // Ítems (parsear description JSON si viene de modo Diario)
   const [items, setItems] = useState<Item[]>(
-    quotation?.items?.length ? quotation.items : [{ ...DEFAULT_ITEM }]
+    quotation?.items?.length
+      ? quotation.items.map(parseItemDescription)
+      : [initialIsDiario ? { ...DEFAULT_DIARIO_ITEM } : { ...DEFAULT_ITEM }]
   )
 
   const [companyId, setCompanyId] = useState(() => quotation?.company_id ?? (companies.length === 1 ? companies[0].id : ''))
@@ -250,6 +305,9 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   const totalAnual = baseConDescuento * 12
 
   function updateItem(idx: number, field: keyof Item, value: string | number) {
+    setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item))
+  }
+  function updateItemStr(idx: number, field: keyof Item, value: string) {
     setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item))
   }
 
@@ -317,7 +375,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           terms: terms || null,
           items: items.map((item, idx) => ({
             codigo: item.codigo || null,
-            description: item.description,
+            description: serializeItemDescription(item),
             pasajeros: item.pasajeros || null,
             quantity: item.quantity,
             unit_price: item.unit_price,
@@ -625,23 +683,23 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
 
               return (
                 <div key={idx}
-                  className="rounded-xl border p-3 space-y-2"
-                  style={{ borderColor: '#e5e7eb', background: idx % 2 === 0 ? '#fafafa' : '#fff' }}>
+                  className="rounded-xl border overflow-hidden"
+                  style={{ borderColor: '#e5e7eb' }}>
 
-                  {/* Fila principal */}
-                  <div className="grid gap-2 items-center"
-                    style={{ gridTemplateColumns: '2fr 130px 60px 70px 130px 130px 110px 32px' }}>
+                  {/* Cabecera de fila: nombre ruta + vehículo + números + eliminar */}
+                  <div className="grid gap-2 items-center px-3 py-2.5 bg-gray-50"
+                    style={{ gridTemplateColumns: '1fr 130px 60px 70px 110px 120px 110px 32px' }}>
 
-                    {/* Descripción / Ruta */}
+                    {/* Nombre de la ruta */}
                     <Input
-                      placeholder="Ej: Ruta Santiago centro → Vespucio, ida y retorno"
-                      value={item.description}
-                      onChange={e => updateItem(idx, 'description', e.target.value)}
+                      placeholder="Ej: Ruta Santiago → Vespucio"
+                      value={item.ruta_nombre ?? ''}
+                      onChange={e => updateItemStr(idx, 'ruta_nombre', e.target.value)}
                       required
-                      className="text-sm"
+                      className="text-sm font-semibold"
                     />
 
-                    {/* Vehículo — select por ítem */}
+                    {/* Vehículo */}
                     <select
                       value={item.codigo}
                       onChange={e => updateItem(idx, 'codigo', e.target.value)}
@@ -672,23 +730,21 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
                       title="Días o servicios por mes"
                     />
 
-                    {/* Precio lista — computed display */}
-                    <div className="text-right">
+                    {/* Precio lista — computed */}
+                    <div className="text-right pr-1">
                       <div className="text-xs text-gray-400 line-through leading-tight">
                         {descuentoPct > 0 ? formatCLP(precioLista) : '—'}
                       </div>
                     </div>
 
                     {/* Precio neto — editable */}
-                    <div className="relative">
-                      <Input
-                        type="number" min={0} step={1000}
-                        value={item.unit_price || ''}
-                        onChange={e => updateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
-                        className="text-right text-sm font-semibold pr-2"
-                        placeholder="0"
-                      />
-                    </div>
+                    <Input
+                      type="number" min={0} step={1000}
+                      value={item.unit_price || ''}
+                      onChange={e => updateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
+                      className="text-right text-sm font-semibold"
+                      placeholder="0"
+                    />
 
                     {/* Total mensual */}
                     <div className="text-right">
@@ -712,13 +768,64 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
+
+                  {/* Detalle de ruta: Desde / Hasta + Horarios */}
+                  <div className="px-3 py-2.5 border-t grid grid-cols-2 gap-3"
+                    style={{ borderColor: '#f3f4f6', background: '#fff' }}>
+                    {/* Columna izquierda: Desde → Hasta */}
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Desde</label>
+                          <AddressInput
+                            value={item.desde_item ?? ''}
+                            onChange={addr => updateItemStr(idx, 'desde_item', addr)}
+                            placeholder="Origen de la ruta"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Hasta</label>
+                          <AddressInput
+                            value={item.hasta_item ?? ''}
+                            onChange={addr => updateItemStr(idx, 'hasta_item', addr)}
+                            placeholder="Destino de la ruta"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Columna derecha: Horarios */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Horarios</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium pointer-events-none">Salida</span>
+                          <Input
+                            type="time"
+                            value={item.hora_salida_item ?? ''}
+                            onChange={e => updateItemStr(idx, 'hora_salida_item', e.target.value)}
+                            className="pl-14 text-sm"
+                          />
+                        </div>
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium pointer-events-none">Retorno</span>
+                          <Input
+                            type="time"
+                            value={item.hora_retorno_item ?? ''}
+                            onChange={e => updateItemStr(idx, 'hora_retorno_item', e.target.value)}
+                            className="pl-16 text-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )
             })}
 
             {/* Agregar ruta */}
             <Button type="button" variant="outline" size="sm"
-              onClick={() => setItems(prev => [...prev, { ...DEFAULT_ITEM, quantity: 21 }])}
+              onClick={() => setItems(prev => [...prev, { ...DEFAULT_DIARIO_ITEM }])}
               style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
               <Plus className="w-4 h-4 mr-2" />
               Agregar ruta

@@ -23,6 +23,23 @@ function vehicleLabel(codigo: string | undefined) {
   return VEHICLE_LABEL[codigo.toUpperCase()] ?? codigo
 }
 
+interface DiarioItemData {
+  __diario: boolean
+  ruta: string
+  desde: string
+  hasta: string
+  hora_salida: string
+  hora_retorno: string
+}
+
+function parseDiarioItem(description: string): DiarioItemData | null {
+  try {
+    const p = JSON.parse(description)
+    if (p && p.__diario) return p as DiarioItemData
+  } catch { /* not JSON */ }
+  return null
+}
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const base = new URL(req.url).origin
   const { id } = await params
@@ -941,34 +958,47 @@ body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;background:#fff}
       <table class="rt">
         <thead>
           <tr>
-            <th>RUTA / DESCRIPCIÓN DEL SERVICIO</th>
-            <th style="width:100px;">VEHÍCULO</th>
-            <th class="r" style="width:115px;">PRECIO NETO / SERV.</th>
-            <th class="r" style="width:75px;">FREC./MES</th>
-            <th class="r" style="width:120px;">TOTAL MENSUAL</th>
+            <th style="width:30%;">RUTA</th>
+            <th style="width:16%;">RECORRIDO</th>
+            <th style="width:80px;">VEHÍCULO</th>
+            <th class="r" style="width:80px;">FREC./MES</th>
+            <th class="r" style="width:105px;">PRECIO NETO</th>
+            <th class="r" style="width:110px;">TOTAL MENSUAL</th>
           </tr>
         </thead>
         <tbody>
           ${items.length === 0
-            ? `<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:20px;">Sin ítems registrados</td></tr>`
+            ? `<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:20px;">Sin ítems registrados</td></tr>`
             : items.map((item: { codigo?: string; description: string; pasajeros?: number; quantity: number; unit_price: number; subtotal: number }) => {
+                const diario = parseDiarioItem(item.description)
+                const rutaNombre = diario ? diario.ruta : item.description
                 const totalItem = item.quantity * item.unit_price
                 const listaItem = descuentoPct > 0 ? Math.round(item.unit_price / (1 - descuentoPct / 100)) : null
                 const vLabel = vehicleLabel(item.codigo)
+                const recorrido = diario && (diario.desde || diario.hasta)
+                  ? `${diario.desde || '—'} → ${diario.hasta || '—'}`
+                  : '—'
+                const horarios = diario && (diario.hora_salida || diario.hora_retorno)
+                  ? `↑ ${diario.hora_salida || '—'} · ↓ ${diario.hora_retorno || '—'}`
+                  : null
                 return `
               <tr>
                 <td>
-                  <div style="font-size:10.5px;color:#374151;line-height:1.5;">${item.description}</div>
-                  ${item.pasajeros ? `<div style="font-size:9px;color:#9ca3af;margin-top:2px;">${item.pasajeros} pasajeros</div>` : ''}
+                  <div style="font-size:10.5px;font-weight:600;color:#111;line-height:1.4;">${rutaNombre}</div>
+                  ${horarios ? `<div style="font-size:9px;color:${ACCENT};margin-top:3px;font-weight:600;">${horarios}</div>` : ''}
+                  ${item.pasajeros ? `<div style="font-size:9px;color:#9ca3af;margin-top:1px;">${item.pasajeros} pasajeros</div>` : ''}
+                </td>
+                <td>
+                  <div style="font-size:9px;color:#374151;line-height:1.5;">${recorrido}</div>
                 </td>
                 <td>
                   ${vLabel ? `<span class="vbadge">${vLabel}</span>` : (item.codigo ?? '—')}
                 </td>
+                <td class="r" style="color:#374151;font-size:11px;">${item.quantity}</td>
                 <td class="r">
                   <div class="price-net">${formatCLP(item.unit_price)}</div>
                   ${listaItem ? `<div class="price-list">${formatCLP(listaItem)}</div>` : ''}
                 </td>
-                <td class="r" style="color:#374151;">${item.quantity}</td>
                 <td class="r">
                   <div style="font-weight:700;font-size:12px;">${formatCLP(totalItem)}</div>
                   ${descuentoPct > 0 ? `<div style="text-align:right;margin-top:2px;"><span class="disc-badge">-${descuentoPct}%</span></div>` : ''}
