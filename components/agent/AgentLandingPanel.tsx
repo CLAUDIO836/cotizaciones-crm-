@@ -93,7 +93,7 @@ export default function AgentLandingPanel({ stats, conversations, agentEnabled, 
           </div>
           <button
             onClick={handleToggleAgent}
-            disabled={toggling || !companyId}
+            disabled={toggling}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all disabled:opacity-60"
             style={enabled
               ? { borderColor: '#FCA5A5', color: '#DC2626', background: '#FEF2F2' }
