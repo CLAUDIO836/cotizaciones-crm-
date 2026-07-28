@@ -152,7 +152,7 @@ export async function fetchAiAgentSettings(
   companyId?: string
 ): Promise<AiAgentSettings | null> {
   try {
-    const params = companyId ? { company_id: companyId } : {}
+    const params: Record<string, string> = companyId ? { company_id: companyId } : {}
     const r = await crmGet('ai_agent_settings_get', params)
     return (r.data as AiAgentSettings) ?? null
   } catch {
