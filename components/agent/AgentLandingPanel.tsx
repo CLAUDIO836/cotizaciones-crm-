@@ -39,10 +39,29 @@ interface Props {
   stats: AiLandingStats
   conversations: AiConversationSummary[]
   agentEnabled: boolean
+  companyId?: string
 }
 
-export default function AgentLandingPanel({ stats, conversations, agentEnabled }: Props) {
+export default function AgentLandingPanel({ stats, conversations, agentEnabled, companyId }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('todos')
+  const [enabled, setEnabled] = useState(agentEnabled)
+  const [toggling, setToggling] = useState(false)
+
+  async function handleToggleAgent() {
+    if (!companyId || toggling) return
+    setToggling(true)
+    const next = !enabled
+    try {
+      await fetch('/api/ai/agent/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, enabled: next }),
+      })
+      setEnabled(next)
+    } finally {
+      setToggling(false)
+    }
+  }
 
   const filtered = useMemo(() => {
     switch (activeTab) {
@@ -67,19 +86,21 @@ export default function AgentLandingPanel({ stats, conversations, agentEnabled }
             <div>
               <h1 className="font-bold text-gray-900 text-xl leading-tight">Agente Comercial IA</h1>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <div className={`w-1.5 h-1.5 rounded-full ${agentEnabled ? 'bg-green-500' : 'bg-gray-400'}`} />
-                <span className="text-xs text-gray-500">{agentEnabled ? 'Activo' : 'Pausado'}</span>
+                <div className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                <span className="text-xs text-gray-500">{enabled ? 'Activo' : 'Pausado'}</span>
               </div>
             </div>
           </div>
           <button
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all"
-            style={agentEnabled
+            onClick={handleToggleAgent}
+            disabled={toggling || !companyId}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all disabled:opacity-60"
+            style={enabled
               ? { borderColor: '#FCA5A5', color: '#DC2626', background: '#FEF2F2' }
               : { borderColor: '#BBF7D0', color: '#166534', background: '#F0FDF4' }
             }
           >
-            {agentEnabled
+            {enabled
               ? <><Pause className="w-3.5 h-3.5" /> Pausar IA</>
               : <><Zap  className="w-3.5 h-3.5" /> Activar IA</>
             }
