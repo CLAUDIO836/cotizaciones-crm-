@@ -112,7 +112,6 @@ if ($action === 'ai_conversations_list') {
             c.status, c.mode, c.priority, c.channel, c.subject,
             c.assigned_user_id, c.last_activity_at, c.created_at,
             p.name  AS assigned_name,
-            co.name AS company,
             l.empresa_nombre, l.contacto_nombre,
             cl.name AS client_name,
             (
@@ -144,7 +143,6 @@ if ($action === 'ai_conversations_list') {
             END AS tab_type
         FROM ai_conversations c
         LEFT JOIN profiles    p  ON p.id  = c.assigned_user_id
-        LEFT JOIN companies   co ON co.id = c.company_id
         LEFT JOIN lead_requests l ON l.id = c.lead_id
         LEFT JOIN clients     cl ON cl.id = c.client_id
         WHERE 1=1 $status_filter $mode_filter $uf
@@ -207,7 +205,6 @@ if ($action === 'ai_conversations_get') {
     $stmt = db()->prepare("
         SELECT c.*,
                p.name  AS assigned_name,
-               co.name AS company,
                l.empresa_nombre,  l.empresa_rut,
                l.contacto_nombre, l.contacto_cargo,
                l.contacto_email,  l.contacto_telefono,
@@ -221,7 +218,6 @@ if ($action === 'ai_conversations_get') {
                cl.email AS client_email, cl.phone AS client_phone
         FROM ai_conversations c
         LEFT JOIN profiles      p  ON p.id  = c.assigned_user_id
-        LEFT JOIN companies     co ON co.id = c.company_id
         LEFT JOIN lead_requests l  ON l.id  = c.lead_id
         LEFT JOIN clients       cl ON cl.id = c.client_id
         WHERE c.id = ?
