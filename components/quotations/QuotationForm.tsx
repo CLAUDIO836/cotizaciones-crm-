@@ -105,6 +105,8 @@ interface Item {
   hasta_item?: string
   hora_salida_item?: string
   hora_retorno_item?: string
+  tiene_paradas?: boolean
+  obs_paradas?: string
 }
 
 // Parsear description si viene serializada como JSON para modo Diario
@@ -119,6 +121,8 @@ function parseItemDescription(item: Item): Item {
         hasta_item: parsed.hasta ?? '',
         hora_salida_item: parsed.hora_salida ?? '',
         hora_retorno_item: parsed.hora_retorno ?? '',
+        tiene_paradas: parsed.tiene_paradas ?? false,
+        obs_paradas: parsed.obs_paradas ?? '',
         description: item.description, // mantener raw para el server
       }
     }
@@ -136,6 +140,8 @@ function serializeItemDescription(item: Item): string {
       hasta: item.hasta_item ?? '',
       hora_salida: item.hora_salida_item ?? '',
       hora_retorno: item.hora_retorno_item ?? '',
+      tiene_paradas: item.tiene_paradas ?? false,
+      obs_paradas: item.obs_paradas ?? '',
     })
   }
   return item.description
@@ -215,7 +221,7 @@ const ETAPAS = [
 const DEFAULT_ITEM: Item = { codigo: '', description: '', pasajeros: 0, quantity: 1, unit_price: 0 }
 const DEFAULT_DIARIO_ITEM: Item = {
   codigo: '', description: '', pasajeros: 0, quantity: 21, unit_price: 0,
-  ruta_nombre: '', desde_item: '', hasta_item: '', hora_salida_item: '', hora_retorno_item: '',
+  ruta_nombre: '', desde_item: '', hasta_item: '', hora_salida_item: '', hora_retorno_item: '', tiene_paradas: false, obs_paradas: '',
 }
 
 export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation }: Props) {
@@ -307,7 +313,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   function updateItem(idx: number, field: keyof Item, value: string | number) {
     setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item))
   }
-  function updateItemStr(idx: number, field: keyof Item, value: string) {
+  function updateItemStr(idx: number, field: keyof Item, value: string | boolean) {
     setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item))
   }
 
@@ -817,6 +823,45 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
                           />
                         </div>
                       </div>
+
+                      {/* Paradas */}
+                      <div className="flex items-center gap-3 pt-1">
+                        <span className="text-xs text-gray-500 font-medium">¿Esta ruta tiene paradas?</span>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => updateItemStr(idx, 'tiene_paradas', true)}
+                            className="px-3 py-1 rounded-full text-xs font-semibold border transition-all"
+                            style={item.tiene_paradas
+                              ? { background: '#1B8A4B', color: 'white', borderColor: '#1B8A4B' }
+                              : { background: 'white', color: '#6b7280', borderColor: '#d1d5db' }}
+                          >
+                            Sí
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { updateItemStr(idx, 'tiene_paradas', false); updateItemStr(idx, 'obs_paradas', '') }}
+                            className="px-3 py-1 rounded-full text-xs font-semibold border transition-all"
+                            style={!item.tiene_paradas
+                              ? { background: '#ef4444', color: 'white', borderColor: '#ef4444' }
+                              : { background: 'white', color: '#6b7280', borderColor: '#d1d5db' }}
+                          >
+                            No
+                          </button>
+                        </div>
+                      </div>
+                      {item.tiene_paradas && (
+                        <div>
+                          <Label className="text-xs text-gray-500 mb-1 block">Descripción de paradas</Label>
+                          <textarea
+                            rows={2}
+                            placeholder="Ej: Parada 1 - Av. Providencia 123 · Parada 2 - Metro Baquedano..."
+                            value={item.obs_paradas ?? ''}
+                            onChange={e => updateItemStr(idx, 'obs_paradas', e.target.value)}
+                            className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-500"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

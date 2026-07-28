@@ -24,6 +24,8 @@ function vehicleLabel(codigo: string | undefined) {
 }
 
 interface DiarioItemData {
+  tiene_paradas?: boolean
+  obs_paradas?: string
   __diario: boolean
   ruta: string
   desde: string
@@ -987,6 +989,7 @@ body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;background:#fff}
                   <div style="font-size:10.5px;font-weight:600;color:#111;line-height:1.4;">${rutaNombre}</div>
                   ${horarios ? `<div style="font-size:9px;color:${ACCENT};margin-top:3px;font-weight:600;">${horarios}</div>` : ''}
                   ${item.pasajeros ? `<div style="font-size:9px;color:#9ca3af;margin-top:1px;">${item.pasajeros} pasajeros</div>` : ''}
+                  ${diario?.tiene_paradas && diario.obs_paradas ? `<div style="font-size:8.5px;color:#6b7280;margin-top:3px;font-style:italic;">📍 ${diario.obs_paradas}</div>` : ''}
                 </td>
                 <td>
                   <div style="font-size:9px;color:#374151;line-height:1.5;">${recorrido}</div>
