@@ -15,6 +15,7 @@ import ApprovalLetterButton from '@/components/quotations/ApprovalLetterButton'
 import QuotationApprovalButton from '@/components/quotations/QuotationApprovalButton'
 import ResyncButton from '@/components/quotations/ResyncButton'
 import DocumentsTab from '@/components/quotations/DocumentsTab'
+import AgentButton from '@/components/quotations/AgentButton'
 
 const STAGES_ORDER = ['lead', 'contactado', 'cotizacion', 'negociacion', 'cierre']
 
@@ -326,6 +327,11 @@ export default async function CotizacionDetailPage({
             {!isReadOnly && (
               <DeleteButton quotationId={id} pipedriveDealId={q.pipedrive_deal_id} />
             )}
+            <AgentButton
+              quotationId={id}
+              clientId={q.client_id ?? undefined}
+              subject={`${q.clients?.name ?? ''} · #${q.number}`}
+            />
           </div>
 
           {/* Tabs */}
