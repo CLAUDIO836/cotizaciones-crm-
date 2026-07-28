@@ -683,7 +683,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
 
               return (
                 <div key={idx}
-                  className="rounded-xl border overflow-hidden"
+                  className="rounded-xl border"
                   style={{ borderColor: '#e5e7eb' }}>
 
                   {/* Cabecera de fila: nombre ruta + vehículo + números + eliminar */}
