@@ -30,7 +30,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function LeadContextPanel({ conv }: { conv: AiConversationDetail }) {
   const hasLead = Boolean(conv.lead_id)
-  const diasStr = Array.isArray(conv.dias_semana) ? conv.dias_semana.join(', ') : undefined
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-5">
@@ -59,11 +58,6 @@ export default function LeadContextPanel({ conv }: { conv: AiConversationDetail 
               value={conv.desde && conv.hasta ? `${conv.desde} → ${conv.hasta}` : (conv.desde ?? conv.hasta)} />
             <Row icon={Users}    label="Pasajeros"    value={conv.pasajeros_aprox} />
             <Row icon={Calendar} label="Fecha inicio" value={conv.fecha_inicio} />
-            <Row icon={Truck}    label="Vehículo"     value={conv.vehiculo_preferido} />
-            {diasStr && (
-              <Row icon={Calendar} label="Días" value={diasStr} />
-            )}
-            <Row icon={Calendar} label="Frecuencia"  value={conv.frecuencia} />
           </Section>
 
           {conv.observaciones && (
