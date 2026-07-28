@@ -78,12 +78,6 @@ export interface AiConversationDetail extends AiConversationSummary {
   pasajeros_aprox?: string | number
   fecha_inicio?: string
   observaciones?: string
-  frecuencia?: string
-  dias_semana?: string[]
-  vehiculo_preferido?: string
-  establecimiento_nombre?: string
-  motivo_viaje?: string
-  requiere_factura?: boolean
   target_company?: string
   // Client fields
   client_email?: string

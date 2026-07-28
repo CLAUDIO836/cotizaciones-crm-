@@ -8,6 +8,21 @@
  * Usa las mismas funciones de crm-api.php: db(), uuid(), ok(), err(), body(), requireAuth()
  */
 
+// Suppress HTML error output so errors come back as JSON
+ini_set('display_errors', '0');
+set_error_handler(function(int $errno, string $errstr, string $errfile, int $errline): bool {
+    http_response_code(500);
+    echo json_encode(['error' => "PHP[$errno]: $errstr in $errfile:$errline"]);
+    exit;
+});
+register_shutdown_function(function(): void {
+    $e = error_get_last();
+    if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        http_response_code(500);
+        echo json_encode(['error' => "Fatal: {$e['message']} in {$e['file']}:{$e['line']}"]);
+    }
+});
+
 // ── Helpers locales ───────────────────────────────────────────────────────────
 
 function ai_is_admin(array $user): bool {
@@ -106,53 +121,57 @@ if ($action === 'ai_conversations_list') {
         $mode_filter = ' AND c.mode = ?';
     }
 
-    $stmt = db()->prepare("
-        SELECT
-            c.id, c.company_id, c.lead_id, c.client_id,
-            c.status, c.mode, c.priority, c.channel, c.subject,
-            c.assigned_user_id, c.last_activity_at, c.created_at,
-            p.name  AS assigned_name,
-            l.empresa_nombre, l.contacto_nombre,
-            cl.name AS client_name,
-            (
-                SELECT content FROM ai_messages
-                WHERE conversation_id = c.id
-                ORDER BY created_at DESC LIMIT 1
-            ) AS latest_message,
-            (
-                SELECT COUNT(*) > 0 FROM ai_messages
-                WHERE conversation_id = c.id
-                  AND status = 'pending' AND sender = 'ai' AND message_type = 'draft'
-            ) AS has_pending_draft,
-            CASE
-                WHEN EXISTS (
-                    SELECT 1 FROM ai_tasks t
-                    WHERE t.conversation_id = c.id
-                      AND t.type = 'follow_up' AND t.done = 0 AND t.due_date < NOW()
-                ) THEN 'vencido'
-                WHEN EXISTS (
-                    SELECT 1 FROM ai_tasks t
-                    WHERE t.conversation_id = c.id AND t.type = 'quote_ready' AND t.done = 0
-                ) THEN 'cotizar'
-                WHEN EXISTS (
-                    SELECT 1 FROM ai_tasks t
-                    WHERE t.conversation_id = c.id AND t.type = 'follow_up' AND t.done = 0
-                ) THEN 'seguimiento'
-                WHEN c.lead_id IS NOT NULL THEN 'lead'
-                ELSE NULL
-            END AS tab_type
-        FROM ai_conversations c
-        LEFT JOIN profiles    p  ON p.id  = c.assigned_user_id
-        LEFT JOIN lead_requests l ON l.id = c.lead_id
-        LEFT JOIN clients     cl ON cl.id = c.client_id
-        WHERE 1=1 $status_filter $mode_filter $uf
-        ORDER BY
-            has_pending_draft DESC,
-            FIELD(c.priority, 'high', 'medium', 'low'),
-            c.last_activity_at DESC
-        LIMIT 200
-    ");
-    $stmt->execute($up);
+    try {
+        $stmt = db()->prepare("
+            SELECT
+                c.id, c.company_id, c.lead_id, c.client_id,
+                c.status, c.mode, c.priority, c.channel, c.subject,
+                c.assigned_user_id, c.last_activity_at, c.created_at,
+                p.name  AS assigned_name,
+                l.empresa_nombre, l.contacto_nombre,
+                cl.name AS client_name,
+                (
+                    SELECT content FROM ai_messages
+                    WHERE conversation_id = c.id
+                    ORDER BY created_at DESC LIMIT 1
+                ) AS latest_message,
+                (
+                    SELECT COUNT(*) > 0 FROM ai_messages
+                    WHERE conversation_id = c.id
+                      AND status = 'pending' AND sender = 'ai' AND message_type = 'draft'
+                ) AS has_pending_draft,
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1 FROM ai_tasks t
+                        WHERE t.conversation_id = c.id
+                          AND t.type = 'follow_up' AND t.done = 0 AND t.due_date < NOW()
+                    ) THEN 'vencido'
+                    WHEN EXISTS (
+                        SELECT 1 FROM ai_tasks t
+                        WHERE t.conversation_id = c.id AND t.type = 'quote_ready' AND t.done = 0
+                    ) THEN 'cotizar'
+                    WHEN EXISTS (
+                        SELECT 1 FROM ai_tasks t
+                        WHERE t.conversation_id = c.id AND t.type = 'follow_up' AND t.done = 0
+                    ) THEN 'seguimiento'
+                    WHEN c.lead_id IS NOT NULL THEN 'lead'
+                    ELSE NULL
+                END AS tab_type
+            FROM ai_conversations c
+            LEFT JOIN profiles    p  ON p.id  = c.assigned_user_id
+            LEFT JOIN lead_requests l ON l.id = c.lead_id
+            LEFT JOIN clients     cl ON cl.id = c.client_id
+            WHERE 1=1 $status_filter $mode_filter $uf
+            ORDER BY
+                has_pending_draft DESC,
+                FIELD(c.priority, 'high', 'medium', 'low'),
+                c.last_activity_at DESC
+            LIMIT 200
+        ");
+        $stmt->execute($up);
+    } catch (\Throwable $e) {
+        err('SQL error: ' . $e->getMessage(), 500);
+    }
     $rows = $stmt->fetchAll();
 
     foreach ($rows as &$row) {
@@ -163,38 +182,6 @@ if ($action === 'ai_conversations_list') {
     ok($rows);
 }
 
-// ── ai_conversations_create ───────────────────────────────────────────────────
-
-if ($action === 'ai_conversations_create') {
-    $user = requireAuth();
-    $b = body();
-
-    $lead_id    = $b['lead_id']     ?? null;
-    $client_id  = $b['client_id']   ?? null;
-    $company_id = $b['company_id']  ?? null;
-    $priority   = $b['priority']    ?? 'medium';
-    $channel    = $b['channel']     ?? 'email';
-    $subject    = $b['subject']     ?? null;
-    $assigned   = $b['assigned_user_id'] ?? $user['id'];
-
-    if (!in_array($priority, ['high','medium','low'], true)) $priority = 'medium';
-
-    $id = uuid();
-    db()->prepare("
-        INSERT INTO ai_conversations
-            (id, company_id, lead_id, client_id, priority, channel, subject, assigned_user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ")->execute([$id, $company_id, $lead_id, $client_id, $priority, $channel, $subject, $assigned]);
-
-    db()->prepare("
-        INSERT INTO ai_audit_log (id, conversation_id, user_id, action, details)
-        VALUES (?, ?, ?, 'conversation_created', ?)
-    ")->execute([uuid(), $id, $user['id'],
-        json_encode(['lead_id' => $lead_id, 'client_id' => $client_id])]);
-
-    ok(['id' => $id]);
-}
-
 // ── ai_conversations_get ──────────────────────────────────────────────────────
 
 if ($action === 'ai_conversations_get') {
@@ -202,27 +189,28 @@ if ($action === 'ai_conversations_get') {
     $id = $_GET['id'] ?? '';
     if (!$id) err('Missing id', 400);
 
-    $stmt = db()->prepare("
-        SELECT c.*,
-               p.name  AS assigned_name,
-               l.empresa_nombre,  l.empresa_rut,
-               l.contacto_nombre, l.contacto_cargo,
-               l.contacto_email,  l.contacto_telefono,
-               l.tipo_servicio,   l.desde,   l.hasta,
-               l.pasajeros_aprox, l.fecha_inicio,
-               l.observaciones,   l.frecuencia,
-               l.dias_semana,     l.vehiculo_preferido,
-               l.establecimiento_nombre, l.motivo_viaje,
-               l.requiere_factura, l.target_company,
-               cl.name AS client_name,
-               cl.email AS client_email, cl.phone AS client_phone
-        FROM ai_conversations c
-        LEFT JOIN profiles      p  ON p.id  = c.assigned_user_id
-        LEFT JOIN lead_requests l  ON l.id  = c.lead_id
-        LEFT JOIN clients       cl ON cl.id = c.client_id
-        WHERE c.id = ?
-    ");
-    $stmt->execute([$id]);
+    try {
+        $stmt = db()->prepare("
+            SELECT c.*,
+                   p.name  AS assigned_name,
+                   l.empresa_nombre,  l.empresa_rut,
+                   l.contacto_nombre, l.contacto_cargo,
+                   l.contacto_email,  l.contacto_telefono,
+                   l.tipo_servicio,   l.desde,   l.hasta,
+                   l.pasajeros_aprox, l.fecha_inicio,
+                   l.observaciones,   l.target_company,
+                   cl.name AS client_name,
+                   cl.email AS client_email, cl.phone AS client_phone
+            FROM ai_conversations c
+            LEFT JOIN profiles      p  ON p.id  = c.assigned_user_id
+            LEFT JOIN lead_requests l  ON l.id  = c.lead_id
+            LEFT JOIN clients       cl ON cl.id = c.client_id
+            WHERE c.id = ?
+        ");
+        $stmt->execute([$id]);
+    } catch (\Throwable $e) {
+        err('SQL error: ' . $e->getMessage(), 500);
+    }
     $conv = $stmt->fetch();
     if (!$conv) err('Conversation not found', 404);
 
