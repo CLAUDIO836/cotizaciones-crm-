@@ -1,6 +1,20 @@
+export const dynamic = 'force-dynamic'
+
 import { notFound } from 'next/navigation'
 import SigningForm from './SigningForm'
-import { crmGet } from '@/lib/api'
+
+const CRM_API = process.env.CRM_API_URL ?? 'https://transccl.cl/crm-api.php'
+
+async function getLetter(token: string): Promise<Record<string, string> | null> {
+  try {
+    const res = await fetch(`${CRM_API}?action=letters_get&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
+    if (!res.ok) return null
+    const json = await res.json()
+    return (json.data as Record<string, string>) ?? null
+  } catch {
+    return null
+  }
+}
 
 function formatCLP(n: number) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(n)
@@ -9,8 +23,7 @@ function formatCLP(n: number) {
 export default async function SignPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
 
-  const r = await crmGet('letters_get', { token })
-  const letter = r?.data as Record<string, string> | null
+  const letter = await getLetter(token)
 
   if (!letter) notFound()
 
