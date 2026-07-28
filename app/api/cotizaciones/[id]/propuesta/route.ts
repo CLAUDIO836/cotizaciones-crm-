@@ -50,6 +50,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const q = await fetchQuotation(id, urlToken)
   if (!q) return new Response('Not found', { status: 404 })
 
+  // Guardia: TrackingCCL no tiene formato de propuesta
+  const companyStr = ((q as { companies?: { name?: string }; company?: string }).companies?.name
+    ?? (q as { company?: string }).company ?? '').toString().toUpperCase()
+  if (companyStr.includes('TRACKING')) {
+    return new Response(`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Sin formato</title>
+<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb;}
+.box{text-align:center;padding:48px;background:white;border-radius:16px;border:2px solid #e5e7eb;max-width:480px;}
+.icon{font-size:48px;margin-bottom:16px;}
+h2{color:#111827;margin:0 0 8px;}
+p{color:#6b7280;margin:0;line-height:1.6;}
+</style></head><body><div class="box">
+<div class="icon">⚠️</div>
+<h2>Formato no disponible</h2>
+<p>TrackingCCL aún no tiene un formato de propuesta comercial creado.<br>Contacta al administrador del sistema.</p>
+</div></body></html>`, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+  }
+
   const items = (q.quotation_items ?? [])
     .sort((a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order)
 

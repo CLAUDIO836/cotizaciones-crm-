@@ -112,13 +112,20 @@ export default async function CotizacionDetailPage({
               Ver / Imprimir
             </Button>
           </a>
-          {!isTKS && (pipeline?.name ?? q.pipeline_name ?? '').toLowerCase().includes('diario') && (
-            <a href={`/api/cotizaciones/${id}/propuesta`} target="_blank">
-              <Button variant="outline" size="sm" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
-                <Globe className="w-4 h-4 mr-1.5" />
-                Propuesta Comercial
-              </Button>
-            </a>
+          {!isTracking && (
+            <>
+              <a href={`/api/cotizaciones/${id}/propuesta`} target="_blank">
+                <Button variant="outline" size="sm" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
+                  <Globe className="w-4 h-4 mr-1.5" />
+                  Propuesta Comercial
+                </Button>
+              </a>
+              <a href={`/api/cotizaciones/${id}/propuesta/download`} download>
+                <Button variant="outline" size="sm" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
+                  ⬇ Descargar PDF
+                </Button>
+              </a>
+            </>
           )}
           {!isReadOnly && (
             <ResyncButton

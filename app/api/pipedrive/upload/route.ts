@@ -183,9 +183,14 @@ async function handleUpload(req: NextRequest) {
     return NextResponse.json({ ok: true, dealId, skippedPdf: true })
   }
 
-  // ── PASO 2: Generar PDF ──────────────────────────────────────────────────────
+  // TrackingCCL no tiene formato de propuesta → skip PDF
+  if (effectiveCompanyName.toUpperCase().includes('TRACKING')) {
+    return NextResponse.json({ ok: true, dealId, pdfWarning: 'TrackingCCL sin formato de propuesta. PDF no generado.' })
+  }
+
+  // ── PASO 2: Generar PDF (Propuesta Comercial) ────────────────────────────────
   const appUrl = process.env.APP_URL ?? 'https://crm.transccl.cl'
-  const htmlUrl = `${appUrl}/api/cotizaciones/${quotationId}/html?token=${encodeURIComponent(token)}`
+  const htmlUrl = `${appUrl}/api/cotizaciones/${quotationId}/propuesta?token=${encodeURIComponent(token)}`
 
   let pdfBuffer: Buffer
   try {
