@@ -198,10 +198,7 @@ if ($action === 'ai_conversations_get') {
                    l.contacto_email,  l.contacto_telefono,
                    l.tipo_servicio,   l.desde,   l.hasta,
                    l.pasajeros_aprox, l.fecha_inicio,
-                   l.observaciones,   l.frecuencia,
-                   l.dias_semana,     l.vehiculo_preferido,
-                   l.establecimiento_nombre, l.motivo_viaje,
-                   l.requiere_factura, l.target_company,
+                   l.observaciones,   l.target_company,
                    cl.name AS client_name,
                    cl.email AS client_email, cl.phone AS client_phone
             FROM ai_conversations c
