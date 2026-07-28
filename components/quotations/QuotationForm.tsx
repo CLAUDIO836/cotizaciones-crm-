@@ -144,6 +144,20 @@ const VEHICLES_TKS = [
   { key: 'minivan', label: 'Minivan (7–10 pax)',  img: '/vehicles/tks-minivan.jpg',    desc: 'Servicio de transporte en Minivan (7–10 pasajeros) – Flota 2014 al 2026' },
 ]
 
+// Códigos de vehículo para Traslado Diario (selector por ítem)
+const VEHICLE_CODES = [
+  { code: 'B45', label: 'Bus 45 pax' },
+  { code: 'B40', label: 'Bus 40 pax' },
+  { code: 'B33', label: 'Bus 33 pax' },
+  { code: 'B25', label: 'Bus 25 pax' },
+  { code: 'M19', label: 'Minibús 19 pax' },
+  { code: 'M15', label: 'Minibús 15 pax' },
+  { code: 'M10', label: 'Minibús 10 pax' },
+  { code: 'V10', label: 'Van 10 pax' },
+  { code: 'V9',  label: 'Van 9 pax' },
+  { code: 'V7',  label: 'Van 7 pax' },
+]
+
 const ETAPAS = [
   { key: 'lead',        label: 'Lead' },
   { key: 'contactado',  label: 'Contactado' },
@@ -225,11 +239,15 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   const [newClientEmail, setNewClientEmail] = useState('')
   const [showNewClient, setShowNewClient] = useState(false)
 
+  // ¿Es embudo Traslado Diario?
+  const isDiario = pipelines.find(p => p.id === pipelineId)?.name?.toLowerCase().includes('diario') ?? false
+
   const subtotalNeto = items.reduce((s, i) => s + i.quantity * i.unit_price, 0)
   const descuentoAmt = subtotalNeto * (descuentoPct / 100)
   const baseConDescuento = subtotalNeto - descuentoAmt
   const taxAmount = baseConDescuento * (taxPct / 100)
   const total = baseConDescuento + taxAmount
+  const totalAnual = baseConDescuento * 12
 
   function updateItem(idx: number, field: keyof Item, value: string | number) {
     setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item))
@@ -264,7 +282,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     if (!clientId) { toast.error('Busca y selecciona un cliente por RUT'); return }
     if (!selectedUserId) { toast.error('Selecciona un vendedor'); return }
     if (items.some(i => !i.description.trim())) { toast.error('Completa la descripción de todos los ítems'); return }
-    if (items.some(i => !i.pasajeros || i.pasajeros <= 0)) { toast.error('Indica la cantidad de pasajeros en cada ítem'); return }
+    if (!isDiario && items.some(i => !i.pasajeros || i.pasajeros <= 0)) { toast.error('Indica la cantidad de pasajeros en cada ítem'); return }
 
     withPdf ? setLoadingPdf(true) : setLoading(true)
     try {
@@ -463,8 +481,8 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           </div>
         </div>
 
-        {/* Vehículo */}
-        <div className="space-y-1.5">
+        {/* Vehículo — solo para servicios especiales (en diario va por ítem) */}
+        <div className="space-y-1.5" style={isDiario ? { display: 'none' } : {}}>
           <Label>Tipo de vehículo</Label>
           <div className="grid grid-cols-3 gap-2">
             {(() => {
@@ -521,144 +539,350 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
         </div>
       </div>
 
-      {/* ── RUTA / SERVICIO ── */}
-      <div className="bg-white rounded-xl border p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-sm uppercase tracking-wide text-gray-500">Ruta / Servicio</h2>
-          {distanciaKm !== null && (
-            <span className="text-sm font-semibold px-3 py-1 rounded-full" style={{ background: '#e8f5e9', color: '#1B8A4B' }}>
-              {distanciaKm} km en ruta{duracionText ? ` · ${duracionText}` : ''}
-            </span>
-          )}
+      {/* ── RUTA / SERVICIO — solo para servicios especiales ── */}
+      {!isDiario && (
+        <div className="bg-white rounded-xl border p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-sm uppercase tracking-wide text-gray-500">Ruta / Servicio</h2>
+            {distanciaKm !== null && (
+              <span className="text-sm font-semibold px-3 py-1 rounded-full" style={{ background: '#e8f5e9', color: '#1B8A4B' }}>
+                {distanciaKm} km en ruta{duracionText ? ` · ${duracionText}` : ''}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Desde</Label>
+              <AddressInput
+                value={desde}
+                onChange={(addr, _lat, _lng, pid) => { setDesde(addr); if (pid) setDesdePlaceId(pid) }}
+                placeholder="Dirección de origen"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Hasta</Label>
+              <AddressInput
+                value={hasta}
+                onChange={(addr, _lat, _lng, pid) => { setHasta(addr); if (pid) setHastaPlaceId(pid) }}
+                placeholder="Dirección de destino"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Fecha salida</Label>
+              <Input type="datetime-local" value={fechaSalida} onChange={e => setFechaSalida(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Fecha destino / retorno</Label>
+              <Input type="datetime-local" value={fechaDestino} onChange={e => setFechaDestino(e.target.value)} />
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label>Desde</Label>
-            <AddressInput
-              value={desde}
-              onChange={(addr, _lat, _lng, pid) => { setDesde(addr); if (pid) setDesdePlaceId(pid) }}
-              placeholder="Dirección de origen"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Hasta</Label>
-            <AddressInput
-              value={hasta}
-              onChange={(addr, _lat, _lng, pid) => { setHasta(addr); if (pid) setHastaPlaceId(pid) }}
-              placeholder="Dirección de destino"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Fecha salida</Label>
-            <Input type="datetime-local" value={fechaSalida} onChange={e => setFechaSalida(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Fecha destino / retorno</Label>
-            <Input type="datetime-local" value={fechaDestino} onChange={e => setFechaDestino(e.target.value)} />
-          </div>
-        </div>
-      </div>
+      )}
 
-      {/* ── ÍTEMS ── */}
-      <div className="bg-white rounded-xl border p-5 space-y-4">
-        <h2 className="font-semibold text-sm uppercase tracking-wide text-gray-500">Ítems / Servicios</h2>
-
-        <div className="space-y-2">
-          <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-400 px-1">
-            <span className="col-span-2">Código</span>
-            <span className="col-span-4">Descripción</span>
-            <span className="col-span-1 text-center">Pax *</span>
-            <span className="col-span-1 text-center">Cant.</span>
-            <span className="col-span-2 text-right">Precio unit.</span>
-            <span className="col-span-1 text-right">Total</span>
-            <span className="col-span-1" />
+      {/* ── ÍTEMS: modo Traslado Diario ── */}
+      {isDiario ? (
+        <div className="bg-white rounded-xl border overflow-hidden">
+          {/* Header */}
+          <div className="px-5 py-3 flex items-center justify-between border-b"
+            style={{ background: '#f0fdf4', borderColor: '#bbf7d0' }}>
+            <div>
+              <h2 className="font-bold text-sm" style={{ color: '#1B8A4B' }}>
+                Rutas del Servicio Diario
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">Cada fila es una ruta. El descuento se aplica globalmente a todas.</p>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-gray-500">
+              {descuentoPct > 0 && (
+                <span className="px-2 py-0.5 rounded-full font-semibold"
+                  style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>
+                  {descuentoPct}% dto. aplicado
+                </span>
+              )}
+            </div>
           </div>
 
-          {items.map((item, idx) => (
-            <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-              <Input
-                className="col-span-2"
-                placeholder="BUS"
-                value={item.codigo}
-                onChange={e => updateItem(idx, 'codigo', e.target.value)}
-              />
-              <Input
-                className="col-span-4"
-                placeholder="Descripción del servicio"
-                value={item.description}
-                onChange={e => updateItem(idx, 'description', e.target.value)}
-                required
-              />
-              <Input
-                className="col-span-1 text-center"
-                type="number" min={1} step={1}
-                placeholder="0"
-                value={item.pasajeros || ''}
-                onChange={e => updateItem(idx, 'pasajeros', parseInt(e.target.value) || 0)}
-                title="Cantidad de pasajeros a trasladar"
-                style={(!item.pasajeros || item.pasajeros <= 0) ? { borderColor: '#f97316' } : {}}
-              />
-              <Input
-                className="col-span-1 text-center"
-                type="number" min={0.01} step={0.01}
-                value={item.quantity}
-                onChange={e => updateItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
-              />
-              <Input
-                className="col-span-2 text-right"
-                type="number" min={0} step={1}
-                value={item.unit_price}
-                onChange={e => updateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
-              />
-              <div className="col-span-1 text-right text-sm font-semibold text-gray-700">
-                {formatCLP(item.quantity * item.unit_price)}
+          <div className="p-5 space-y-3">
+            {/* Columnas header */}
+            <div className="grid gap-2 text-xs font-semibold text-gray-400 uppercase tracking-wide px-1"
+              style={{ gridTemplateColumns: '2fr 130px 60px 70px 130px 130px 110px 32px' }}>
+              <span>Ruta / Descripción</span>
+              <span>Vehículo</span>
+              <span className="text-center">Pax</span>
+              <span className="text-center">Días/mes</span>
+              <span className="text-right">Precio lista</span>
+              <span className="text-right">Precio neto</span>
+              <span className="text-right">Total mensual</span>
+              <span />
+            </div>
+
+            {/* Filas de rutas */}
+            {items.map((item, idx) => {
+              const precioLista = descuentoPct > 0
+                ? Math.round(item.unit_price / (1 - descuentoPct / 100))
+                : item.unit_price
+              const totalMensual = item.quantity * item.unit_price
+              const totalMensualLista = item.quantity * precioLista
+
+              return (
+                <div key={idx}
+                  className="rounded-xl border p-3 space-y-2"
+                  style={{ borderColor: '#e5e7eb', background: idx % 2 === 0 ? '#fafafa' : '#fff' }}>
+
+                  {/* Fila principal */}
+                  <div className="grid gap-2 items-center"
+                    style={{ gridTemplateColumns: '2fr 130px 60px 70px 130px 130px 110px 32px' }}>
+
+                    {/* Descripción / Ruta */}
+                    <Input
+                      placeholder="Ej: Ruta Santiago centro → Vespucio, ida y retorno"
+                      value={item.description}
+                      onChange={e => updateItem(idx, 'description', e.target.value)}
+                      required
+                      className="text-sm"
+                    />
+
+                    {/* Vehículo — select por ítem */}
+                    <select
+                      value={item.codigo}
+                      onChange={e => updateItem(idx, 'codigo', e.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-white px-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-ring"
+                      style={{ color: item.codigo ? '#1B8A4B' : '#9ca3af' }}
+                    >
+                      <option value="">Vehículo...</option>
+                      {VEHICLE_CODES.map(v => (
+                        <option key={v.code} value={v.code}>{v.label}</option>
+                      ))}
+                    </select>
+
+                    {/* Pasajeros */}
+                    <Input
+                      type="number" min={1} step={1}
+                      placeholder="Pax"
+                      value={item.pasajeros || ''}
+                      onChange={e => updateItem(idx, 'pasajeros', parseInt(e.target.value) || 0)}
+                      className="text-center text-sm"
+                    />
+
+                    {/* Días/mes */}
+                    <Input
+                      type="number" min={1} step={1} max={31}
+                      value={item.quantity}
+                      onChange={e => updateItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                      className="text-center text-sm"
+                      title="Días o servicios por mes"
+                    />
+
+                    {/* Precio lista — computed display */}
+                    <div className="text-right">
+                      <div className="text-xs text-gray-400 line-through leading-tight">
+                        {descuentoPct > 0 ? formatCLP(precioLista) : '—'}
+                      </div>
+                    </div>
+
+                    {/* Precio neto — editable */}
+                    <div className="relative">
+                      <Input
+                        type="number" min={0} step={1000}
+                        value={item.unit_price || ''}
+                        onChange={e => updateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
+                        className="text-right text-sm font-semibold pr-2"
+                        placeholder="0"
+                      />
+                    </div>
+
+                    {/* Total mensual */}
+                    <div className="text-right">
+                      <div className="text-sm font-bold" style={{ color: '#1B8A4B' }}>
+                        {formatCLP(totalMensual)}
+                      </div>
+                      {descuentoPct > 0 && (
+                        <div className="text-xs text-gray-400 line-through leading-tight">
+                          {formatCLP(totalMensualLista)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Eliminar */}
+                    <button
+                      type="button"
+                      onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}
+                      className="text-gray-300 hover:text-red-500 flex justify-center"
+                      disabled={items.length === 1}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Agregar ruta */}
+            <Button type="button" variant="outline" size="sm"
+              onClick={() => setItems(prev => [...prev, { ...DEFAULT_ITEM, quantity: 21 }])}
+              style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
+              <Plus className="w-4 h-4 mr-2" />
+              Agregar ruta
+            </Button>
+
+            {/* Descuento global */}
+            <div className="border-t pt-4 flex items-start justify-between gap-4">
+              {/* Descuento */}
+              <div className="flex items-center gap-3">
+                <Label className="text-sm whitespace-nowrap text-gray-600 font-semibold">Descuento global (%)</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number" min={0} max={100} step={0.5}
+                    value={descuentoPct}
+                    onChange={e => setDescuentoPct(parseFloat(e.target.value) || 0)}
+                    className="w-20 text-center font-bold"
+                    style={descuentoPct > 0 ? { borderColor: '#f59e0b', color: '#92400e', background: '#fffbeb' } : {}}
+                  />
+                  <span className="text-sm text-gray-400">%</span>
+                </div>
+                {descuentoPct > 0 && (
+                  <span className="text-sm text-amber-600 font-medium">
+                    Ahorro: {formatCLP(Math.round(subtotalNeto / (1 - descuentoPct / 100)) - subtotalNeto)}
+                  </span>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}
-                className="col-span-1 text-gray-300 hover:text-red-500 flex justify-center"
-                disabled={items.length === 1}
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
-        </div>
 
-        <Button type="button" variant="outline" size="sm"
-          onClick={() => setItems(prev => [...prev, { ...DEFAULT_ITEM }])}>
-          <Plus className="w-4 h-4 mr-2" />
-          Agregar ítem
-        </Button>
-
-        {/* Totales */}
-        <div className="border-t pt-4 ml-auto max-w-xs space-y-1.5">
-          <div className="flex justify-between text-sm text-gray-500">
-            <span>Subtotal neto</span>
-            <span>{formatCLP(subtotalNeto)}</span>
-          </div>
-          <div className="flex items-center justify-between text-sm text-gray-500 gap-4">
-            <span className="whitespace-nowrap">Descuento (%)</span>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number" min={0} max={100} step={0.5}
-                value={descuentoPct}
-                onChange={e => setDescuentoPct(parseFloat(e.target.value) || 0)}
-                className="w-16 text-right text-sm"
-              />
-              <span className="text-sm text-gray-500 w-20 text-right">{formatCLP(descuentoAmt)}</span>
+              {/* Resumen totales */}
+              <div className="space-y-1 min-w-[260px]">
+                {descuentoPct > 0 && (
+                  <>
+                    <div className="flex justify-between text-sm text-gray-400">
+                      <span>Precio lista (sin dto.)</span>
+                      <span className="line-through">{formatCLP(Math.round(subtotalNeto / (1 - descuentoPct / 100)))}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-amber-600 font-medium">
+                      <span>Descuento ({descuentoPct}%)</span>
+                      <span>−{formatCLP(Math.round(subtotalNeto / (1 - descuentoPct / 100)) - subtotalNeto)}</span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between text-sm text-gray-500">
+                  <span>Subtotal neto mensual</span>
+                  <span className="font-semibold">{formatCLP(subtotalNeto)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>IVA (Decreto 80 — Exento)</span>
+                  <span>$0</span>
+                </div>
+                <div className="flex justify-between font-bold text-base border-t pt-2"
+                  style={{ color: '#1B8A4B', borderColor: '#bbf7d0' }}>
+                  <span>Total mensual</span>
+                  <span>{formatCLP(subtotalNeto)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-semibold text-gray-600 bg-gray-50 rounded-lg px-3 py-2 border">
+                  <span>Proyección anual (×12)</span>
+                  <span>{formatCLP(totalAnual)}</span>
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="flex justify-between text-sm text-gray-500">
-            <span>IVA ({taxPct}%)</span>
-            <span>{formatCLP(taxAmount)}</span>
-          </div>
-          <div className="flex justify-between font-bold text-gray-900 border-t pt-2">
-            <span>TOTAL</span>
-            <span style={{ color: '#1B8A4B' }}>{formatCLP(total)}</span>
           </div>
         </div>
-      </div>
+      ) : (
+        /* ── ÍTEMS modo estándar ── */
+        <div className="bg-white rounded-xl border p-5 space-y-4">
+          <h2 className="font-semibold text-sm uppercase tracking-wide text-gray-500">Ítems / Servicios</h2>
+
+          <div className="space-y-2">
+            <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-400 px-1">
+              <span className="col-span-2">Código</span>
+              <span className="col-span-4">Descripción</span>
+              <span className="col-span-1 text-center">Pax *</span>
+              <span className="col-span-1 text-center">Cant.</span>
+              <span className="col-span-2 text-right">Precio unit.</span>
+              <span className="col-span-1 text-right">Total</span>
+              <span className="col-span-1" />
+            </div>
+
+            {items.map((item, idx) => (
+              <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                <Input
+                  className="col-span-2"
+                  placeholder="BUS"
+                  value={item.codigo}
+                  onChange={e => updateItem(idx, 'codigo', e.target.value)}
+                />
+                <Input
+                  className="col-span-4"
+                  placeholder="Descripción del servicio"
+                  value={item.description}
+                  onChange={e => updateItem(idx, 'description', e.target.value)}
+                  required
+                />
+                <Input
+                  className="col-span-1 text-center"
+                  type="number" min={1} step={1}
+                  placeholder="0"
+                  value={item.pasajeros || ''}
+                  onChange={e => updateItem(idx, 'pasajeros', parseInt(e.target.value) || 0)}
+                  title="Cantidad de pasajeros a trasladar"
+                  style={(!item.pasajeros || item.pasajeros <= 0) ? { borderColor: '#f97316' } : {}}
+                />
+                <Input
+                  className="col-span-1 text-center"
+                  type="number" min={0.01} step={0.01}
+                  value={item.quantity}
+                  onChange={e => updateItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                />
+                <Input
+                  className="col-span-2 text-right"
+                  type="number" min={0} step={1}
+                  value={item.unit_price}
+                  onChange={e => updateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
+                />
+                <div className="col-span-1 text-right text-sm font-semibold text-gray-700">
+                  {formatCLP(item.quantity * item.unit_price)}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}
+                  className="col-span-1 text-gray-300 hover:text-red-500 flex justify-center"
+                  disabled={items.length === 1}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <Button type="button" variant="outline" size="sm"
+            onClick={() => setItems(prev => [...prev, { ...DEFAULT_ITEM }])}>
+            <Plus className="w-4 h-4 mr-2" />
+            Agregar ítem
+          </Button>
+
+          {/* Totales */}
+          <div className="border-t pt-4 ml-auto max-w-xs space-y-1.5">
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>Subtotal neto</span>
+              <span>{formatCLP(subtotalNeto)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm text-gray-500 gap-4">
+              <span className="whitespace-nowrap">Descuento (%)</span>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number" min={0} max={100} step={0.5}
+                  value={descuentoPct}
+                  onChange={e => setDescuentoPct(parseFloat(e.target.value) || 0)}
+                  className="w-16 text-right text-sm"
+                />
+                <span className="text-sm text-gray-500 w-20 text-right">{formatCLP(descuentoAmt)}</span>
+              </div>
+            </div>
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>IVA ({taxPct}%)</span>
+              <span>{formatCLP(taxAmount)}</span>
+            </div>
+            <div className="flex justify-between font-bold text-gray-900 border-t pt-2">
+              <span>TOTAL</span>
+              <span style={{ color: '#1B8A4B' }}>{formatCLP(total)}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── OBSERVACIONES ── */}
       <div className="bg-white rounded-xl border p-5 space-y-4">
