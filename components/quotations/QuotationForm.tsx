@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCLP } from '@/lib/utils'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Calculator } from 'lucide-react'
 import ClientRutSearch from '@/components/clients/ClientRutSearch'
 
 // ── Google Places autocomplete (via server proxy) ────────────────────────────
@@ -218,6 +218,13 @@ const ETAPAS = [
   { key: 'cierre',      label: 'Cierre' },
 ]
 
+const VEHICLE_RATES: Record<string, { base: number; km: number }> = {
+  bus:     { base: 60000, km: 2500 },
+  taxibus: { base: 50000, km: 2300 },
+  minibus: { base: 45000, km: 2200 },
+  minivan: { base: 40000, km: 2000 },
+}
+
 const DEFAULT_ITEM: Item = { codigo: '', description: '', pasajeros: 0, quantity: 1, unit_price: 0 }
 const DEFAULT_DIARIO_ITEM: Item = {
   codigo: '', description: '', pasajeros: 0, quantity: 21, unit_price: 0,
@@ -290,6 +297,10 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   }, [pipelineId, issueDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [selectedUserId, setSelectedUserId] = useState(quotation?.vendedor_id ?? '')
+  const [tarNocturno, setTarNocturno] = useState(false)
+  const [tarFueraStgo, setTarFueraStgo] = useState(false)
+  const [tarPeajes, setTarPeajes] = useState(0)
+  const [tarKmManual, setTarKmManual] = useState<number | ''>('')
 
   // Nuevo cliente inline
   const [newClientName, setNewClientName] = useState('')
@@ -309,6 +320,14 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   const taxAmount = baseConDescuento * (taxPct / 100)
   const total = baseConDescuento + taxAmount
   const totalAnual = baseConDescuento * 12
+
+  const vRate = vehicleType ? VEHICLE_RATES[vehicleType] : null
+  const tarKmEfectivo = tarKmManual !== '' ? tarKmManual : (distanciaKm ?? 0)
+  const tarBase = vRate?.base ?? 0
+  const tarKmCost = vRate ? tarKmEfectivo * vRate.km : 0
+  const tarSubtotal = tarBase + tarKmCost
+  const tarConRecargos = tarSubtotal * (tarFueraStgo ? 1.3 : 1) * (tarNocturno ? 1.1 : 1)
+  const tarTotal = Math.round(tarConRecargos + tarPeajes)
 
   function updateItem(idx: number, field: keyof Item, value: string | number) {
     setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item))
@@ -638,6 +657,82 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
             <div className="space-y-1.5">
               <Label>Fecha destino / retorno</Label>
               <Input type="datetime-local" value={fechaDestino} onChange={e => setFechaDestino(e.target.value)} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CALCULADORA DE TARIFA ── */}
+      {!isDiario && vehicleType && (
+        <div className="rounded-xl border border-amber-200 p-5 space-y-3" style={{ background: '#fffbeb' }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calculator className="w-4 h-4 text-amber-600" />
+              <h2 className="font-semibold text-sm uppercase tracking-wide" style={{ color: '#92400e' }}>Tarifa sugerida</h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setItems(prev => prev.map((it, idx) => idx === prev.length - 1 ? { ...it, unit_price: tarTotal } : it))}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white transition-all hover:opacity-90"
+              style={{ background: '#1B8A4B' }}
+            >
+              ✓ Aplicar precio al ítem
+            </button>
+          </div>
+          <div className="flex gap-4 flex-wrap items-center">
+            {/* Km — auto desde Google Maps o manual */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 font-medium whitespace-nowrap">Kilómetros</span>
+              <Input
+                type="number" min={0} step={1}
+                value={tarKmManual !== '' ? tarKmManual : (distanciaKm ?? '')}
+                onChange={e => setTarKmManual(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+                className="w-24 text-right text-sm"
+                placeholder="0"
+              />
+              {distanciaKm !== null && tarKmManual === '' && (
+                <span className="text-xs text-green-700 font-medium">↑ Google Maps</span>
+              )}
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
+              <input type="checkbox" checked={tarNocturno} onChange={e => setTarNocturno(e.target.checked)} className="w-4 h-4" style={{ accentColor: '#d97706' }} />
+              <span className="font-medium text-gray-700">Nocturno</span>
+              <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#92400e' }}>+10%</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
+              <input type="checkbox" checked={tarFueraStgo} onChange={e => setTarFueraStgo(e.target.checked)} className="w-4 h-4" style={{ accentColor: '#d97706' }} />
+              <span className="font-medium text-gray-700">Fuera de Santiago</span>
+              <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#92400e' }}>+30%</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 font-medium whitespace-nowrap">Peajes ($)</span>
+              <Input
+                type="number" min={0} step={500}
+                value={tarPeajes || ''}
+                onChange={e => setTarPeajes(parseFloat(e.target.value) || 0)}
+                className="w-28 text-right text-sm"
+                placeholder="0"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+            <div className="rounded-lg p-2.5 bg-white border border-amber-100">
+              <div className="text-xs text-gray-400 font-semibold uppercase mb-0.5">Tarifa base</div>
+              <div className="font-bold text-gray-800">{formatCLP(tarBase)}</div>
+            </div>
+            <div className="rounded-lg p-2.5 bg-white border border-amber-100">
+              <div className="text-xs text-gray-400 font-semibold uppercase mb-0.5">{tarKmEfectivo} km × tarifa/km</div>
+              <div className="font-bold text-gray-800">{formatCLP(tarKmCost)}</div>
+            </div>
+            <div className="rounded-lg p-2.5 bg-white border border-amber-100">
+              <div className="text-xs text-gray-400 font-semibold uppercase mb-0.5">Recargos</div>
+              <div className="font-bold" style={{ color: tarFueraStgo || tarNocturno ? '#d97706' : '#9ca3af' }}>
+                {tarFueraStgo && tarNocturno ? '+43%' : tarFueraStgo ? '+30%' : tarNocturno ? '+10%' : '—'}
+              </div>
+            </div>
+            <div className="rounded-lg p-2.5 border-2 border-green-300" style={{ background: '#f0fdf4' }}>
+              <div className="text-xs font-semibold uppercase mb-0.5" style={{ color: '#1B8A4B' }}>Total sugerido</div>
+              <div className="font-bold text-lg" style={{ color: '#1B8A4B' }}>{formatCLP(tarTotal)}</div>
             </div>
           </div>
         </div>
