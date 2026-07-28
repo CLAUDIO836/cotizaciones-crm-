@@ -122,7 +122,7 @@ export default function QuotationsList({ quotations, vendedores, isAdmin, curren
               quotations.map(q => {
                 const { label, color } = getStatusLabel(q.status)
                 return (
-                  <tr key={q.id} className="border-b last:border-0 hover:bg-gray-50">
+                  <tr key={q.id} className="border-b last:border-0" style={q.status === 'won' ? { background: '#f0fdf4' } : undefined}>
                     <td className="px-4 py-3 font-mono text-xs font-medium text-gray-700">{q.number}</td>
                     <td className="px-4 py-3 font-medium text-gray-900">{q.client_name ?? '—'}</td>
                     {isAdmin && <td className="px-4 py-3 text-gray-600">{q.vendedor_name ?? '—'}</td>}

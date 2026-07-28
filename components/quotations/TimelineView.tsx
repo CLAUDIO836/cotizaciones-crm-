@@ -167,8 +167,8 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                   const brand = getBrandBadge(q.company)
                   return (
                     <Link key={q.id} href={`/cotizaciones/${q.id}`}>
-                      <div className="bg-white rounded-xl border hover:shadow-md transition-all cursor-pointer overflow-hidden group"
-                        style={{ borderColor: '#e5e7eb' }}>
+                      <div className="rounded-xl border hover:shadow-md transition-all cursor-pointer overflow-hidden group"
+                        style={q.status === 'won' ? { background: '#f0fdf4', borderColor: '#86efac' } : { background: '#fff', borderColor: '#e5e7eb' }}>
                         <div className="px-3 py-2">
                           {/* Top row */}
                           <div className="flex items-center justify-between gap-1 mb-1">
