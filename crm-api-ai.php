@@ -493,3 +493,37 @@ if ($action === 'ai_agent_settings_upsert') {
         ok(['id' => $id]);
     }
 }
+
+// ── ai_conversation_create ────────────────────────────────────────────────────
+
+if ($action === 'ai_conversations_create') {
+    $user = requireAuth();
+    $b = body();
+
+    $lead_id    = $b['lead_id']    ?? null;
+    $client_id  = $b['client_id']  ?? null;
+    $company_id = $b['company_id'] ?? '00000000-0000-0000-0000-000000000001';
+    $channel    = $b['channel']    ?? 'crm';
+    $priority   = $b['priority']   ?? 'medium';
+    $subject    = $b['subject']    ?? null;
+
+    // Si ya existe una conversación activa para este lead, devolver la existente
+    if ($lead_id) {
+        $stmt = db()->prepare("SELECT id FROM ai_conversations WHERE lead_id = ? AND status != 'archived' LIMIT 1");
+        $stmt->execute([$lead_id]);
+        $existing = $stmt->fetchColumn();
+        if ($existing) ok(['id' => $existing, 'existing' => true]);
+    }
+
+    $id = uuid();
+    db()->prepare("
+        INSERT INTO ai_conversations
+            (id, company_id, lead_id, client_id, channel, priority, subject, status, mode, assigned_user_id, last_activity_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'ai', ?, NOW(), NOW(), NOW())
+    ")->execute([$id, $company_id, $lead_id, $client_id, $channel, $priority, $subject, $user['id']]);
+
+    db()->prepare("INSERT INTO ai_audit_log (id, conversation_id, user_id, action, details, created_at) VALUES (?, ?, ?, 'conversation_created', '{}', NOW())")
+       ->execute([uuid(), $id, $user['id']]);
+
+    ok(['id' => $id]);
+}

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, Phone, Mail, MapPin, Users, Calendar, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
+import { Building2, Phone, Mail, MapPin, Users, Calendar, ChevronDown, ChevronUp, ExternalLink, Bot } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 type Lead = {
@@ -73,10 +73,31 @@ function LeadCard({ lead, sellers }: { lead: Lead; sellers: Seller[] }) {
   const [assignedId, setAssignedId] = useState(lead.assigned_user_id ?? '')
   const [notes, setNotes] = useState(lead.crm_notes ?? '')
   const [saving, setSaving] = useState(false)
+  const [startingAgent, setStartingAgent] = useState(false)
   const router = useRouter()
 
   const accent = COMPANY_COLORS[lead.target_company ?? ''] ?? '#6b7280'
   const statusStyle = STATUS_STYLES[status] ?? STATUS_STYLES.pendiente
+
+  async function handleStartAgent() {
+    setStartingAgent(true)
+    try {
+      const res = await fetch('/api/ai/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_id: lead.id,
+          channel: 'crm',
+          priority: 'medium',
+          subject: lead.empresa_nombre ?? lead.contacto_nombre ?? 'Lead',
+        }),
+      })
+      const data = await res.json()
+      if (data?.id) router.push(`/agente/conversaciones/${data.id}`)
+    } finally {
+      setStartingAgent(false)
+    }
+  }
 
   async function save() {
     setSaving(true)
@@ -226,6 +247,16 @@ function LeadCard({ lead, sellers }: { lead: Lead; sellers: Seller[] }) {
                   Crear cotización
                 </Button>
               </a>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleStartAgent}
+                disabled={startingAgent}
+                style={{ borderColor: '#BBF7D0', color: '#1B8A4B' }}
+              >
+                <Bot className="w-3.5 h-3.5 mr-1.5" />
+                {startingAgent ? 'Iniciando…' : 'Agente IA'}
+              </Button>
             </div>
           </div>
         </div>
