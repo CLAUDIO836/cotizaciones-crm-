@@ -15,6 +15,7 @@ export default async function AgentePage() {
       stats={stats}
       conversations={conversations}
       agentEnabled={settings?.enabled ?? false}
+      companyId={settings?.company_id}
     />
   )
 }
