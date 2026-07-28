@@ -903,19 +903,21 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
                 {descuentoPct > 0 && (
                   <>
                     <div className="flex justify-between text-sm text-gray-400">
-                      <span>Precio lista (sin dto.)</span>
-                      <span className="line-through">{formatCLP(Math.round(subtotalNeto / (1 - descuentoPct / 100)))}</span>
+                      <span>Subtotal antes de descuento</span>
+                      <span>{formatCLP(subtotalNeto)}</span>
                     </div>
                     <div className="flex justify-between text-sm text-amber-600 font-medium">
                       <span>Descuento ({descuentoPct}%)</span>
-                      <span>−{formatCLP(Math.round(subtotalNeto / (1 - descuentoPct / 100)) - subtotalNeto)}</span>
+                      <span>−{formatCLP(Math.round(descuentoAmt))}</span>
                     </div>
                   </>
                 )}
-                <div className="flex justify-between text-sm text-gray-500">
-                  <span>Subtotal neto mensual</span>
-                  <span className="font-semibold">{formatCLP(subtotalNeto)}</span>
-                </div>
+                {descuentoPct === 0 && (
+                  <div className="flex justify-between text-sm text-gray-500">
+                    <span>Subtotal neto mensual</span>
+                    <span className="font-semibold">{formatCLP(subtotalNeto)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-xs text-gray-400">
                   <span>IVA (Decreto 80 — Exento)</span>
                   <span>$0</span>
@@ -923,7 +925,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
                 <div className="flex justify-between font-bold text-base border-t pt-2"
                   style={{ color: '#1B8A4B', borderColor: '#bbf7d0' }}>
                   <span>Total mensual</span>
-                  <span>{formatCLP(subtotalNeto)}</span>
+                  <span>{formatCLP(total)}</span>
                 </div>
                 <div className="flex justify-between text-sm font-semibold text-gray-600 bg-gray-50 rounded-lg px-3 py-2 border">
                   <span>Proyección anual (×12)</span>
