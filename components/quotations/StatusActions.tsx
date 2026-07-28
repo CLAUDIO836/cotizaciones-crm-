@@ -15,12 +15,13 @@ interface Props {
   status: string
   pipedriveDealId?: string
   inline?: boolean
+  btnWidth?: number
 }
 
 const ERP_IMPORT_URL = process.env.NEXT_PUBLIC_ERP_IMPORT_URL ?? 'https://erp.transccl.cl/api/crm-import'
 const ERP_TOKEN      = process.env.NEXT_PUBLIC_CRM_SYNC_TOKEN ?? ''
 
-export default function StatusActions({ quotationId, quotationNumber, clientId, userId, total, status, pipedriveDealId, inline }: Props) {
+export default function StatusActions({ quotationId, quotationNumber, clientId, userId, total, status, pipedriveDealId, inline, btnWidth }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
 
@@ -117,7 +118,7 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
     <div className="flex gap-2">
       <Button
         size="sm"
-        style={{ background: '#1B8A4B' }}
+        style={{ background: '#1B8A4B', ...(btnWidth ? { width: btnWidth } : {}) }}
         className="text-white font-semibold"
         onClick={markWon}
         disabled={loading}
@@ -127,7 +128,7 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
       </Button>
       <Button
         size="sm"
-        style={{ background: '#D33A2C' }}
+        style={{ background: '#D33A2C', ...(btnWidth ? { width: btnWidth } : {}) }}
         className="text-white font-semibold"
         onClick={markLost}
         disabled={loading}

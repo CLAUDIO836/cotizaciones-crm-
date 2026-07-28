@@ -64,14 +64,15 @@ export default async function CotizacionDetailPage({
   return (
     <div className="flex flex-col h-full">
       <AutoRefresh intervalMs={5000} />
-      {/* Header */}
-      <div className="bg-white border-b px-6 py-2 flex items-center gap-3">
-        <Link href="/cotizaciones" className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <div className="min-w-0 flex-1 flex items-center gap-3">
-          {/* Bloque título — máx ~10cm = 380px */}
-          <div className="flex-shrink-0" style={{ maxWidth: 380 }}>
+      {/* Header — 2 filas */}
+      <div className="bg-white border-b px-6 pt-2 pb-2 space-y-1.5">
+        {/* Fila 1: ← título + Ganado/Perdido */}
+        <div className="flex items-center gap-3">
+          <Link href="/cotizaciones" className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          {/* Título compacto */}
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-nowrap overflow-hidden">
               <span className="text-base font-bold text-gray-900 flex-shrink-0">#{q.number}</span>
               <span className="inline-flex px-1.5 py-0 rounded-full text-xs font-semibold flex-shrink-0"
@@ -79,16 +80,12 @@ export default async function CotizacionDetailPage({
                 {label}
               </span>
               <span className="inline-flex px-1.5 py-0 rounded-full text-xs font-semibold flex-shrink-0"
-                style={{ background: etapa.bg, color: etapa.color }}>
-                {etapa.label}
-              </span>
+                style={{ background: etapa.bg, color: etapa.color }}>{etapa.label}</span>
               <span className="inline-flex px-1.5 py-0 rounded-full text-xs font-bold flex-shrink-0"
-                style={{ background: brandBadge.bg, color: brandBadge.color }}>
-                {brandBadge.label}
-              </span>
+                style={{ background: brandBadge.bg, color: brandBadge.color }}>{brandBadge.label}</span>
               {(pipeline?.name ?? q.pipeline_name) && (
-                <span className="inline-flex px-1.5 py-0 rounded-full text-xs font-semibold flex-shrink-0 truncate"
-                  style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd', maxWidth: 120 }}>
+                <span className="inline-flex px-1.5 py-0 rounded-full text-xs font-semibold flex-shrink-0"
+                  style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {pipeline?.name ?? q.pipeline_name}
                 </span>
               )}
@@ -97,24 +94,32 @@ export default async function CotizacionDetailPage({
               {q.clients?.name}{q.issue_date && ` · ${formatDate(q.issue_date)}`}{q.profiles?.name && ` · ${q.profiles.name}`}
             </p>
           </div>
+          {/* Ganado / Perdido — prominentes, ~10cm = 190px c/u */}
+          {!isReadOnly && (
+            <div className="flex gap-2 flex-shrink-0">
+              <StatusActions quotationId={q.id} quotationNumber={q.number} clientId={q.client_id ?? ''} userId={q.user_id ?? ''} total={q.total} status={q.status} pipedriveDealId={q.pipedrive_deal_id} inline btnWidth={190} />
+            </div>
+          )}
         </div>
-        <div className="flex gap-2 items-center flex-wrap justify-end">
+
+        {/* Fila 2: botones de acción — max ~5cm = 190px c/u */}
+        <div className="flex items-center gap-1.5 flex-wrap pl-8">
           <a href={`/api/cotizaciones/${id}/html`} target="_blank">
-            <Button variant="outline" size="sm">
-              <Globe className="w-4 h-4 mr-1.5" />
+            <Button variant="outline" size="sm" style={{ maxWidth: 190, fontSize: 12 }}>
+              <Globe className="w-3.5 h-3.5 mr-1" />
               Ver / Imprimir
             </Button>
           </a>
           {!isTracking && (
             <>
               <a href={`/api/cotizaciones/${id}/propuesta`} target="_blank">
-                <Button variant="outline" size="sm" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
-                  <Globe className="w-4 h-4 mr-1.5" />
-                  Propuesta Comercial
+                <Button variant="outline" size="sm" style={{ maxWidth: 190, fontSize: 12, borderColor: '#1B8A4B', color: '#1B8A4B' }}>
+                  <Globe className="w-3.5 h-3.5 mr-1" />
+                  Propuesta
                 </Button>
               </a>
               <a href={`/api/cotizaciones/${id}/propuesta/download`} download>
-                <Button variant="outline" size="sm" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
+                <Button variant="outline" size="sm" style={{ maxWidth: 190, fontSize: 12, borderColor: '#1B8A4B', color: '#1B8A4B' }}>
                   ⬇ Descargar PDF
                 </Button>
               </a>
@@ -132,18 +137,15 @@ export default async function CotizacionDetailPage({
             />
           )}
           {!isReadOnly && (
-            <DeleteButton quotationId={id} pipedriveDealId={q.pipedrive_deal_id} />
-          )}
-          {!isReadOnly && (
             <Link href={`/cotizaciones/${id}/editar`}>
-              <Button variant="outline" size="sm">
-                <Edit className="w-4 h-4 mr-1.5" />
+              <Button variant="outline" size="sm" style={{ maxWidth: 190, fontSize: 12 }}>
+                <Edit className="w-3.5 h-3.5 mr-1" />
                 Editar
               </Button>
             </Link>
           )}
           {!isReadOnly && (
-            <StatusActions quotationId={q.id} quotationNumber={q.number} clientId={q.client_id ?? ''} userId={q.user_id ?? ''} total={q.total} status={q.status} pipedriveDealId={q.pipedrive_deal_id} inline />
+            <DeleteButton quotationId={id} pipedriveDealId={q.pipedrive_deal_id} />
           )}
         </div>
       </div>
