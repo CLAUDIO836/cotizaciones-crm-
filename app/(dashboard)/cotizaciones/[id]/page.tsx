@@ -163,42 +163,96 @@ export default async function CotizacionDetailPage({
         {tab === 'datos' && (
           <div className="max-w-2xl space-y-5">
 
-            {/* Resumen ejecutivo */}
+            {/* Resumen ejecutivo — se adapta según embudo */}
             {(() => {
+              const pipelineName = (pipeline?.name ?? q.pipeline_name ?? '').toLowerCase()
+              const isDiario = pipelineName.includes('diario')
+
+              // Parsear items diario
+              type DiarioItem = { ruta: string; desde: string; hasta: string; hora_salida: string; hora_retorno: string; tiene_paradas: boolean; obs_paradas: string }
+              const diarioItems: DiarioItem[] = []
+              for (const it of items as { description?: string; pasajeros?: number; quantity?: number; unit_price?: number; codigo?: string }[]) {
+                try {
+                  const p = JSON.parse(it.description ?? '')
+                  if (p?.__diario) diarioItems.push(p as DiarioItem)
+                } catch { /* no es json */ }
+              }
+
+              if (isDiario && diarioItems.length > 0) {
+                // ── TRASLADO DIARIO ──
+                const totalMensual = (items as { quantity?: number; unit_price?: number }[]).reduce((s, i) => s + (i.quantity ?? 0) * (i.unit_price ?? 0), 0)
+                return (
+                  <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#1B8A4B' }}>
+                    <div className="px-4 py-2.5 flex items-center gap-2" style={{ background: '#1B8A4B' }}>
+                      <span className="text-white text-xs font-bold uppercase tracking-widest">Traslado Diario · {diarioItems.length} {diarioItems.length === 1 ? 'ruta' : 'rutas'}</span>
+                      <span className="ml-auto text-white text-sm font-bold">{formatCLP(totalMensual)}<span className="font-normal text-green-200 text-xs">/mes</span></span>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {diarioItems.map((d, i) => (
+                        <div key={i} className="px-4 py-3 bg-white">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <span className="font-semibold text-sm text-gray-900">{d.ruta || `Ruta ${i + 1}`}</span>
+                            {(d.hora_salida || d.hora_retorno) && (
+                              <span className="text-xs font-medium flex-shrink-0" style={{ color: '#1B8A4B' }}>
+                                {d.hora_salida && `↑ ${d.hora_salida}`}{d.hora_retorno && ` · ↓ ${d.hora_retorno}`}
+                              </span>
+                            )}
+                          </div>
+                          {(d.desde || d.hasta) && (
+                            <p className="text-xs text-gray-500 leading-snug">
+                              {d.desde && <><span className="font-medium text-gray-700">{d.desde.split(',')[0]}</span></>}
+                              {d.desde && d.hasta && <span className="mx-1 text-gray-400">→</span>}
+                              {d.hasta && <span className="font-medium text-gray-700">{d.hasta.split(',')[0]}</span>}
+                            </p>
+                          )}
+                          {d.tiene_paradas && d.obs_paradas && (
+                            <p className="text-xs text-gray-400 mt-1 italic">📍 {d.obs_paradas}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              }
+
+              // ── OTROS EMBUDOS (Servicio Especial, Salidas Educativas, etc.) ──
               const desde = (q as { desde?: string }).desde
               const hasta = (q as { hasta?: string }).hasta
               const firstItem = items[0] as { description?: string } | undefined
+              const desc = firstItem?.description ?? ''
               const moreItems = items.length > 1 ? ` + ${items.length - 1} más` : ''
-              const hasRuta = desde || hasta
+              const hasContent = q.fecha_salida || desc || desde || hasta
+              if (!hasContent) return null
               return (
-                <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-5 text-white shadow-md">
+                <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-4 text-white shadow-md">
                   <p className="text-blue-200 text-xs font-semibold uppercase tracking-widest mb-3">Resumen del servicio</p>
-                  <div className="grid grid-cols-1 gap-3">
+                  <div className="space-y-2.5">
                     {q.fecha_salida && (
-                      <div className="flex items-start gap-3">
-                        <span className="text-2xl">📅</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg flex-shrink-0">📅</span>
                         <div>
-                          <p className="text-blue-200 text-xs uppercase tracking-wide">Fecha del servicio</p>
-                          <p className="font-bold text-lg leading-tight">{formatDate(q.fecha_salida)}{q.hora_salida ? ` · ${(q.hora_salida as string).slice(0,5)} hrs` : ''}</p>
+                          <p className="text-blue-200 text-xs uppercase tracking-wide leading-none mb-0.5">Fecha</p>
+                          <p className="font-bold text-sm leading-tight">{formatDate(q.fecha_salida)}{q.hora_salida ? ` · ${(q.hora_salida as string).slice(0,5)} hrs` : ''}</p>
                         </div>
                       </div>
                     )}
-                    {firstItem?.description && (
-                      <div className="flex items-start gap-3">
-                        <span className="text-2xl">📋</span>
+                    {desc && (
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg flex-shrink-0">📋</span>
                         <div>
-                          <p className="text-blue-200 text-xs uppercase tracking-wide">Qué cotiza</p>
-                          <p className="font-semibold leading-tight">{firstItem.description}{moreItems}</p>
+                          <p className="text-blue-200 text-xs uppercase tracking-wide leading-none mb-0.5">Servicio</p>
+                          <p className="font-semibold text-sm leading-tight">{desc}{moreItems}</p>
                         </div>
                       </div>
                     )}
-                    {hasRuta && (
-                      <div className="flex items-start gap-3">
-                        <span className="text-2xl">🗺️</span>
+                    {(desde || hasta) && (
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg flex-shrink-0">🗺️</span>
                         <div>
-                          <p className="text-blue-200 text-xs uppercase tracking-wide">Ruta</p>
-                          {desde && <p className="font-semibold leading-tight">Desde: {desde.split(',')[0]}</p>}
-                          {hasta && <p className="font-semibold leading-tight">Hasta: {hasta.split(',')[0]}</p>}
+                          <p className="text-blue-200 text-xs uppercase tracking-wide leading-none mb-0.5">Ruta</p>
+                          <p className="font-semibold text-sm leading-tight">
+                            {desde?.split(',')[0]}{desde && hasta && ' → '}{hasta?.split(',')[0]}
+                          </p>
                         </div>
                       </div>
                     )}
