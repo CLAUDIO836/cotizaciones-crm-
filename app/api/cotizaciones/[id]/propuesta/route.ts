@@ -1,5 +1,19 @@
 import { fetchQuotation } from '@/lib/api'
 import { formatCLP } from '@/lib/utils'
+import * as fs from 'fs'
+import * as path from 'path'
+
+const IMG_DIR = path.join(process.cwd(), 'public', 'propuesta')
+function imgBase64(name: string, fallbackUrl: string): string {
+  try {
+    const buf = fs.readFileSync(path.join(IMG_DIR, name))
+    const ext = name.split('.').pop()?.toLowerCase() ?? 'jpg'
+    const mime = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : `image/${ext}`
+    return `data:${mime};base64,${buf.toString('base64')}`
+  } catch {
+    return fallbackUrl
+  }
+}
 
 const ACCENT = '#1B8A4B'
 const DARK   = '#0d4f2b'
@@ -75,8 +89,12 @@ p{color:#6b7280;margin:0;line-height:1.6;}
     s + i.quantity * i.unit_price, 0)
 
   // helpers
-  const img = (name: string) => `${base}/propuesta/${name}`
-  const logo = `${base}/logo-transccl.png`
+  const img = (name: string) => imgBase64(name, `${base}/propuesta/${name}`)
+  // Logo desde public/
+  const logoPath = path.join(process.cwd(), 'public', 'logo-transccl.png')
+  const logo = fs.existsSync(logoPath)
+    ? `data:image/png;base64,${fs.readFileSync(logoPath).toString('base64')}`
+    : `${base}/logo-transccl.png`
 
   const sectionHeader = (num: number, title: string) => `
     <div class="sh">
