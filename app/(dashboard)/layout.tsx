@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import ChatBox from '@/components/ChatBox'
 import { getSession, getToken, crmGet } from '@/lib/api'
 import { fetchAiLandingStats } from '@/lib/ai-api'
 
@@ -27,6 +28,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <main className="flex-1 overflow-y-auto">
         {children}
       </main>
+      <ChatBox />
     </div>
   )
 }
