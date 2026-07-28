@@ -48,7 +48,7 @@ export default function AgentLandingPanel({ stats, conversations, agentEnabled, 
   const [toggling, setToggling] = useState(false)
 
   async function handleToggleAgent() {
-    if (!companyId || toggling) return
+    if (toggling) return
     setToggling(true)
     const next = !enabled
     try {
