@@ -18,7 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const pdfBuffer = await htmlToPdf(htmlUrl)
 
   const number = (q as { number?: string }).number ?? id
-  return new NextResponse(pdfBuffer, {
+  return new NextResponse(pdfBuffer.buffer as ArrayBuffer, {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
