@@ -36,20 +36,19 @@ async function handleUpload(req: NextRequest) {
   const q = await fetchQuotation(quotationId)
   if (!q) return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 })
 
-  const PIPEDRIVE_USERS: Record<string, number> = {
-    'claudio@transccl.cl':        563196,
-    'ventas@transccl.cl':         2008020,
-    'ecomercial1@transccl.cl':    563218,
-    'ecomercial2@transccl.cl':    563943,
-    'ecomercial3@transccl.cl':    2386983,
-    'ecomercial4@transccl.cl':    15372325,
-    'ecomercial5@transccl.cl':    15372314,
-    'ecomercial6@transccl.cl':    15372336,
-    'clsaldivia@transportesklaus.cl': 572704,
+  // Buscar user_id en Pipedrive por email (dinámico, sin mapa hardcodeado)
+  async function getPipedriveUserId(email: string): Promise<number | undefined> {
+    if (!email) return undefined
+    try {
+      const r = await fetch(`${PIPEDRIVE_API}/users?api_token=${PIPEDRIVE_TOKEN}`)
+      const j = await r.json()
+      const users: { id: number; email: string; active_flag: boolean }[] = j.data ?? []
+      return users.find(u => u.email?.toLowerCase() === email.toLowerCase() && u.active_flag)?.id
+    } catch { return undefined }
   }
 
-  const vendedorEmail = (q.profiles as { email?: string })?.email ?? q.profile_email ?? ''
-  const pipedriveUserId = PIPEDRIVE_USERS[vendedorEmail]
+  const vendedorEmail = (q.profiles as { email?: string })?.email ?? (q as { profile_email?: string }).profile_email ?? ''
+  const pipedriveUserId = await getPipedriveUserId(vendedorEmail)
 
   const COMPANY_PREFIX: Record<string, string> = {
     'Transccl': 'CCL',
@@ -80,13 +79,15 @@ async function handleUpload(req: NextRequest) {
   let dealId: number
 
   if (resync && q.pipedrive_deal_id) {
-    // RE-SYNC: negocio existente → actualizar título
+    // RE-SYNC: negocio existente → actualizar título y propietario
     dealId = Number(q.pipedrive_deal_id)
     const finalTitle = `${prefix}-${dealId}${fechaLabel} - ${clientName}${ruta}`
+    const resyncBody: Record<string, unknown> = { title: finalTitle, value: q.total ?? 0 }
+    if (pipedriveUserId) resyncBody.user_id = pipedriveUserId
     await fetch(`${PIPEDRIVE_API}/deals/${dealId}?api_token=${PIPEDRIVE_TOKEN}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: finalTitle, value: q.total ?? 0 }),
+      body: JSON.stringify(resyncBody),
     })
   } else {
     // NUEVO NEGOCIO
