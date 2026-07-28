@@ -1686,9 +1686,9 @@ if ($action === 'approvals_respond') {
 // ── APPROVAL LETTERS ─────────────────────────────────────────────────────────
 if ($action === 'letters_by_quotation') {
     requireAuth();
-    $stmt = db()->prepare('SELECT * FROM approval_letters WHERE quotation_id = ? ORDER BY created_at DESC LIMIT 1');
+    $stmt = db()->prepare('SELECT * FROM approval_letters WHERE quotation_id = ? ORDER BY created_at DESC');
     $stmt->execute([$_GET['quotation_id'] ?? '']);
-    ok($stmt->fetch() ?: null);
+    ok($stmt->fetchAll());
 }
 
 if ($action === 'letters_create') {
