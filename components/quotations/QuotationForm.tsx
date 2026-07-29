@@ -364,7 +364,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   async function saveQuotation(withPdf: boolean) {
     if (!clientId) { toast.error('Busca y selecciona un cliente por RUT'); return }
     if (!selectedUserId) { toast.error('Selecciona un vendedor'); return }
-    if (items.some(i => !i.description.trim())) { toast.error('Completa la descripción de todos los ítems'); return }
+    if (items.some(i => i.ruta_nombre !== undefined ? !i.ruta_nombre?.trim() : !i.description.trim())) { toast.error('Completa la descripción de todos los ítems'); return }
     if (!isDiario && items.some(i => !i.pasajeros || i.pasajeros <= 0)) { toast.error('Indica la cantidad de pasajeros en cada ítem'); return }
 
     withPdf ? setLoadingPdf(true) : setLoading(true)
@@ -843,6 +843,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
                       type="number" min={0} step={1000}
                       value={item.unit_price || ''}
                       onChange={e => updateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
+                      onBlur={e => { const v = parseFloat(e.target.value) || 0; updateItem(idx, 'unit_price', Math.round(v / 1000) * 1000) }}
                       className="text-right text-sm font-semibold"
                       placeholder="0"
                     />
