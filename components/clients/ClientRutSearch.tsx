@@ -81,32 +81,37 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
 
   async function searchByRut(rawRut: string) {
     if (rawRut.length < 3) { setClient(null); setNotFound(false); return }
-    // No buscar si el RUT no es válido matemáticamente
     if (!validateRut(rawRut)) return
     setSearching(true)
-    const res = await fetch(`/api/clients?rut=${encodeURIComponent(rawRut.replace(/\./g, ''))}`)
-    const json = await res.json()
-    const data = json.data ?? null
+    try {
+      const res = await fetch(`/api/clients?rut=${encodeURIComponent(rawRut.replace(/\./g, ''))}`)
+      const json = await res.json()
+      const data = json.data ?? null
 
-    if (data) {
-      const contacts = data.contacts ?? []
-      setClient({ ...data, contacts })
-      setNotFound(false)
-      setShowNewClient(false)
-      if (contacts.length === 1) {
-        setSelectedContactId(contacts[0].id)
-        onSelect(data.id, contacts[0].id)
+      if (data) {
+        const contacts = Array.isArray(data.contacts) ? data.contacts : []
+        setClient({ ...data, contacts })
+        setNotFound(false)
+        setShowNewClient(false)
+        if (contacts.length === 1) {
+          setSelectedContactId(contacts[0].id)
+          onSelect(data.id, contacts[0].id)
+        } else {
+          setSelectedContactId(null)
+          onSelect(data.id, null)
+        }
       } else {
-        setSelectedContactId(null)
-        onSelect(data.id, null)
+        setClient(null)
+        setNotFound(true)
+        setShowNewClient(true)
+        setNewClientName('')
       }
-    } else {
+    } catch {
       setClient(null)
-      setNotFound(true)
-      setShowNewClient(true)
-      setNewClientName('')
+      setNotFound(false)
+    } finally {
+      setSearching(false)
     }
-    setSearching(false)
   }
 
   function handleRutChange(e: React.ChangeEvent<HTMLInputElement>) {

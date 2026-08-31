@@ -307,8 +307,10 @@ if ($action === 'clients_get') {
     $stmt->execute([$_GET['id'] ?? '']);
     $row = $stmt->fetch();
     if (!$row) { ok(null); exit; }
-    $row['contacts'] = json_decode($row['contacts_json'] ?? '[]', true);
-    $row['contacts'] = array_values(array_filter($row['contacts'], fn($c) => $c && isset($c['id'])));
+    $decoded = json_decode($row['contacts_json'] ?? '[]', true);
+    $row['contacts'] = is_array($decoded)
+        ? array_values(array_filter($decoded, fn($c) => $c && isset($c['id'])))
+        : [];
     unset($row['contacts_json']);
     ok($row);
 }
@@ -324,9 +326,10 @@ if ($action === 'clients_by_rut') {
     $stmt->execute([$likeWithDv, $likeBody]);
     $row = $stmt->fetch();
     if (!$row) { ok(null); exit; }
-    $row['contacts'] = json_decode($row['contacts_json'] ?? '[]', true);
-    // Filter out null contacts (when no contacts exist, JSON_ARRAYAGG returns [null])
-    $row['contacts'] = array_values(array_filter($row['contacts'], fn($c) => $c && isset($c['id'])));
+    $decoded = json_decode($row['contacts_json'] ?? '[]', true);
+    $row['contacts'] = is_array($decoded)
+        ? array_values(array_filter($decoded, fn($c) => $c && isset($c['id'])))
+        : [];
     unset($row['contacts_json']);
     ok($row);
 }
