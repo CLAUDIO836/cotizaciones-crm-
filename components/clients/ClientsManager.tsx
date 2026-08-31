@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import { Plus, Pencil, AlertTriangle, Trash2, ChevronDown, ChevronRight, Phone, Mail, User } from 'lucide-react'
+import { Plus, Pencil, AlertTriangle, Trash2, ChevronDown, ChevronRight, Phone, Mail, User, Search, X } from 'lucide-react'
 import { formatRut, validateRut, rutKey, autoFormatRut } from '@/lib/rut'
 
 interface Contact {
@@ -41,6 +41,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [mergingId, setMergingId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
   // Expandable contacts
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -282,6 +283,15 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
   const duplicateRuts = new Set(Object.entries(rutCount).filter(([, n]) => n > 1).map(([k]) => k))
   const duplicateCount = duplicateRuts.size
 
+  const searchLower = search.trim().toLowerCase()
+  const searchRutKey = searchLower ? rutKey(search) : ''
+  const filtered = searchLower
+    ? clients.filter(c =>
+        c.name.toLowerCase().includes(searchLower) ||
+        (c.rut && rutKey(c.rut).includes(searchRutKey))
+      )
+    : clients
+
   return (
     <div className="space-y-4">
       {duplicateCount > 0 && (
@@ -290,8 +300,26 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
           <span><strong>{duplicateCount} RUT{duplicateCount > 1 ? 's' : ''} duplicado{duplicateCount > 1 ? 's' : ''}</strong> — elimina los registros duplicados para mantener la base de datos limpia.</span>
         </div>
       )}
-      <div className="flex justify-end">
-        <Button onClick={openNew}>
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por nombre o RUT..."
+            className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-200 focus:border-green-400"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <p className="text-sm text-gray-400 whitespace-nowrap">
+          {filtered.length} de {clients.length}
+        </p>
+        <Button onClick={openNew} className="ml-auto">
           <Plus className="w-4 h-4 mr-2" />
           Nuevo cliente
         </Button>
@@ -316,8 +344,14 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                   No hay clientes registrados
                 </td>
               </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="text-center py-12 text-gray-400">
+                  No hay resultados para &ldquo;{search}&rdquo;
+                </td>
+              </tr>
             ) : (
-              clients.map(c => {
+              filtered.map(c => {
                 const isDup = c.rut ? duplicateRuts.has(rutKey(c.rut)) : false
                 const isExpanded = expandedId === c.id
                 const clientContacts = contacts[c.id] ?? []
