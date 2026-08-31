@@ -394,8 +394,9 @@ if ($action === 'clients_create') {
     }
 
     $id = uuid();
+    $phone = $b['phone'] ?? $b['telefono_celular'] ?? $b['telefono_fijo'] ?? null;
     db()->prepare('INSERT INTO clients (id,name,rut,email,phone,address) VALUES (?,?,?,?,?,?)')->execute([
-        $id, $b['name'] ?? '', $storedRut, $b['email'] ?? null, $b['phone'] ?? null, $b['address'] ?? null
+        $id, $b['name'] ?? '', $storedRut, $b['email'] ?? null, $phone, $b['address'] ?? null
     ]);
     $stmt = db()->prepare('SELECT * FROM clients WHERE id = ?');
     $stmt->execute([$id]);

@@ -56,6 +56,7 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
   const [newClientContactName, setNewClientContactName] = useState('')
   const [newClientContactCargo, setNewClientContactCargo] = useState('')
   const [savingClient, setSavingClient] = useState(false)
+  const [newClientErrors, setNewClientErrors] = useState<Record<string, string>>({})
 
   // Nuevo contacto
   const [newContactName, setNewContactName] = useState('')
@@ -137,10 +138,13 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
   }
 
   async function saveNewClient() {
-    if (!newClientName.trim()) return
-    if (!newClientMobile.trim() && !newClientLandline.trim()) { alert('Ingresa al menos un teléfono'); return }
-    if (!newClientEmail.trim()) { alert('El email es obligatorio'); return }
-    if (!newClientContactName.trim()) { alert('Ingresa el nombre del contacto'); return }
+    const errors: Record<string, string> = {}
+    if (!newClientName.trim()) errors.name = 'El nombre de la empresa es obligatorio'
+    if (!newClientEmail.trim()) errors.email = 'El email es obligatorio'
+    if (!newClientMobile.trim()) errors.mobile = 'El teléfono celular es obligatorio'
+    if (!newClientContactName.trim()) errors.contactName = 'El nombre del contacto es obligatorio'
+    if (Object.keys(errors).length > 0) { setNewClientErrors(errors); return }
+    setNewClientErrors({})
     setSavingClient(true)
     const res = await fetch('/api/clients', {
       method: 'POST',
@@ -341,28 +345,38 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
 
           <div className="space-y-2">
             <p className="text-xs font-medium text-amber-700 uppercase tracking-wide">Datos empresa</p>
-            <Input placeholder="Nombre empresa *" value={newClientName}
-              onChange={e => setNewClientName(e.target.value)} className="text-sm bg-white" />
+            <div>
+              <Input placeholder="Nombre empresa *" value={newClientName}
+                onChange={e => { setNewClientName(e.target.value); setNewClientErrors(p => ({ ...p, name: '' })) }}
+                className={`text-sm bg-white ${newClientErrors.name ? 'border-red-400' : ''}`} />
+              {newClientErrors.name && <p className="text-xs text-red-600 mt-0.5">{newClientErrors.name}</p>}
+            </div>
             <Input placeholder="Dirección" value={newClientAddress}
               onChange={e => setNewClientAddress(e.target.value)} className="text-sm bg-white" />
-            <Input placeholder="Email empresa *" type="email" value={newClientEmail}
-              onChange={e => setNewClientEmail(e.target.value)} className="text-sm bg-white" />
-            <Input placeholder="Teléfono fijo empresa" value={newClientLandline}
+            <div>
+              <Input placeholder="Email *" type="email" value={newClientEmail}
+                onChange={e => { setNewClientEmail(e.target.value); setNewClientErrors(p => ({ ...p, email: '' })) }}
+                className={`text-sm bg-white ${newClientErrors.email ? 'border-red-400' : ''}`} />
+              {newClientErrors.email && <p className="text-xs text-red-600 mt-0.5">{newClientErrors.email}</p>}
+            </div>
+            <Input placeholder="Teléfono fijo" value={newClientLandline}
               onChange={e => setNewClientLandline(e.target.value)} className="text-sm bg-white" />
           </div>
 
           <div className="space-y-2">
             <p className="text-xs font-medium text-amber-700 uppercase tracking-wide">Contacto principal *</p>
-            <Input placeholder="Nombre contacto *" value={newClientContactName}
-              onChange={e => setNewClientContactName(e.target.value)} className="text-sm bg-white" />
-            <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="Teléfono fijo" value={newClientLandline}
-                onChange={e => setNewClientLandline(e.target.value)} className="text-sm bg-white" />
-              <Input placeholder="Celular *" value={newClientMobile}
-                onChange={e => setNewClientMobile(e.target.value)} className="text-sm bg-white" />
+            <div>
+              <Input placeholder="Nombre contacto *" value={newClientContactName}
+                onChange={e => { setNewClientContactName(e.target.value); setNewClientErrors(p => ({ ...p, contactName: '' })) }}
+                className={`text-sm bg-white ${newClientErrors.contactName ? 'border-red-400' : ''}`} />
+              {newClientErrors.contactName && <p className="text-xs text-red-600 mt-0.5">{newClientErrors.contactName}</p>}
             </div>
-            <Input placeholder="Email contacto" type="email" value={newClientEmail}
-              onChange={e => setNewClientEmail(e.target.value)} className="text-sm bg-white" />
+            <div>
+              <Input placeholder="Celular *" value={newClientMobile}
+                onChange={e => { setNewClientMobile(e.target.value); setNewClientErrors(p => ({ ...p, mobile: '' })) }}
+                className={`text-sm bg-white ${newClientErrors.mobile ? 'border-red-400' : ''}`} />
+              {newClientErrors.mobile && <p className="text-xs text-red-600 mt-0.5">{newClientErrors.mobile}</p>}
+            </div>
             <Input placeholder="Cargo" value={newClientContactCargo}
               onChange={e => setNewClientContactCargo(e.target.value)} className="text-sm bg-white" />
           </div>
