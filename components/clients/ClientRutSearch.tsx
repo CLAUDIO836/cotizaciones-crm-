@@ -153,7 +153,16 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
     const json = await res.json()
     const data = json.data ?? null
     setSavingClient(false)
-    if (!res.ok || !data) return
+    if (!res.ok) {
+      if (res.status === 409 && json.existing_client) {
+        const ec = json.existing_client
+        alert(`Este RUT ya está registrado para "${ec.name}". Busca ese cliente directamente.`)
+      } else {
+        alert(json.message ?? json.error ?? 'Error al crear cliente')
+      }
+      return
+    }
+    if (!data) return
     // crear contacto automáticamente
     const resC = await fetch('/api/clients', {
       method: 'POST',

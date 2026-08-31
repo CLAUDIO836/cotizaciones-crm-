@@ -316,8 +316,12 @@ if ($action === 'clients_get') {
 if ($action === 'clients_by_rut') {
     requireAuth();
     $rut = $_GET['rut'] ?? '';
-    $stmt = db()->prepare("SELECT c.*, JSON_ARRAYAGG(JSON_OBJECT('id',ct.id,'name',ct.name,'email',ct.email,'phone_mobile',ct.phone_mobile,'phone_landline',ct.phone_landline,'cargo',ct.cargo)) AS contacts_json FROM clients c LEFT JOIN contacts ct ON ct.client_id = c.id WHERE REPLACE(c.rut,'.','') LIKE ? GROUP BY c.id LIMIT 1");
-    $stmt->execute(['%' . str_replace('.', '', $rut) . '%']);
+    $rutClean  = rutKey($rut);                    // ej: '651186897'
+    $rutBody   = substr($rutClean, 0, -1);        // ej: '65118689' (sin DV)
+    $likeWithDv = '%' . str_replace('.', '', $rut) . '%';  // normal: '%65118689-7%'
+    $likeBody   = $rutBody;                       // exacto sin DV (RUT mal guardado)
+    $stmt = db()->prepare("SELECT c.*, JSON_ARRAYAGG(JSON_OBJECT('id',ct.id,'name',ct.name,'email',ct.email,'phone_mobile',ct.phone_mobile,'phone_landline',ct.phone_landline,'cargo',ct.cargo)) AS contacts_json FROM clients c LEFT JOIN contacts ct ON ct.client_id = c.id WHERE REPLACE(c.rut,'.','') LIKE ? OR REPLACE(REPLACE(c.rut,'.',''),'-','') = ? GROUP BY c.id LIMIT 1");
+    $stmt->execute([$likeWithDv, $likeBody]);
     $row = $stmt->fetch();
     if (!$row) { ok(null); exit; }
     $row['contacts'] = json_decode($row['contacts_json'] ?? '[]', true);
@@ -461,11 +465,13 @@ if ($action === 'clients_merge') {
     $delete_id = $b['delete_id'] ?? '';
     if (!$keep_id || !$delete_id) err('keep_id y delete_id requeridos');
     // Reasignar cotizaciones y contactos al cliente principal
-    db()->prepare('UPDATE quotations SET client_id = ? WHERE client_id = ?')->execute([$keep_id, $delete_id]);
+    $stmtQ = db()->prepare('UPDATE quotations SET client_id = ? WHERE client_id = ?');
+    $stmtQ->execute([$keep_id, $delete_id]);
+    $reassigned = $stmtQ->rowCount();
     db()->prepare('UPDATE contacts SET client_id = ? WHERE client_id = ?')->execute([$keep_id, $delete_id]);
     // Eliminar el duplicado
     db()->prepare('DELETE FROM clients WHERE id = ?')->execute([$delete_id]);
-    ok(['merged' => true]);
+    ok(['merged' => true, 'reassigned' => $reassigned]);
 }
 
 if ($action === 'diagnostico_clientes') {
