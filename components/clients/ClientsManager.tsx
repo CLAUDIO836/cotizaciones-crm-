@@ -167,7 +167,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
 
   function openEdit(c: Client) {
     setEditing(c)
-    setForm({ name: c.name, rut: c.rut ?? '', email: c.email ?? '', phone: c.phone ?? '', address: c.address ?? '' })
+    setForm({ name: c.name, rut: c.rut ? formatRut(c.rut) : '', email: c.email ?? '', phone: c.phone ?? '', address: c.address ?? '' })
     setRutError('')
     setDupClient(null)
     setOpen(true)
