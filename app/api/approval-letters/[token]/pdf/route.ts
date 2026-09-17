@@ -4,7 +4,7 @@ import { ApprovalLetterPDF } from '@/lib/pdf/approval-letter'
 import { TKSApprovalLetterPDF } from '@/lib/pdf/tks-approval-letter'
 import React from 'react'
 
-const CRM_API = process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php'
+const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params

@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
 
-const CRM_API = process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php'
+const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 
 export type UserSession = {
   id: string

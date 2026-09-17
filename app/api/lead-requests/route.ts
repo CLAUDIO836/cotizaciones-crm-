@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const CRM_API = process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php'
+const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 
 const COMPANY_LABELS: Record<string, string> = {
   transccl: 'Transportes Transccl SpA',

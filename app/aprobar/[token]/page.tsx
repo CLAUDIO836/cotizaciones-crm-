@@ -43,7 +43,7 @@ function formatCLP(n: number) {
 export default async function AprobarPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
 
-  const CRM_API = process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php'
+  const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
   let approval: Record<string, string> | null = null
   try {
     const res = await fetch(`${CRM_API}?action=approvals_get&token=${encodeURIComponent(token)}`, { cache: 'no-store' })

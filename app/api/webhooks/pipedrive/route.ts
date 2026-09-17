@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const CRM_API = process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php'
+const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 const WEBHOOK_SECRET = 'pd-webhook-transccl-2024'
 
 export async function POST(req: NextRequest) {

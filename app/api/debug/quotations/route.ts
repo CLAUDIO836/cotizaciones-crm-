@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 
 const PD_TOKEN = process.env.PIPEDRIVE_API_TOKEN ?? ''
 const PD_BASE  = 'https://api.pipedrive.com/v1'
-const CRM_API  = process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php'
+const CRM_API  = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 
 export async function GET() {
   const results: Record<string, unknown> = {}
