@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 export async function GET() {
   const envUrl = process.env.CRM_API_URL
-  const usedUrl = envUrl ?? 'https://www.transccl.cl/crm-api.php'
+  const usedUrl = (envUrl ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
   let phpResult = 'no probado'
   try {
     const res = await fetch(`${usedUrl}?action=google_auth`, {
