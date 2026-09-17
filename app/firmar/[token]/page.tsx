@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { notFound } from 'next/navigation'
 import SigningForm from './SigningForm'
 
-const CRM_API = process.env.CRM_API_URL ?? 'https://transccl.cl/crm-api.php'
+const CRM_API = process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php'
 
 async function getLetter(token: string): Promise<Record<string, string> | null> {
   try {

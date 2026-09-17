@@ -4,7 +4,7 @@ import { ApprovalLetterPDF } from '@/lib/pdf/approval-letter'
 import { TKSApprovalLetterPDF } from '@/lib/pdf/tks-approval-letter'
 import React from 'react'
 
-const CRM_API = process.env.CRM_API_URL ?? 'https://transccl.cl/crm-api.php'
+const CRM_API = process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php'
 const PIPEDRIVE_TOKEN = process.env.PIPEDRIVE_API_TOKEN ?? ''
 const PIPEDRIVE_API = 'https://api.pipedrive.com/v1'
 
