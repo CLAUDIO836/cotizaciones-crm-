@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const CRM_API = process.env.CRM_API_URL ?? 'https://transccl.cl/crm-api.php'
+const CRM_API = process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php'
 const ALLOWED_DOMAIN = 'transccl.cl'
 
 export async function GET(req: NextRequest) {
