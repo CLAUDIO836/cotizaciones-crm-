@@ -225,7 +225,7 @@ if ($action === 'profiles_create') {
     if (!$email || !$password || !$name) err('Datos requeridos');
     $hash = password_hash($password, PASSWORD_BCRYPT);
     $id = uuid();
-    db()->prepare('INSERT INTO profiles (id, email, name, role, password_hash) VALUES (?,?,?,?,?)')->execute([$id, $email, $name, $role, $hash]);
+    db()->prepare('INSERT INTO profiles (id, email, name, role, password_hash, active) VALUES (?,?,?,?,?,1)')->execute([$id, $email, $name, $role, $hash]);
     $stmt = db()->prepare('SELECT id, email, name, role, active FROM profiles WHERE id = ?');
     $stmt->execute([$id]);
     ok($stmt->fetch());
