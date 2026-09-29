@@ -106,7 +106,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const policies = isTKS ? TKS_POLICIES : CCL_POLICIES
 
   const companyName = isTKS ? 'Transportes TKS' : 'Transportes Transccl SpA'
-  const companyRUT = isTKS ? null : '76.282.952-3'
+  const companyRUT = isTKS ? null : '77.282.952-3'
   const companyTagline = isTKS ? 'Transporte de personas' : 'Transporte de personas y carga'
   const logoBlock = isTKS
     ? `<img src="${baseUrl}/vehicles/tks-logo.png" alt="TKs" style="height:72px;width:auto;object-fit:contain;" />`

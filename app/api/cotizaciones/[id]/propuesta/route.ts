@@ -105,7 +105,7 @@ p{color:#6b7280;margin:0;line-height:1.6;}
 
   const footer = `
     <div class="pf">
-      <span>Transccl SpA · RUT 76.282.952-3 · ventas@transccl.cl · +56 2 2945 5713</span>
+      <span>Transccl SpA · RUT 77.282.952-3 · ventas@transccl.cl · +56 2 2945 5713</span>
       <span>www.transccl.cl</span>
     </div>`
 
@@ -335,7 +335,7 @@ body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;background:#fff}
       <div class="cover-bottom">
         <div class="cover-bl">
           <strong>Transportes Transccl SpA</strong><br/>
-          RUT: 76.282.952-3<br/>
+          RUT: 77.282.952-3<br/>
           Traslado Diario de Pasajeros
         </div>
         <div class="cover-br">
@@ -984,7 +984,7 @@ body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;background:#fff}
         <div class="info-box-name">${q.profiles?.name ?? '—'}</div>
         ${(q.profiles as {celular?: string})?.celular ? `<div class="info-box-line">📱 ${(q.profiles as {celular?: string}).celular}</div>` : ''}
         ${(q.profiles as {email?: string})?.email ? `<div class="info-box-line">✉ ${(q.profiles as {email?: string}).email}</div>` : ''}
-        <div class="info-box-line" style="margin-top:8px;font-size:9px;color:#9ca3af;">Transportes Transccl SpA · RUT 76.282.952-3</div>
+        <div class="info-box-line" style="margin-top:8px;font-size:9px;color:#9ca3af;">Transportes Transccl SpA · RUT 77.282.952-3</div>
       </div>
     </div>
 
@@ -1081,7 +1081,7 @@ body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;background:#fff}
     </div>` : ''}
 
     <div class="page-footer" style="padding-top:10px;">
-      <span>Transccl SpA · RUT 76.282.952-3 · ventas@transccl.cl · +56 2 2945 5713</span>
+      <span>Transccl SpA · RUT 77.282.952-3 · ventas@transccl.cl · +56 2 2945 5713</span>
       <span style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:3px 10px;color:${ACCENT};font-weight:700;">
         ${q.expiry_date ? `Válida hasta ${fmtDate(q.expiry_date)}` : 'Vigencia 15 días corridos'}
       </span>
@@ -1160,7 +1160,7 @@ body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;background:#fff}
     </div>
 
     <div class="page-footer">
-      <span>Transccl SpA · RUT 76.282.952-3 · ventas@transccl.cl · +56 2 2945 5713</span>
+      <span>Transccl SpA · RUT 77.282.952-3 · ventas@transccl.cl · +56 2 2945 5713</span>
       <span>www.transccl.cl</span>
     </div>
   </div>
