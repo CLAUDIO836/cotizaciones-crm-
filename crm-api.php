@@ -260,6 +260,15 @@ if ($action === 'profiles_update_password') {
     ok();
 }
 
+if ($action === 'profiles_delete') {
+    requireAdmin();
+    $b  = body();
+    $id = $b['id'] ?? '';
+    if (!$id) err('ID requerido');
+    db()->prepare('DELETE FROM profiles WHERE id = ?')->execute([$id]);
+    ok(['deleted' => true]);
+}
+
 // ── COMPANIES ─────────────────────────────────────────────────────────────────
 if ($action === 'companies_list') {
     requireAuth();
