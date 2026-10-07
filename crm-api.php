@@ -178,6 +178,10 @@ if ($action === 'google_auth') {
         $stmt = db()->prepare('SELECT * FROM profiles WHERE id = ? LIMIT 1');
         $stmt->execute([$id]);
         $user = $stmt->fetch();
+    } elseif ($name && $name !== $user['name']) {
+        // Sincronizar nombre desde Google si cambió en Google Workspace
+        db()->prepare('UPDATE profiles SET name = ? WHERE id = ?')->execute([$name, $user['id']]);
+        $user['name'] = $name;
     }
 
     $exp = time() + SESSION_HOURS * 3600;
