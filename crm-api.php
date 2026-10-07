@@ -18,7 +18,7 @@ define('DB_HOST', 'localhost');
 define('DB_NAME', 'transccl_crm');
 define('DB_USER', 'transccl_crm_user');
 define('DB_PASS', 'Claudio@1978');
-define('JWT_SECRET', getenv('CRM_JWT_SECRET') ?: 'crm-transccl-secret-2024-change-me');
+define('JWT_SECRET', getenv('CRM_JWT_SECRET') ?: 'aaf2874032a28f19d5ee92733d7d33baee9dd198f6efceb271d544a8deaf1312');
 define('SESSION_HOURS', 72);
 
 // ── DB ────────────────────────────────────────────────────────────────────────
