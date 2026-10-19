@@ -843,7 +843,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
                       type="number" min={0} step={1000}
                       value={item.unit_price || ''}
                       onChange={e => updateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
-                      onBlur={e => { const v = parseFloat(e.target.value) || 0; updateItem(idx, 'unit_price', Math.round(v / 1000) * 1000) }}
+                      onBlur={e => { const v = parseFloat(e.target.value) || 0; updateItem(idx, 'unit_price', v) }}
                       className="text-right text-sm font-semibold"
                       placeholder="0"
                     />
