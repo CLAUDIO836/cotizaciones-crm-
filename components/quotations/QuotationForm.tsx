@@ -840,7 +840,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
 
                     {/* Precio neto — editable */}
                     <Input
-                      type="number" min={0} step={1000}
+                      type="number" min={0} step={1}
                       value={item.unit_price || ''}
                       onChange={e => updateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
                       onBlur={e => { const v = parseFloat(e.target.value) || 0; updateItem(idx, 'unit_price', v) }}
