@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import ChatBox from '@/components/ChatBox'
+import CelularModal from '@/components/CelularModal'
 import { getSession, getToken, crmGet } from '@/lib/api'
 import { fetchAiLandingStats } from '@/lib/ai-api'
 
@@ -18,6 +19,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#f4f5f7' }}>
+      {!session.celular && <CelularModal />}
       <Sidebar profile={{
         id: session.id,
         name: session.name,
