@@ -11,11 +11,15 @@ export default function CelularModal() {
   async function guardar() {
     const digits = celular.replace(/\D/g, '')
     if (digits.length < 8) return
+    let normalized = celular.trim()
+    if (digits.startsWith('56') && digits.length >= 10) normalized = `+${digits}`
+    else if (digits.length === 8 || digits.length === 9) normalized = `+56${digits}`
+    else if (!normalized.startsWith('+')) normalized = `+56${digits}`
     setSaving(true)
     await fetch('/api/admin/usuarios', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ celular }),
+      body: JSON.stringify({ celular: normalized }),
     })
     setSaving(false)
     setDone(true)
@@ -35,7 +39,7 @@ export default function CelularModal() {
           type="tel"
           value={celular}
           onChange={e => setCelular(e.target.value)}
-          placeholder="9 1234 5678"
+          placeholder="9 1234 5678  (el +56 se agrega solo)"
           className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400 mb-3"
           onKeyDown={e => e.key === 'Enter' && guardar()}
           autoFocus
