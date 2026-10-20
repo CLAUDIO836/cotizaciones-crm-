@@ -2392,6 +2392,45 @@ if ($action === 'call_status_update') {
 }
 
 // Registro de llamadas salientes — llamado internamente por el webhook Vercel
+if ($action === 'outbound_calls_list') {
+    $me = requireAuth();
+    // Admins ven todos; ejecutivos solo los suyos
+    $onlyMine = !isAdmin($me);
+    $limit  = min((int)($_GET['limit'] ?? 50), 200);
+    $offset = (int)($_GET['offset'] ?? 0);
+
+    $where = $onlyMine ? "WHERE o.user_id = '{$me['id']}'" : '';
+    $rows = db()->query("
+        SELECT
+            o.id, o.user_id, o.to_number, o.called_at,
+            p.name  AS executive_name,
+            -- buscar contacto por número
+            c.id    AS contact_id,
+            c.name  AS contact_name,
+            c.mobile AS contact_mobile,
+            pr.id   AS prospect_id,
+            pr.company_name AS prospect_company
+        FROM outbound_calls o
+        JOIN profiles p ON p.id = o.user_id
+        LEFT JOIN prospect_contacts c ON (
+            REGEXP_REPLACE(c.mobile, '[^0-9]', '') = REGEXP_REPLACE(o.to_number, '[^0-9]', '')
+            OR REGEXP_REPLACE(c.phone,  '[^0-9]', '') = REGEXP_REPLACE(o.to_number, '[^0-9]', '')
+        )
+        LEFT JOIN prospects pr ON pr.id = c.prospect_id
+        $where
+        ORDER BY o.called_at DESC
+        LIMIT $limit OFFSET $offset
+    ")->fetchAll();
+
+    // Convertir hora UTC → Chile (UTC-3 fijo para simplificar)
+    foreach ($rows as &$r) {
+        if ($r['called_at']) {
+            $r['called_at_cl'] = date('Y-m-d H:i', strtotime($r['called_at']) - 3*3600);
+        }
+    }
+    ok($rows);
+}
+
 if ($action === 'log_outbound_call') {
     $secret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
     $jwtSecret = getenv('CRM_JWT_SECRET') ?: JWT_SECRET;
