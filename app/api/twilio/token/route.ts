@@ -16,8 +16,7 @@ export async function POST() {
     const twimlAppSid = process.env.TWILIO_TWIML_APP_SID
 
     if (!accountSid || !apiKey || !apiSecret || !twimlAppSid) {
-      console.error('[twilio/token] missing env vars', { accountSid: !!accountSid, apiKey: !!apiKey, apiSecret: !!apiSecret, twimlAppSid: !!twimlAppSid })
-      return NextResponse.json({ error: 'Config incompleta', missing: { accountSid: !accountSid, apiKey: !apiKey, apiSecret: !apiSecret, twimlAppSid: !twimlAppSid } }, { status: 500 })
+      return NextResponse.json({ error: 'Config incompleta' }, { status: 500 })
     }
 
     const token = new AccessToken(accountSid, apiKey, apiSecret, {
@@ -32,8 +31,7 @@ export async function POST() {
     token.addGrant(voiceGrant)
 
     return NextResponse.json({ token: token.toJwt() })
-  } catch (err) {
-    console.error('[twilio/token]', err)
-    return NextResponse.json({ error: 'No autorizado', detail: String(err) }, { status: 401 })
+  } catch {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 }
