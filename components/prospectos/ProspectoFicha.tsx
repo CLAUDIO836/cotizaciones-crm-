@@ -7,6 +7,7 @@ import {
   ACTIVITY_LABELS, ACTIVITY_ICONS, RESULT_LABELS, ActivityType, ActivityResult,
 } from '@/lib/prospectos-types'
 import { UserSession } from '@/lib/api'
+import BotonLlamada from './BotonLlamada'
 
 const RESULTS: { value: ActivityResult, label: string }[] = [
   { value: 'contacted',       label: '✅ Contactado' },
@@ -154,7 +155,20 @@ export default function ProspectoFicha({
                   <div className="text-right shrink-0">
                     <p className="text-xs text-gray-500">{c.mobile ?? c.phone ?? '—'}</p>
                     <div className="flex gap-1 mt-1 justify-end">
-                      <span className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-xs cursor-pointer hover:bg-green-50">📞</span>
+                      {(c.mobile ?? c.phone) && (
+                        <BotonLlamada
+                          phoneNumber={c.mobile ?? c.phone ?? ''}
+                          contactName={c.name}
+                          prospectId={prospect.id}
+                          contactId={c.id}
+                          onCallLogged={(sid, dur) => {
+                            setActType('call')
+                            setActResult('contacted')
+                            setActContact(c.id)
+                            setActNotes(`Llamada ${dur > 0 ? `de ${Math.floor(dur/60)}:${String(dur%60).padStart(2,'0')} min` : 'sin respuesta'} · SID: ${sid}`)
+                          }}
+                        />
+                      )}
                       <span className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-xs cursor-pointer hover:bg-blue-50">💬</span>
                       <span className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-xs cursor-pointer hover:bg-gray-50">✉️</span>
                     </div>
