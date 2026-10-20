@@ -11,7 +11,16 @@ interface Props {
   onCallLogged?: (callSid: string, duration: number) => void
 }
 
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '')
+  if (digits.startsWith('56') && digits.length >= 10) return `+${digits}`
+  if (digits.length === 8 || digits.length === 9) return `+56${digits}`
+  if (digits.length >= 10) return `+${digits}`
+  return raw
+}
+
 export default function BotonLlamada({ phoneNumber, contactName, prospectId, contactId, onCallLogged }: Props) {
+  const phone = normalizePhone(phoneNumber)
   const [state, setState]     = useState<CallState>('idle')
   const [duration, setDuration] = useState(0)
   const [callSid, setCallSid]  = useState<string | null>(null)
@@ -47,7 +56,7 @@ export default function BotonLlamada({ phoneNumber, contactName, prospectId, con
 
       // 3. Iniciar llamada
       const call = await device.connect({
-        params: { To: phoneNumber, prospect_id: prospectId, contact_id: contactId ?? '' },
+        params: { To: phone, prospect_id: prospectId, contact_id: contactId ?? '' },
       })
       callRef.current = call
       setState('ringing')

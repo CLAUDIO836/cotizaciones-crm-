@@ -11,10 +11,11 @@ export async function POST() {
     await getToken() // validates session
 
     const accountSid  = process.env.TWILIO_ACCOUNT_SID!
-    const authToken   = process.env.TWILIO_AUTH_TOKEN!
+    const apiKey      = process.env.TWILIO_API_KEY!
+    const apiSecret   = process.env.TWILIO_API_SECRET!
     const twimlAppSid = process.env.TWILIO_TWIML_APP_SID!
 
-    const token = new AccessToken(accountSid, authToken, authToken, {
+    const token = new AccessToken(accountSid, apiKey, apiSecret, {
       identity: 'crm-user',
       ttl: 3600,
     })
