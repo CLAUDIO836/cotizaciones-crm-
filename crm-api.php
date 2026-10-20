@@ -1999,6 +1999,15 @@ if ($action === 'prospectos_init') {
 
         "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS celular VARCHAR(20) NULL",
 
+        "CREATE TABLE IF NOT EXISTS outbound_calls (
+            id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            user_id    CHAR(36) NOT NULL,
+            to_number  VARCHAR(30) NOT NULL,
+            called_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_to_number (to_number),
+            INDEX idx_called_at (called_at)
+        )",
+
         "CREATE TABLE IF NOT EXISTS prospect_campaigns (
             id           CHAR(36)     NOT NULL PRIMARY KEY,
             name         VARCHAR(255) NOT NULL,
@@ -2382,35 +2391,57 @@ if ($action === 'call_status_update') {
     ok(['updated' => true]);
 }
 
+// Registro de llamadas salientes — llamado internamente por el webhook Vercel
+if ($action === 'log_outbound_call') {
+    $secret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
+    $jwtSecret = getenv('CRM_JWT_SECRET') ?: JWT_SECRET;
+    if (!hash_equals($jwtSecret, $secret)) { http_response_code(403); echo '{}'; exit; }
+    $b = body();
+    $userId   = $b['user_id']   ?? null;
+    $toNumber = $b['to_number'] ?? null;
+    if (!$userId || !$toNumber) { echo '{}'; exit; }
+    $normalized = preg_replace('/[^0-9+]/', '', $toNumber);
+    db()->prepare("INSERT INTO outbound_calls (user_id, to_number) VALUES (?, ?)")
+        ->execute([$userId, $normalized]);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
 // Devuelve el celular del último ejecutivo que llamó a un número dado (para routing de llamada entrante)
 if ($action === 'incoming_call_route') {
     $from = $_POST['From'] ?? $_GET['from'] ?? null;
     if (!$from) { echo '<Response><Hangup/></Response>'; exit; }
-    // Buscar último ejecutivo que llamó a este número
+    $normalized = preg_replace('/[^0-9]/', '', $from);
+
+    // 1. Buscar en outbound_calls (registrado por webhook Vercel al marcar)
     $stmt = db()->prepare("
         SELECT p.celular, p.name
-        FROM prospect_activities a
-        JOIN profiles p ON p.id = a.user_id
-        WHERE a.type = 'call'
-          AND a.call_sid IS NOT NULL
-          AND JSON_UNQUOTE(JSON_EXTRACT(a.notes, '$')) LIKE ?
-        ORDER BY a.created_at DESC
+        FROM outbound_calls o
+        JOIN profiles p ON p.id = o.user_id
+        WHERE REGEXP_REPLACE(o.to_number, '[^0-9]', '') LIKE ?
+          AND p.celular IS NOT NULL AND p.celular != ''
+        ORDER BY o.called_at DESC
         LIMIT 1
     ");
-    // Alternativa: buscar por contacto con ese número
-    $normalized = preg_replace('/[^0-9]/', '', $from);
-    $stmt2 = db()->prepare("
-        SELECT p.celular, p.name
-        FROM prospect_activities a
-        JOIN profiles p ON p.id = a.user_id
-        JOIN prospect_contacts c ON c.id = a.contact_id
-        WHERE a.type = 'call'
-          AND (REGEXP_REPLACE(c.mobile, '[^0-9]', '') LIKE ? OR REGEXP_REPLACE(c.phone, '[^0-9]', '') LIKE ?)
-        ORDER BY a.created_at DESC
-        LIMIT 1
-    ");
-    $stmt2->execute(["%$normalized", "%$normalized"]);
-    $row = $stmt2->fetch();
+    $stmt->execute(["%$normalized"]);
+    $row = $stmt->fetch();
+
+    // 2. Fallback: buscar por contacto en prospect_activities
+    if (!$row) {
+        $stmt2 = db()->prepare("
+            SELECT p.celular, p.name
+            FROM prospect_activities a
+            JOIN profiles p ON p.id = a.user_id
+            JOIN prospect_contacts c ON c.id = a.contact_id
+            WHERE a.type = 'call'
+              AND (REGEXP_REPLACE(c.mobile, '[^0-9]', '') LIKE ? OR REGEXP_REPLACE(c.phone, '[^0-9]', '') LIKE ?)
+              AND p.celular IS NOT NULL AND p.celular != ''
+            ORDER BY a.created_at DESC
+            LIMIT 1
+        ");
+        $stmt2->execute(["%$normalized", "%$normalized"]);
+        $row = $stmt2->fetch();
+    }
     header('Content-Type: text/xml');
     if ($row && $row['celular']) {
         $celular = preg_replace('/[^0-9+]/', '', $row['celular']);
