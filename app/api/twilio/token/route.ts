@@ -10,10 +10,15 @@ export async function POST() {
   try {
     await getToken() // validates session
 
-    const accountSid  = process.env.TWILIO_ACCOUNT_SID!
-    const apiKey      = process.env.TWILIO_API_KEY!
-    const apiSecret   = process.env.TWILIO_API_SECRET!
-    const twimlAppSid = process.env.TWILIO_TWIML_APP_SID!
+    const accountSid  = process.env.TWILIO_ACCOUNT_SID
+    const apiKey      = process.env.TWILIO_API_KEY
+    const apiSecret   = process.env.TWILIO_API_SECRET
+    const twimlAppSid = process.env.TWILIO_TWIML_APP_SID
+
+    if (!accountSid || !apiKey || !apiSecret || !twimlAppSid) {
+      console.error('[twilio/token] missing env vars', { accountSid: !!accountSid, apiKey: !!apiKey, apiSecret: !!apiSecret, twimlAppSid: !!twimlAppSid })
+      return NextResponse.json({ error: 'Config incompleta', missing: { accountSid: !accountSid, apiKey: !apiKey, apiSecret: !apiSecret, twimlAppSid: !twimlAppSid } }, { status: 500 })
+    }
 
     const token = new AccessToken(accountSid, apiKey, apiSecret, {
       identity: 'crm-user',
@@ -27,7 +32,8 @@ export async function POST() {
     token.addGrant(voiceGrant)
 
     return NextResponse.json({ token: token.toJwt() })
-  } catch {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  } catch (err) {
+    console.error('[twilio/token]', err)
+    return NextResponse.json({ error: 'No autorizado', detail: String(err) }, { status: 401 })
   }
 }
