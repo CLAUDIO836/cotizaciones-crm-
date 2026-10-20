@@ -75,7 +75,7 @@ export default function UsersManager({ users: initialUsers }: { users: Profile[]
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: userId, role }),
     })
-    if (!res.ok) { toast.error('Error al actualizar rol') }
+    if (!res.ok) { const e = await res.json().catch(() => ({})); toast.error('Error rol: ' + (e.error ?? res.status)) }
     else { setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u)); toast.success('Rol actualizado') }
   }
 
