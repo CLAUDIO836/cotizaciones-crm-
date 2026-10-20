@@ -62,9 +62,23 @@ export default function BotonLlamada({ phoneNumber, contactName, prospectId, con
       setState('ringing')
 
       call.on('accept', (c) => {
-        setCallSid(c.parameters.CallSid ?? null)
+        const sid = c.parameters.CallSid ?? null
+        setCallSid(sid)
         setState('in-call')
         timerRef.current = setInterval(() => setDuration(d => d + 1), 1000)
+        // Registrar llamada para routing de llamadas entrantes
+        if (sid) {
+          fetch('/api/prospectos/activity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prospect_id: prospectId,
+              contact_id: contactId ?? null,
+              type: 'call',
+              call_sid: sid,
+            }),
+          }).catch(() => {})
+        }
       })
 
       call.on('disconnect', () => {
