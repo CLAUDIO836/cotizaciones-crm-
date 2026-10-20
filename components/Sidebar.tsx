@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  LayoutDashboard, FileText, FileCheck, Users, UserCog, LogOut, Filter, BarChart3, CalendarDays, Inbox, Bot
+  LayoutDashboard, FileText, FileCheck, Users, UserCog, LogOut, Filter, BarChart3, CalendarDays, Inbox, Bot, PhoneCall
 } from 'lucide-react'
 
 interface Profile {
@@ -16,6 +16,7 @@ interface Profile {
 
 const navItems = [
   { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
+  { href: '/prospectos',   label: 'Prospectos',   icon: PhoneCall },
   { href: '/solicitudes',  label: 'Solicitudes',  icon: Inbox, badge: true },
   { href: '/agente',       label: 'Agente IA',    icon: Bot,   agentBadge: true },
   { href: '/cotizaciones', label: 'Negocios',     icon: FileText },
