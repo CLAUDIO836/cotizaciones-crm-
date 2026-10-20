@@ -36,14 +36,14 @@ const VEHICLE_IMAGES_TKS: Record<string, string> = {
 }
 
 const TKS_VEHICLE_DESCS: Record<string, string> = {
-  'bus':     'Servicio de transporte en Bus (40–60 pasajeros) – Flota 2009 al 2016',
+  'bus':     'Servicio de transporte en Bus (40–44 pasajeros) – Flota 2009 al 2016',
   'taxibus': 'Servicio de transporte en Taxibús (25–33 pasajeros) – Flota 2014 al 2018',
   'minibus': 'Servicio de transporte en Minibús (14–19 pasajeros) – Flota 2014 al 2026',
   'minivan': 'Servicio de transporte en Minivan (7–10 pasajeros) – Flota 2014 al 2026',
 }
 
 const VEHICLE_LABELS: Record<string, string> = {
-  'bus':     'Bus (40–60 pasajeros)',
+  'bus':     'Bus (40–44 pasajeros)',
   'taxibus': 'Taxibús (25–33 pasajeros)',
   'minibus': 'Minibús (14–19 pasajeros)',
   'minivan': 'Minivan (7–10 pasajeros)',
