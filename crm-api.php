@@ -2399,28 +2399,28 @@ if ($action === 'outbound_calls_list') {
     $limit  = min((int)($_GET['limit'] ?? 50), 200);
     $offset = (int)($_GET['offset'] ?? 0);
 
-    $where = $onlyMine ? "WHERE o.user_id = '{$me['id']}'" : '';
-    $rows = db()->query("
-        SELECT
-            o.id, o.user_id, o.to_number, o.called_at,
-            p.name  AS executive_name,
-            -- buscar contacto por número
-            c.id    AS contact_id,
-            c.name  AS contact_name,
-            c.mobile AS contact_mobile,
-            pr.id   AS prospect_id,
-            pr.company_name AS prospect_company
+    $whereClause = $onlyMine ? 'WHERE o.user_id = ?' : 'WHERE 1=1';
+    $params = $onlyMine ? [$me['id']] : [];
+    $stmt = db()->prepare("
+        SELECT o.id, o.user_id, o.to_number, o.called_at,
+               p.name AS executive_name,
+               c.id   AS contact_id,
+               c.name AS contact_name,
+               pr.id  AS prospect_id,
+               pr.company_name AS prospect_company
         FROM outbound_calls o
         JOIN profiles p ON p.id = o.user_id
         LEFT JOIN prospect_contacts c ON (
             REGEXP_REPLACE(c.mobile, '[^0-9]', '') = REGEXP_REPLACE(o.to_number, '[^0-9]', '')
-            OR REGEXP_REPLACE(c.phone,  '[^0-9]', '') = REGEXP_REPLACE(o.to_number, '[^0-9]', '')
+            OR REGEXP_REPLACE(c.phone, '[^0-9]', '') = REGEXP_REPLACE(o.to_number, '[^0-9]', '')
         )
         LEFT JOIN prospects pr ON pr.id = c.prospect_id
-        $where
+        $whereClause
         ORDER BY o.called_at DESC
         LIMIT $limit OFFSET $offset
-    ")->fetchAll();
+    ");
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
 
     // Convertir hora UTC → Chile (UTC-3 fijo para simplificar)
     foreach ($rows as &$r) {

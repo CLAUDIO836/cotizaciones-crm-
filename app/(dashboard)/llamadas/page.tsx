@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getSession, getToken, crmGet } from '@/lib/api'
-import { Phone, ExternalLink, User } from 'lucide-react'
+import { Phone, ExternalLink } from 'lucide-react'
 
 interface CallRow {
   id: string
@@ -24,10 +24,12 @@ function formatNumber(n: string) {
   return n
 }
 
-function formatTime(dt: string) {
+function formatTime(dt: string | null) {
+  if (!dt) return { date: '—', time: '' }
   const [date, time] = dt.split(' ')
+  if (!date) return { date: '—', time: '' }
   const [y, m, d] = date.split('-')
-  return { date: `${d}/${m}/${y}`, time: time?.slice(0, 5) }
+  return { date: `${d}/${m}/${y}`, time: time?.slice(0, 5) ?? '' }
 }
 
 export default async function LlamadasPage() {
