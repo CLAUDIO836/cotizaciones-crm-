@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   if (to) {
     const dial = twiml.dial({
-      callerId:  process.env.TWILIO_PHONE_NUMBER!,
+      callerId: '+56229149664',
       record:    'record-from-answer',
       recordingStatusCallback: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://cotizaciones-crm.vercel.app'}/api/twilio/recording`,
       recordingStatusCallbackMethod: 'POST',
