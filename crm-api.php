@@ -104,8 +104,12 @@ function requireAuth(): array {
 
 function requireAdmin(): array {
     $user = requireAuth();
-    if ($user['role'] !== 'admin') err('Forbidden', 403);
+    if (!in_array($user['role'], ['admin', 'superadmin'])) err('Forbidden', 403);
     return $user;
+}
+
+function isAdmin(array $user): bool {
+    return in_array($user['role'], ['admin', 'superadmin']);
 }
 
 // ── RUT utilities (módulo 11 chileno) ─────────────────────────────────────────
@@ -250,14 +254,14 @@ if ($action === 'profiles_update') {
     $me = requireAuth();
     $b  = body();
     $id = $b['id'] ?? $me['id'];
-    if ($me['role'] !== 'admin' && $id !== $me['id']) err('Forbidden', 403);
+    if (!isAdmin($me) && $id !== $me['id']) err('Forbidden', 403);
     $fields = [];
     $vals   = [];
     if (isset($b['name']))    { $fields[] = 'name = ?';    $vals[] = $b['name']; }
     if (isset($b['celular'])) { $fields[] = 'celular = ?'; $vals[] = trim($b['celular'] ?? '') ?: null; }
-    if (isset($b['email']) && $me['role'] === 'admin') { $fields[] = 'email = ?'; $vals[] = trim($b['email']); }
-    if (isset($b['role']) && $me['role'] === 'admin')  { $fields[] = 'role = ?';  $vals[] = $b['role']; }
-    if (isset($b['active']) && $me['role'] === 'admin') { $fields[] = 'active = ?'; $vals[] = (int)$b['active']; }
+    if (isset($b['email']) && isAdmin($me)) { $fields[] = 'email = ?'; $vals[] = trim($b['email']); }
+    if (isset($b['role']) && isAdmin($me))  { $fields[] = 'role = ?';  $vals[] = $b['role']; }
+    if (isset($b['active']) && isAdmin($me)) { $fields[] = 'active = ?'; $vals[] = (int)$b['active']; }
     if (isset($b['password']) && strlen($b['password']) >= 6) {
         $fields[] = 'password_hash = ?';
         $vals[]   = password_hash($b['password'], PASSWORD_BCRYPT);
