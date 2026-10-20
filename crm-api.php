@@ -1967,5 +1967,629 @@ if ($action === 'quotation_pdfs_list') {
     ok($rows->fetchAll(PDO::FETCH_ASSOC));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── MOTOR DE PROSPECCIÓN ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── DB init: crea tablas si no existen ───────────────────────────────────────
+if ($action === 'prospectos_init') {
+    requireAdmin();
+    $sqls = [
+        "ALTER TABLE profiles
+            ADD COLUMN IF NOT EXISTS suspended TINYINT(1) NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS suspended_until DATE NULL,
+            ADD COLUMN IF NOT EXISTS suspended_reason VARCHAR(255) NULL",
+
+        "CREATE TABLE IF NOT EXISTS prospect_campaigns (
+            id           CHAR(36)     NOT NULL PRIMARY KEY,
+            name         VARCHAR(255) NOT NULL,
+            description  TEXT         NULL,
+            segment      VARCHAR(50)  NOT NULL DEFAULT 'educacional',
+            region       VARCHAR(100) NOT NULL DEFAULT 'RM',
+            status       ENUM('draft','active','paused','closed') NOT NULL DEFAULT 'active',
+            created_by   CHAR(36)     NOT NULL,
+            created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS prospects (
+            id            CHAR(36)     NOT NULL PRIMARY KEY,
+            campaign_id   CHAR(36)     NOT NULL,
+            name          VARCHAR(255) NOT NULL,
+            segment       VARCHAR(50)  NOT NULL DEFAULT 'educacional',
+            commune       VARCHAR(100) NULL,
+            region        VARCHAR(50)  NOT NULL DEFAULT 'RM',
+            rut           VARCHAR(20)  NULL,
+            rbd           VARCHAR(20)  NULL,
+            address       VARCHAR(255) NULL,
+            assigned_to   CHAR(36)     NULL,
+            status        ENUM('new','contacted','following','quoting','closed_won','closed_lost') NOT NULL DEFAULT 'new',
+            next_contact  DATE         NULL,
+            notes         TEXT         NULL,
+            source        ENUM('import','manual','inbound') NOT NULL DEFAULT 'import',
+            created_by    CHAR(36)     NOT NULL,
+            created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_campaign (campaign_id),
+            INDEX idx_assigned (assigned_to),
+            INDEX idx_status (status),
+            INDEX idx_next_contact (next_contact),
+            INDEX idx_commune (commune)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS prospect_contacts (
+            id           CHAR(36)     NOT NULL PRIMARY KEY,
+            prospect_id  CHAR(36)     NOT NULL,
+            name         VARCHAR(255) NOT NULL,
+            role         VARCHAR(100) NULL,
+            phone        VARCHAR(30)  NULL,
+            mobile       VARCHAR(30)  NULL,
+            email        VARCHAR(255) NULL,
+            is_primary   TINYINT(1)   NOT NULL DEFAULT 0,
+            created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_prospect (prospect_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS prospect_activities (
+            id            CHAR(36)     NOT NULL PRIMARY KEY,
+            prospect_id   CHAR(36)     NOT NULL,
+            contact_id    CHAR(36)     NULL,
+            user_id       CHAR(36)     NOT NULL,
+            type          ENUM('call','email','whatsapp','note','visit') NOT NULL,
+            result        ENUM('contacted','no_answer','interested','not_interested','follow_up','quote_requested') NULL,
+            duration_sec  INT          NULL,
+            recording_url VARCHAR(500) NULL,
+            notes         TEXT         NULL,
+            next_contact  DATE         NULL,
+            created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_prospect (prospect_id),
+            INDEX idx_user (user_id),
+            INDEX idx_created (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS commune_assignments (
+            id          CHAR(36)     NOT NULL PRIMARY KEY,
+            campaign_id CHAR(36)     NOT NULL,
+            commune     VARCHAR(100) NOT NULL,
+            user_id     CHAR(36)     NOT NULL,
+            created_by  CHAR(36)     NOT NULL,
+            created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_campaign_commune (campaign_id, commune)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS prospect_assignment_exceptions (
+            id           CHAR(36)     NOT NULL PRIMARY KEY,
+            prospect_id  CHAR(36)     NOT NULL UNIQUE,
+            user_id      CHAR(36)     NOT NULL,
+            reason       VARCHAR(255) NULL,
+            created_by   CHAR(36)     NOT NULL,
+            created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+    ];
+    foreach ($sqls as $sql) { db()->exec($sql); }
+    ok(['tables_created' => true]);
+}
+
+// ── CAMPAIGNS ─────────────────────────────────────────────────────────────────
+if ($action === 'campaigns_list') {
+    requireAuth();
+    $rows = db()->query("
+        SELECT c.*,
+               p.name AS created_by_name,
+               (SELECT COUNT(*) FROM prospects WHERE campaign_id = c.id) AS total_prospects,
+               (SELECT COUNT(*) FROM prospects WHERE campaign_id = c.id AND status != 'new') AS contacted_count,
+               (SELECT COUNT(*) FROM prospects WHERE campaign_id = c.id AND status IN ('quoting','closed_won')) AS quoting_count
+        FROM prospect_campaigns c
+        LEFT JOIN profiles p ON p.id = c.created_by
+        ORDER BY c.created_at DESC
+    ")->fetchAll();
+    ok($rows);
+}
+
+if ($action === 'campaigns_create') {
+    $user = requireAdmin();
+    $b = body();
+    $name = trim($b['name'] ?? '');
+    if (!$name) err('Nombre requerido');
+    $id = uuid();
+    db()->prepare("INSERT INTO prospect_campaigns (id, name, description, segment, region, status, created_by)
+                   VALUES (?, ?, ?, ?, ?, 'active', ?)")
+        ->execute([$id, $name, $b['description'] ?? null, $b['segment'] ?? 'educacional', $b['region'] ?? 'RM', $user['id']]);
+    $row = db()->prepare("SELECT * FROM prospect_campaigns WHERE id = ?")->execute([$id]);
+    ok(db()->query("SELECT * FROM prospect_campaigns WHERE id = '$id'")->fetch());
+}
+
+if ($action === 'campaigns_update') {
+    $user = requireAdmin();
+    $b = body();
+    $id = $b['id'] ?? '';
+    if (!$id) err('ID requerido');
+    $fields = []; $vals = [];
+    foreach (['name','description','segment','region','status'] as $f) {
+        if (isset($b[$f])) { $fields[] = "$f = ?"; $vals[] = $b[$f]; }
+    }
+    if (!$fields) err('Nada que actualizar');
+    $vals[] = $id;
+    db()->prepare("UPDATE prospect_campaigns SET " . implode(',', $fields) . " WHERE id = ?")->execute($vals);
+    ok();
+}
+
+// ── PROSPECTS ─────────────────────────────────────────────────────────────────
+if ($action === 'prospects_list') {
+    $me = requireAuth();
+    $campaign_id = $_GET['campaign_id'] ?? null;
+    if (!$campaign_id) err('campaign_id requerido');
+
+    // Ejecutivo: solo sus prospectos. Admin: todos
+    $where = 'p.campaign_id = ?';
+    $vals  = [$campaign_id];
+    if ($me['role'] !== 'admin') {
+        $where .= ' AND p.assigned_to = ?';
+        $vals[] = $me['id'];
+    }
+
+    // Filtros opcionales
+    $status = $_GET['status'] ?? null;
+    if ($status) { $where .= ' AND p.status = ?'; $vals[] = $status; }
+
+    $commune = $_GET['commune'] ?? null;
+    if ($commune) { $where .= ' AND p.commune = ?'; $vals[] = $commune; }
+
+    $search = $_GET['q'] ?? null;
+    if ($search) { $where .= ' AND p.name LIKE ?'; $vals[] = "%$search%"; }
+
+    $stmt = db()->prepare("
+        SELECT p.*,
+               pr.name AS assigned_name,
+               (SELECT COUNT(*) FROM prospect_activities WHERE prospect_id = p.id) AS activity_count,
+               (SELECT MAX(created_at) FROM prospect_activities WHERE prospect_id = p.id) AS last_activity_at
+        FROM prospects p
+        LEFT JOIN profiles pr ON pr.id = p.assigned_to
+        WHERE $where
+        ORDER BY
+            CASE p.status WHEN 'new' THEN 1 WHEN 'following' THEN 2 WHEN 'contacted' THEN 3 ELSE 4 END,
+            p.next_contact ASC,
+            p.updated_at DESC
+    ");
+    $stmt->execute($vals);
+    ok($stmt->fetchAll());
+}
+
+if ($action === 'prospects_get') {
+    requireAuth();
+    $id = $_GET['id'] ?? '';
+    if (!$id) err('ID requerido');
+    $stmt = db()->prepare("
+        SELECT p.*, pr.name AS assigned_name,
+               exc.user_id AS exception_user_id, exc.reason AS exception_reason
+        FROM prospects p
+        LEFT JOIN profiles pr ON pr.id = p.assigned_to
+        LEFT JOIN prospect_assignment_exceptions exc ON exc.prospect_id = p.id
+        WHERE p.id = ?
+    ");
+    $stmt->execute([$id]);
+    $prospect = $stmt->fetch();
+    if (!$prospect) err('No encontrado', 404);
+
+    // Contactos
+    $cstmt = db()->prepare("SELECT * FROM prospect_contacts WHERE prospect_id = ? ORDER BY is_primary DESC, name");
+    $cstmt->execute([$id]);
+    $prospect['contacts'] = $cstmt->fetchAll();
+
+    // Actividades
+    $astmt = db()->prepare("
+        SELECT a.*, pr.name AS user_name, pc.name AS contact_name
+        FROM prospect_activities a
+        LEFT JOIN profiles pr ON pr.id = a.user_id
+        LEFT JOIN prospect_contacts pc ON pc.id = a.contact_id
+        WHERE a.prospect_id = ?
+        ORDER BY a.created_at DESC
+    ");
+    $astmt->execute([$id]);
+    $prospect['activities'] = $astmt->fetchAll();
+
+    ok($prospect);
+}
+
+if ($action === 'prospects_create') {
+    $me = requireAuth();
+    $b  = body();
+    $name        = trim($b['name'] ?? '');
+    $campaign_id = $b['campaign_id'] ?? '';
+    if (!$name || !$campaign_id) err('Nombre y campaign_id requeridos');
+
+    $commune = trim($b['commune'] ?? '');
+    $id = uuid();
+
+    // Determinar ejecutivo asignado: excepción individual → regla de comuna → null
+    $assigned_to = $b['assigned_to'] ?? null;
+    if (!$assigned_to && $commune) {
+        $row = db()->prepare("SELECT user_id FROM commune_assignments WHERE campaign_id = ? AND commune = ? LIMIT 1");
+        $row->execute([$campaign_id, $commune]);
+        $assigned_to = ($row->fetch()['user_id'] ?? null);
+    }
+
+    db()->prepare("INSERT INTO prospects (id, campaign_id, name, segment, commune, region, rut, rbd, address, assigned_to, status, next_contact, notes, source, created_by)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?)")
+        ->execute([
+            $id, $campaign_id, $name,
+            $b['segment'] ?? 'educacional',
+            $commune, $b['region'] ?? 'RM',
+            $b['rut'] ?? null, $b['rbd'] ?? null, $b['address'] ?? null,
+            $assigned_to, $b['next_contact'] ?? null, $b['notes'] ?? null,
+            $b['source'] ?? 'manual', $me['id']
+        ]);
+
+    // Contactos iniciales si vienen
+    if (!empty($b['contacts']) && is_array($b['contacts'])) {
+        foreach ($b['contacts'] as $i => $c) {
+            $cid = uuid();
+            db()->prepare("INSERT INTO prospect_contacts (id, prospect_id, name, role, phone, mobile, email, is_primary)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+                ->execute([$cid, $id, $c['name'] ?? '', $c['role'] ?? null, $c['phone'] ?? null, $c['mobile'] ?? null, $c['email'] ?? null, $i === 0 ? 1 : 0]);
+        }
+    }
+
+    ok(['id' => $id, 'assigned_to' => $assigned_to]);
+}
+
+if ($action === 'prospects_update') {
+    $me = requireAuth();
+    $b  = body();
+    $id = $b['id'] ?? '';
+    if (!$id) err('ID requerido');
+
+    // Ejecutivo solo puede actualizar sus propios prospectos
+    if ($me['role'] !== 'admin') {
+        $row = db()->prepare("SELECT assigned_to FROM prospects WHERE id = ?")->execute([$id]);
+        $p = db()->prepare("SELECT assigned_to FROM prospects WHERE id = ?")->execute([$id]) ? db()->prepare("SELECT assigned_to FROM prospects WHERE id = ?"): null;
+        $stmt2 = db()->prepare("SELECT assigned_to FROM prospects WHERE id = ?");
+        $stmt2->execute([$id]);
+        $chk = $stmt2->fetch();
+        if (!$chk || $chk['assigned_to'] !== $me['id']) err('Forbidden', 403);
+    }
+
+    $fields = []; $vals = [];
+    foreach (['name','segment','commune','region','rut','rbd','address','status','next_contact','notes','assigned_to'] as $f) {
+        if (array_key_exists($f, $b)) { $fields[] = "$f = ?"; $vals[] = $b[$f]; }
+    }
+    if (!$fields) err('Nada que actualizar');
+    $vals[] = $id;
+    db()->prepare("UPDATE prospects SET " . implode(',', $fields) . " WHERE id = ?")->execute($vals);
+    ok();
+}
+
+// ── PROSPECT CONTACTS ─────────────────────────────────────────────────────────
+if ($action === 'prospect_contacts_upsert') {
+    requireAuth();
+    $b = body();
+    $prospect_id = $b['prospect_id'] ?? '';
+    if (!$prospect_id) err('prospect_id requerido');
+    $contacts = $b['contacts'] ?? [];
+    // Eliminar los anteriores y reinsertar
+    db()->prepare("DELETE FROM prospect_contacts WHERE prospect_id = ?")->execute([$prospect_id]);
+    foreach ($contacts as $i => $c) {
+        $cid = uuid();
+        db()->prepare("INSERT INTO prospect_contacts (id, prospect_id, name, role, phone, mobile, email, is_primary)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+            ->execute([$cid, $prospect_id, $c['name'] ?? '', $c['role'] ?? null, $c['phone'] ?? null, $c['mobile'] ?? null, $c['email'] ?? null, $i === 0 ? 1 : 0]);
+    }
+    ok();
+}
+
+// ── ACTIVITIES ────────────────────────────────────────────────────────────────
+if ($action === 'activity_create') {
+    $me = requireAuth();
+    $b  = body();
+    $prospect_id = $b['prospect_id'] ?? '';
+    $type        = $b['type'] ?? '';
+    if (!$prospect_id || !$type) err('prospect_id y type requeridos');
+
+    // Validar max 14 días para next_contact
+    $next_contact = $b['next_contact'] ?? null;
+    if ($next_contact) {
+        $diff = (strtotime($next_contact) - time()) / 86400;
+        if ($diff > 14) err('El próximo contacto no puede ser más de 14 días');
+        if ($diff < 0)  err('Fecha de próximo contacto no puede ser en el pasado');
+    }
+
+    $id = uuid();
+    db()->prepare("INSERT INTO prospect_activities (id, prospect_id, contact_id, user_id, type, result, duration_sec, recording_url, notes, next_contact)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        ->execute([
+            $id, $prospect_id, $b['contact_id'] ?? null, $me['id'],
+            $type, $b['result'] ?? null,
+            $b['duration_sec'] ?? null, $b['recording_url'] ?? null,
+            $b['notes'] ?? null, $next_contact
+        ]);
+
+    // Actualizar estado y próximo contacto del prospecto
+    $new_status = null;
+    if ($b['result'] === 'quote_requested') $new_status = 'quoting';
+    elseif ($b['result'] === 'interested')  $new_status = 'following';
+    elseif ($b['result'] === 'contacted' || $b['result'] === 'follow_up') $new_status = 'following';
+    elseif ($b['result'] === 'not_interested') $new_status = 'closed_lost';
+
+    $upd_fields = ['updated_at = NOW()'];
+    $upd_vals   = [];
+    if ($next_contact) { $upd_fields[] = 'next_contact = ?'; $upd_vals[] = $next_contact; }
+    if ($new_status)   { $upd_fields[] = 'status = ?';       $upd_vals[] = $new_status; }
+    $upd_vals[] = $prospect_id;
+    db()->prepare("UPDATE prospects SET " . implode(',', $upd_fields) . " WHERE id = ?")->execute($upd_vals);
+
+    ok(['id' => $id]);
+}
+
+if ($action === 'activities_list') {
+    requireAuth();
+    $prospect_id = $_GET['prospect_id'] ?? null;
+    if (!$prospect_id) err('prospect_id requerido');
+    $stmt = db()->prepare("
+        SELECT a.*, pr.name AS user_name, pc.name AS contact_name
+        FROM prospect_activities a
+        LEFT JOIN profiles pr ON pr.id = a.user_id
+        LEFT JOIN prospect_contacts pc ON pc.id = a.contact_id
+        WHERE a.prospect_id = ?
+        ORDER BY a.created_at DESC
+    ");
+    $stmt->execute([$prospect_id]);
+    ok($stmt->fetchAll());
+}
+
+// ── COMMUNE ASSIGNMENTS ───────────────────────────────────────────────────────
+if ($action === 'commune_assignments_list') {
+    requireAdmin();
+    $campaign_id = $_GET['campaign_id'] ?? null;
+    if (!$campaign_id) err('campaign_id requerido');
+    $stmt = db()->prepare("
+        SELECT ca.*, p.name AS user_name, p.email AS user_email
+        FROM commune_assignments ca
+        LEFT JOIN profiles p ON p.id = ca.user_id
+        WHERE ca.campaign_id = ?
+        ORDER BY ca.commune
+    ");
+    $stmt->execute([$campaign_id]);
+    ok($stmt->fetchAll());
+}
+
+if ($action === 'commune_assignments_save') {
+    $me = requireAdmin();
+    $b  = body();
+    $campaign_id = $b['campaign_id'] ?? '';
+    $commune     = trim($b['commune'] ?? '');
+    $user_id     = $b['user_id'] ?? '';
+    if (!$campaign_id || !$commune || !$user_id) err('Datos requeridos');
+    $id = uuid();
+    db()->prepare("INSERT INTO commune_assignments (id, campaign_id, commune, user_id, created_by)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON DUPLICATE KEY UPDATE user_id = VALUES(user_id)")
+        ->execute([$id, $campaign_id, $commune, $user_id, $me['id']]);
+    // Reasignar prospectos de esa comuna que no tengan excepción individual
+    db()->prepare("
+        UPDATE prospects p
+        LEFT JOIN prospect_assignment_exceptions exc ON exc.prospect_id = p.id
+        SET p.assigned_to = ?
+        WHERE p.campaign_id = ? AND p.commune = ? AND exc.prospect_id IS NULL
+    ")->execute([$user_id, $campaign_id, $commune]);
+    ok();
+}
+
+if ($action === 'commune_assignments_delete') {
+    requireAdmin();
+    $b = body();
+    $campaign_id = $b['campaign_id'] ?? '';
+    $commune     = $b['commune'] ?? '';
+    if (!$campaign_id || !$commune) err('Datos requeridos');
+    db()->prepare("DELETE FROM commune_assignments WHERE campaign_id = ? AND commune = ?")->execute([$campaign_id, $commune]);
+    ok();
+}
+
+// ── EXCEPCIONES INDIVIDUALES ──────────────────────────────────────────────────
+if ($action === 'prospect_exception_set') {
+    $me = requireAdmin();
+    $b  = body();
+    $prospect_id = $b['prospect_id'] ?? '';
+    $user_id     = $b['user_id'] ?? '';
+    if (!$prospect_id || !$user_id) err('Datos requeridos');
+    $id = uuid();
+    db()->prepare("INSERT INTO prospect_assignment_exceptions (id, prospect_id, user_id, reason, created_by)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), reason = VALUES(reason)")
+        ->execute([$id, $prospect_id, $user_id, $b['reason'] ?? null, $me['id']]);
+    db()->prepare("UPDATE prospects SET assigned_to = ? WHERE id = ?")->execute([$user_id, $prospect_id]);
+    ok();
+}
+
+if ($action === 'prospect_exception_delete') {
+    requireAdmin();
+    $b = body();
+    $prospect_id = $b['prospect_id'] ?? '';
+    if (!$prospect_id) err('prospect_id requerido');
+    db()->prepare("DELETE FROM prospect_assignment_exceptions WHERE prospect_id = ?")->execute([$prospect_id]);
+    ok();
+}
+
+// ── SUSPENDER EJECUTIVO ───────────────────────────────────────────────────────
+if ($action === 'profile_suspend') {
+    $me = requireAdmin();
+    $b  = body();
+    $id     = $b['id'] ?? '';
+    $until  = $b['until'] ?? null;   // null = indefinido
+    $reason = $b['reason'] ?? null;
+    if (!$id) err('ID requerido');
+
+    db()->prepare("UPDATE profiles SET suspended = 1, suspended_until = ?, suspended_reason = ? WHERE id = ?")
+        ->execute([$until, $reason, $id]);
+
+    // Obtener prospectos del suspendido
+    $stmt = db()->prepare("SELECT id, name, commune FROM prospects WHERE assigned_to = ? AND status NOT IN ('closed_won','closed_lost')");
+    $stmt->execute([$id]);
+    $affected = $stmt->fetchAll();
+
+    ok(['suspended' => true, 'affected_prospects' => count($affected), 'prospects' => $affected]);
+}
+
+if ($action === 'profile_unsuspend') {
+    requireAdmin();
+    $b = body();
+    $id = $b['id'] ?? '';
+    if (!$id) err('ID requerido');
+    db()->prepare("UPDATE profiles SET suspended = 0, suspended_until = NULL, suspended_reason = NULL WHERE id = ?")->execute([$id]);
+    ok();
+}
+
+if ($action === 'profile_reassign_prospects') {
+    $me = requireAdmin();
+    $b  = body();
+    $from_user_id = $b['from_user_id'] ?? '';
+    $to_user_id   = $b['to_user_id'] ?? '';
+    $campaign_id  = $b['campaign_id'] ?? null;
+    if (!$from_user_id || !$to_user_id) err('Datos requeridos');
+
+    $where = "assigned_to = ? AND status NOT IN ('closed_won','closed_lost')";
+    $vals  = [$to_user_id, $from_user_id];
+    if ($campaign_id) { $where .= " AND campaign_id = ?"; $vals[] = $campaign_id; }
+
+    $stmt = db()->prepare("UPDATE prospects SET assigned_to = ? WHERE $where");
+    array_unshift($vals, $to_user_id);
+    // Rebuild correctly
+    $vals2 = [$to_user_id, $from_user_id];
+    if ($campaign_id) $vals2[] = $campaign_id;
+    $stmt2 = db()->prepare("UPDATE prospects SET assigned_to = ? WHERE assigned_to = ? AND status NOT IN ('closed_won','closed_lost')" . ($campaign_id ? " AND campaign_id = ?" : ""));
+    $stmt2->execute($vals2);
+
+    ok(['reassigned' => $stmt2->rowCount()]);
+}
+
+// ── IMPORTAR CSV/ARRAY ────────────────────────────────────────────────────────
+if ($action === 'prospects_import') {
+    $me = requireAdmin();
+    $b  = body();
+    $campaign_id = $b['campaign_id'] ?? '';
+    $rows        = $b['rows'] ?? [];
+    if (!$campaign_id || empty($rows)) err('campaign_id y rows requeridos');
+
+    $inserted = 0; $skipped = 0;
+    foreach ($rows as $row) {
+        $name    = trim($row['name'] ?? '');
+        $commune = trim($row['commune'] ?? '');
+        if (!$name) { $skipped++; continue; }
+
+        // Determinar ejecutivo por regla de comuna
+        $assigned_to = null;
+        if ($commune) {
+            $stmt = db()->prepare("SELECT user_id FROM commune_assignments WHERE campaign_id = ? AND commune = ? LIMIT 1");
+            $stmt->execute([$campaign_id, $commune]);
+            $assigned_to = $stmt->fetch()['user_id'] ?? null;
+        }
+
+        $id = uuid();
+        db()->prepare("INSERT INTO prospects (id, campaign_id, name, segment, commune, region, rut, rbd, assigned_to, source, created_by)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', ?)")
+            ->execute([$id, $campaign_id, $name, $row['segment'] ?? 'educacional', $commune, $row['region'] ?? 'RM', $row['rut'] ?? null, $row['rbd'] ?? null, $assigned_to, $me['id']]);
+
+        // Insertar contactos si vienen
+        $contacts = $row['contacts'] ?? [];
+        foreach ($contacts as $i => $c) {
+            $cname = trim($c['name'] ?? '');
+            if (!$cname) continue;
+            $cid = uuid();
+            db()->prepare("INSERT INTO prospect_contacts (id, prospect_id, name, role, phone, mobile, email, is_primary)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+                ->execute([$cid, $id, $cname, $c['role'] ?? null, $c['phone'] ?? null, $c['mobile'] ?? null, $c['email'] ?? null, $i === 0 ? 1 : 0]);
+        }
+        $inserted++;
+    }
+    ok(['inserted' => $inserted, 'skipped' => $skipped]);
+}
+
+// ── DASHBOARD PROSPECTOS ──────────────────────────────────────────────────────
+if ($action === 'prospectos_dashboard') {
+    requireAdmin();
+    $campaign_id = $_GET['campaign_id'] ?? null;
+    $date_from   = $_GET['date_from'] ?? date('Y-m-d', strtotime('-7 days'));
+    $date_to     = $_GET['date_to']   ?? date('Y-m-d');
+
+    // Estadísticas por ejecutivo
+    $stmt = db()->prepare("
+        SELECT
+            pr.id, pr.name, pr.email,
+            COUNT(DISTINCT p.id) AS total_assigned,
+            COUNT(DISTINCT CASE WHEN p.status != 'new' THEN p.id END) AS contacted,
+            COUNT(DISTINCT CASE WHEN p.status IN ('quoting','closed_won') THEN p.id END) AS quoting,
+            COUNT(DISTINCT CASE WHEN a.type = 'call' AND DATE(a.created_at) BETWEEN ? AND ? THEN a.id END) AS calls_period,
+            COUNT(DISTINCT CASE WHEN a.type = 'whatsapp' AND DATE(a.created_at) BETWEEN ? AND ? THEN a.id END) AS whatsapps_period,
+            COUNT(DISTINCT CASE WHEN a.type = 'email' AND DATE(a.created_at) BETWEEN ? AND ? THEN a.id END) AS emails_period,
+            SUM(CASE WHEN a.type = 'call' AND DATE(a.created_at) BETWEEN ? AND ? THEN COALESCE(a.duration_sec,0) END) AS call_seconds_period
+        FROM profiles pr
+        LEFT JOIN prospects p ON p.assigned_to = pr.id " . ($campaign_id ? "AND p.campaign_id = ?" : "") . "
+        LEFT JOIN prospect_activities a ON a.user_id = pr.id
+        WHERE pr.active = 1 AND pr.suspended = 0
+        GROUP BY pr.id, pr.name, pr.email
+        ORDER BY calls_period DESC
+    ");
+    $params = [$date_from, $date_to, $date_from, $date_to, $date_from, $date_to, $date_from, $date_to];
+    if ($campaign_id) $params[] = $campaign_id;
+    $stmt->execute($params);
+    $executives = $stmt->fetchAll();
+
+    // Totales por status
+    $funnel_stmt = db()->prepare("
+        SELECT status, COUNT(*) AS cnt
+        FROM prospects
+        " . ($campaign_id ? "WHERE campaign_id = ?" : "") . "
+        GROUP BY status
+    ");
+    $funnel_stmt->execute($campaign_id ? [$campaign_id] : []);
+    $funnel = $funnel_stmt->fetchAll();
+
+    ok(['executives' => $executives, 'funnel' => $funnel, 'period' => ['from' => $date_from, 'to' => $date_to]]);
+}
+
+// ── DETECCIÓN EDUCACIONAL (para cotizaciones) ─────────────────────────────────
+if ($action === 'prospect_detect_educational') {
+    requireAuth();
+    $b    = body();
+    $name = trim($b['name'] ?? '');
+    if (!$name) err('name requerido');
+
+    $keywords = ['colegio','liceo','escuela','fundacion','fundación','centro educacional',
+                 'instituto','academia','jardín infantil','jardin infantil','corporación educacional'];
+    $is_educational = false;
+    $name_lower = mb_strtolower($name);
+    foreach ($keywords as $kw) {
+        if (str_contains($name_lower, $kw)) { $is_educational = true; break; }
+    }
+
+    if (!$is_educational) ok(['is_educational' => false, 'matches' => []]);
+
+    // Buscar en prospectos existentes
+    $stmt = db()->prepare("
+        SELECT p.id, p.name, p.commune, p.status, p.campaign_id, p.assigned_to,
+               pr.name AS assigned_name, pc.name AS campaign_name
+        FROM prospects p
+        LEFT JOIN profiles pr ON pr.id = p.assigned_to
+        LEFT JOIN prospect_campaigns pc ON pc.id = p.campaign_id
+        WHERE p.name LIKE ? OR p.name LIKE ?
+        LIMIT 5
+    ");
+    $words = explode(' ', $name_lower);
+    $main  = $words[1] ?? $words[0]; // palabra principal sin "colegio" etc.
+    $stmt->execute(["%$name%", "%$main%"]);
+    $matches = $stmt->fetchAll();
+
+    ok(['is_educational' => true, 'matches' => $matches]);
+}
+
+// ── COMUNAS DISPONIBLES EN CAMPAÑA ───────────────────────────────────────────
+if ($action === 'campaign_communes') {
+    requireAuth();
+    $campaign_id = $_GET['campaign_id'] ?? null;
+    if (!$campaign_id) err('campaign_id requerido');
+    $stmt = db()->prepare("SELECT DISTINCT commune FROM prospects WHERE campaign_id = ? AND commune IS NOT NULL ORDER BY commune");
+    $stmt->execute([$campaign_id]);
+    ok(array_column($stmt->fetchAll(), 'commune'));
+}
+
 // ── Not found ─────────────────────────────────────────────────────────────────
 err("Acción '$action' no encontrada", 404);
