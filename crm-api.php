@@ -192,7 +192,10 @@ if ($action === 'google_auth') {
 
 if ($action === 'me') {
     $user = requireAuth();
-    ok(['id' => $user['id'], 'email' => $user['email'], 'name' => $user['name'], 'role' => $user['role']]);
+    $stmt = db()->prepare('SELECT celular FROM profiles WHERE id = ?');
+    $stmt->execute([$user['id']]);
+    $extra = $stmt->fetch();
+    ok(['id' => $user['id'], 'email' => $user['email'], 'name' => $user['name'], 'role' => $user['role'], 'celular' => $extra['celular'] ?? null]);
 }
 
 if ($action === 'change_password') {
@@ -215,7 +218,7 @@ if ($action === 'change_password') {
 // ── PROFILES ─────────────────────────────────────────────────────────────────
 if ($action === 'profiles_list') {
     requireAuth();
-    $rows = db()->query('SELECT id, email, name, role, active, created_at FROM profiles ORDER BY name')->fetchAll();
+    $rows = db()->query('SELECT id, email, name, role, active, created_at, celular FROM profiles ORDER BY name')->fetchAll();
     ok($rows);
 }
 
@@ -243,6 +246,7 @@ if ($action === 'profiles_update') {
     $fields = [];
     $vals   = [];
     if (isset($b['name']))  { $fields[] = 'name = ?';  $vals[] = $b['name']; }
+    if (isset($b['celular'])) { $fields[] = 'celular = ?'; $vals[] = trim($b['celular']) ?: null; }
     if (isset($b['role']) && $me['role'] === 'admin')  { $fields[] = 'role = ?';  $vals[] = $b['role']; }
     if (isset($b['active']) && $me['role'] === 'admin') { $fields[] = 'active = ?'; $vals[] = (int)$b['active']; }
     if (isset($b['password']) && strlen($b['password']) >= 6) {
@@ -1980,6 +1984,8 @@ if ($action === 'prospectos_init') {
             ADD COLUMN IF NOT EXISTS suspended_until DATE NULL,
             ADD COLUMN IF NOT EXISTS suspended_reason VARCHAR(255) NULL",
 
+        "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS celular VARCHAR(20) NULL",
+
         "CREATE TABLE IF NOT EXISTS prospect_campaigns (
             id           CHAR(36)     NOT NULL PRIMARY KEY,
             name         VARCHAR(255) NOT NULL,
@@ -2361,6 +2367,47 @@ if ($action === 'call_status_update') {
             ->execute([$duration, $call_sid]);
     }
     ok(['updated' => true]);
+}
+
+// Devuelve el celular del último ejecutivo que llamó a un número dado (para routing de llamada entrante)
+if ($action === 'incoming_call_route') {
+    $from = $_POST['From'] ?? $_GET['from'] ?? null;
+    if (!$from) { echo '<Response><Hangup/></Response>'; exit; }
+    // Buscar último ejecutivo que llamó a este número
+    $stmt = db()->prepare("
+        SELECT p.celular, p.name
+        FROM prospect_activities a
+        JOIN profiles p ON p.id = a.user_id
+        WHERE a.type = 'call'
+          AND a.call_sid IS NOT NULL
+          AND JSON_UNQUOTE(JSON_EXTRACT(a.notes, '$')) LIKE ?
+        ORDER BY a.created_at DESC
+        LIMIT 1
+    ");
+    // Alternativa: buscar por contacto con ese número
+    $normalized = preg_replace('/[^0-9]/', '', $from);
+    $stmt2 = db()->prepare("
+        SELECT p.celular, p.name
+        FROM prospect_activities a
+        JOIN profiles p ON p.id = a.user_id
+        JOIN prospect_contacts c ON c.id = a.contact_id
+        WHERE a.type = 'call'
+          AND (REGEXP_REPLACE(c.mobile, '[^0-9]', '') LIKE ? OR REGEXP_REPLACE(c.phone, '[^0-9]', '') LIKE ?)
+        ORDER BY a.created_at DESC
+        LIMIT 1
+    ");
+    $stmt2->execute(["%$normalized", "%$normalized"]);
+    $row = $stmt2->fetch();
+    header('Content-Type: text/xml');
+    if ($row && $row['celular']) {
+        $celular = preg_replace('/[^0-9+]/', '', $row['celular']);
+        if (!str_starts_with($celular, '+')) $celular = '+56' . ltrim($celular, '0');
+        echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Dial callerId=\"+56229149664\"><Number>$celular</Number></Dial></Response>";
+    } else {
+        // Fallback: línea principal
+        echo '<?xml version="1.0" encoding="UTF-8"?><Response><Dial callerId="+56229149664"><Number>+56229455713</Number></Dial></Response>';
+    }
+    exit;
 }
 
 // ── COMMUNE ASSIGNMENTS ───────────────────────────────────────────────────────
