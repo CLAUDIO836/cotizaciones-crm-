@@ -2039,12 +2039,14 @@ if ($action === 'prospectos_init') {
             result        ENUM('contacted','no_answer','interested','not_interested','follow_up','quote_requested') NULL,
             duration_sec  INT          NULL,
             recording_url VARCHAR(500) NULL,
+            call_sid      VARCHAR(50)  NULL,
             notes         TEXT         NULL,
             next_contact  DATE         NULL,
             created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_prospect (prospect_id),
             INDEX idx_user (user_id),
-            INDEX idx_created (created_at)
+            INDEX idx_created (created_at),
+            INDEX idx_call_sid (call_sid)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
         "CREATE TABLE IF NOT EXISTS commune_assignments (
@@ -2294,12 +2296,13 @@ if ($action === 'activity_create') {
     }
 
     $id = uuid();
-    db()->prepare("INSERT INTO prospect_activities (id, prospect_id, contact_id, user_id, type, result, duration_sec, recording_url, notes, next_contact)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    db()->prepare("INSERT INTO prospect_activities (id, prospect_id, contact_id, user_id, type, result, duration_sec, recording_url, call_sid, notes, next_contact)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         ->execute([
             $id, $prospect_id, $b['contact_id'] ?? null, $me['id'],
             $type, $b['result'] ?? null,
             $b['duration_sec'] ?? null, $b['recording_url'] ?? null,
+            $b['call_sid'] ?? null,
             $b['notes'] ?? null, $next_contact
         ]);
 
@@ -2334,6 +2337,30 @@ if ($action === 'activities_list') {
     ");
     $stmt->execute([$prospect_id]);
     ok($stmt->fetchAll());
+}
+
+// ── TWILIO CALLBACKS ──────────────────────────────────────────────────────────
+if ($action === 'call_recording_update') {
+    $b = body();
+    $call_sid       = $b['call_sid'] ?? null;
+    $recording_url  = $b['recording_url'] ?? null;
+    $duration       = isset($b['recording_duration']) ? (int)$b['recording_duration'] : null;
+    if (!$call_sid || !$recording_url) ok(['skipped' => true]);
+    db()->prepare("UPDATE prospect_activities SET recording_url = ?, duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
+        ->execute([$recording_url, $duration, $call_sid]);
+    ok(['updated' => true]);
+}
+
+if ($action === 'call_status_update') {
+    $b = body();
+    $call_sid = $b['call_sid'] ?? null;
+    $duration = isset($b['duration']) ? (int)$b['duration'] : null;
+    if (!$call_sid) ok(['skipped' => true]);
+    if ($duration !== null) {
+        db()->prepare("UPDATE prospect_activities SET duration_sec = ? WHERE call_sid = ?")
+            ->execute([$duration, $call_sid]);
+    }
+    ok(['updated' => true]);
 }
 
 // ── COMMUNE ASSIGNMENTS ───────────────────────────────────────────────────────
