@@ -85,7 +85,15 @@ function getAuthUser(): ?array {
         $token = $_COOKIE['crm_token'];
     }
     if (!$token) return null;
-    return verifyJWT($token);
+    $data = verifyJWT($token);
+    if (!$data) return null;
+    // Leer role fresco desde DB para que cambios de rol surtan efecto sin re-login
+    $stmt = db()->prepare('SELECT role, active FROM profiles WHERE id = ?');
+    $stmt->execute([$data['id']]);
+    $row = $stmt->fetch();
+    if (!$row || !$row['active']) return null;
+    $data['role'] = $row['role'];
+    return $data;
 }
 
 function requireAuth(): array {
