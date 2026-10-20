@@ -1,6 +1,6 @@
 'use client'
 import Link from 'next/link'
-import { Campaign } from '@/lib/prospectos-api'
+import { Campaign } from '@/lib/prospectos-types'
 
 const SEGMENT_LABELS: Record<string, string> = {
   educacional: '🏫 Educacional',

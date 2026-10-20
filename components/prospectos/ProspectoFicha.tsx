@@ -5,7 +5,7 @@ import Link from 'next/link'
 import {
   Prospect, Campaign, ProspectStatus, STATUS_LABELS, STATUS_COLORS,
   ACTIVITY_LABELS, ACTIVITY_ICONS, RESULT_LABELS, ActivityType, ActivityResult,
-} from '@/lib/prospectos-api'
+} from '@/lib/prospectos-types'
 import { UserSession } from '@/lib/api'
 
 const RESULTS: { value: ActivityResult, label: string }[] = [

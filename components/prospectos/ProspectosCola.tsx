@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Campaign, Prospect, ProspectStatus, STATUS_LABELS, STATUS_COLORS, daysSince, daysUntil } from '@/lib/prospectos-api'
+import { Campaign, Prospect, ProspectStatus, STATUS_LABELS, STATUS_COLORS, daysSince, daysUntil } from '@/lib/prospectos-types'
 import { UserSession } from '@/lib/api'
 
 const DAILY_GOAL = 35

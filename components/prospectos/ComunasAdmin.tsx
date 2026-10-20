@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Campaign, CommuneAssignment } from '@/lib/prospectos-api'
+import { Campaign, CommuneAssignment } from '@/lib/prospectos-types'
 
 export default function ComunasAdmin({
   campaigns, selectedCampaignId, assignments, communes, profiles,
