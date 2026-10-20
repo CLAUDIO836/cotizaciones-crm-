@@ -102,7 +102,7 @@ export type DashboardExecutive = {
 export async function fetchCampaigns(): Promise<Campaign[]> {
   const token = await getToken()
   const res = await crmGet('campaigns_list', {}, token)
-  return res.data ?? []
+  return (res.data as Campaign[]) ?? []
 }
 
 export async function fetchProspects(params: {
@@ -117,25 +117,25 @@ export async function fetchProspects(params: {
   if (params.commune) q.commune = params.commune
   if (params.q)       q.q       = params.q
   const res = await crmGet('prospects_list', q, token)
-  return res.data ?? []
+  return (res.data as Prospect[]) ?? []
 }
 
 export async function fetchProspect(id: string): Promise<Prospect | null> {
   const token = await getToken()
   const res = await crmGet('prospects_get', { id }, token)
-  return res.data ?? null
+  return (res.data as Prospect) ?? null
 }
 
 export async function fetchCommuneAssignments(campaign_id: string): Promise<CommuneAssignment[]> {
   const token = await getToken()
   const res = await crmGet('commune_assignments_list', { campaign_id }, token)
-  return res.data ?? []
+  return (res.data as CommuneAssignment[]) ?? []
 }
 
 export async function fetchCampaignCommunes(campaign_id: string): Promise<string[]> {
   const token = await getToken()
   const res = await crmGet('campaign_communes', { campaign_id }, token)
-  return res.data ?? []
+  return (res.data as string[]) ?? []
 }
 
 export async function fetchProspectosDashboard(params: {
@@ -149,7 +149,7 @@ export async function fetchProspectosDashboard(params: {
   if (params.date_from)   q.date_from   = params.date_from
   if (params.date_to)     q.date_to     = params.date_to
   const res = await crmGet('prospectos_dashboard', q, token)
-  return res.data ?? { executives: [], funnel: [] }
+  return (res.data as { executives: DashboardExecutive[], funnel: { status: string, cnt: number }[] }) ?? { executives: [], funnel: [] }
 }
 
 // ── Labels ────────────────────────────────────────────────────────────────────
