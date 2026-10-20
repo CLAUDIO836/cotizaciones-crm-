@@ -245,8 +245,9 @@ if ($action === 'profiles_update') {
     if ($me['role'] !== 'admin' && $id !== $me['id']) err('Forbidden', 403);
     $fields = [];
     $vals   = [];
-    if (isset($b['name']))  { $fields[] = 'name = ?';  $vals[] = $b['name']; }
-    if (isset($b['celular'])) { $fields[] = 'celular = ?'; $vals[] = trim($b['celular']) ?: null; }
+    if (isset($b['name']))    { $fields[] = 'name = ?';    $vals[] = $b['name']; }
+    if (isset($b['celular'])) { $fields[] = 'celular = ?'; $vals[] = trim($b['celular'] ?? '') ?: null; }
+    if (isset($b['email']) && $me['role'] === 'admin') { $fields[] = 'email = ?'; $vals[] = trim($b['email']); }
     if (isset($b['role']) && $me['role'] === 'admin')  { $fields[] = 'role = ?';  $vals[] = $b['role']; }
     if (isset($b['active']) && $me['role'] === 'admin') { $fields[] = 'active = ?'; $vals[] = (int)$b['active']; }
     if (isset($b['password']) && strlen($b['password']) >= 6) {
