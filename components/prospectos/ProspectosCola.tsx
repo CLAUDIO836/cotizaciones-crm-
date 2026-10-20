@@ -78,11 +78,17 @@ export default function ProspectosCola({
           <h1 className="text-xl font-bold text-gray-900">{campaign.name}</h1>
           <p className="text-sm text-gray-500">{prospects.length} prospectos en vista actual</p>
         </div>
-        <Link href={`/prospectos/${campaign.id}/nuevo`}
-          className="px-4 py-2 text-sm font-semibold rounded-lg text-white"
-          style={{ background: '#1B8A4B' }}>
-          + Agregar prospecto
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href={`/prospectos/${campaign.id}/importar`}
+            className="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
+            ↑ Importar CSV
+          </Link>
+          <Link href={`/prospectos/${campaign.id}/nuevo`}
+            className="px-4 py-2 text-sm font-semibold rounded-lg text-white"
+            style={{ background: '#1B8A4B' }}>
+            + Agregar prospecto
+          </Link>
+        </div>
       </div>
 
       {/* Meta diaria */}

@@ -4,6 +4,7 @@ import { fetchCampaigns } from '@/lib/prospectos-api'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import CampaignsList from '@/components/prospectos/CampaignsList'
+import NuevaCampañaModal from '@/components/prospectos/NuevaCampañaModal'
 
 export default async function ProspectosPage() {
   const user = await getSession()
@@ -26,13 +27,7 @@ export default async function ProspectosPage() {
               ⚙ Asignación de comunas
             </Link>
           )}
-          {isAdmin && (
-            <button
-              className="px-4 py-2 text-sm font-semibold rounded-lg text-white"
-              style={{ background: '#1B8A4B' }}>
-              + Nueva Campaña
-            </button>
-          )}
+          {isAdmin && <NuevaCampañaModal />}
         </div>
       </div>
 
