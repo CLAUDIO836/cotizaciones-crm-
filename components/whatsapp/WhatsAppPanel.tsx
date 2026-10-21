@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Send, RefreshCw, MessageCircle } from 'lucide-react'
+import { Send, RefreshCw, MessageCircle, ImagePlus, X } from 'lucide-react'
 
 type WaMessage = {
   id: string
@@ -37,7 +37,12 @@ export default function WhatsAppPanel({
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState<string | null>(null)
   const [showTemplates, setShowTemplates] = useState(false)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const [imagePreview, setImagePreview]   = useState<string | null>(null)
+  const [imageBase64, setImageBase64]     = useState<string | null>(null)
+  const [imageMime, setImageMime]         = useState<string>('image/jpeg')
+  const [imageName, setImageName]         = useState<string>('imagen.jpg')
+  const bottomRef  = useRef<HTMLDivElement>(null)
+  const fileRef    = useRef<HTMLInputElement>(null)
 
   const loadMessages = useCallback(async () => {
     setLoading(true)
@@ -62,31 +67,62 @@ export default function WhatsAppPanel({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImageMime(file.type || 'image/jpeg')
+    setImageName(file.name)
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const result = ev.target?.result as string
+      // Strip data URI prefix — Evolution API wants raw base64
+      const base64 = result.split(',')[1]
+      setImageBase64(base64)
+      setImagePreview(result)
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  function clearImage() {
+    setImageBase64(null)
+    setImagePreview(null)
+  }
+
   async function send() {
-    const msg = text.trim()
-    if (!msg || sending) return
+    if (sending) return
+    if (!imageBase64 && !text.trim()) return
     setSending(true)
     setError(null)
+    const msg = text.trim()
     try {
+      const body: Record<string, string | null> = {
+        toPhone:    phone,
+        message:    msg || null,
+        prospectId,
+        contactId:  contactId ?? null,
+      }
+      if (imageBase64) {
+        body.mediaBase64    = imageBase64
+        body.mediaMimetype  = imageMime
+        body.mediaFileName  = imageName
+      }
       const res = await fetch('/api/whatsapp/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          toPhone:    phone,
-          message:    msg,
-          prospectId,
-          contactId,
-        }),
+        body: JSON.stringify(body),
       })
       const d = await res.json()
       if (d.error) {
         setError(d.error)
       } else {
+        const displayMsg = imageBase64 ? (msg ? `[Imagen] ${msg}` : '[Imagen]') : msg
         setText('')
+        clearImage()
         setMessages(prev => [...prev, {
           id:        d.messageId ?? Date.now().toString(),
           direction: 'out',
-          message:   msg,
+          message:   displayMsg,
           timestamp: Date.now(),
           senderName: userName,
         }])
@@ -152,6 +188,20 @@ export default function WhatsAppPanel({
         <div ref={bottomRef} />
       </div>
 
+      {/* Image preview */}
+      {imagePreview && (
+        <div className="border-t border-gray-100 px-3 py-2 bg-gray-50 flex items-center gap-2">
+          <img src={imagePreview} alt="preview" className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-500 truncate">{imageName}</p>
+            <p className="text-[10px] text-gray-400">Imagen lista para enviar</p>
+          </div>
+          <button onClick={clearImage} className="p-1 rounded-full hover:bg-gray-200 text-gray-400">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Templates */}
       {showTemplates && (
         <div className="border-t border-gray-100 bg-gray-50 px-3 py-2 flex flex-col gap-1">
@@ -175,6 +225,16 @@ export default function WhatsAppPanel({
             }`}>
             Plantillas
           </button>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+          <button onClick={() => fileRef.current?.click()}
+            className={`px-2 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1 ${
+              imageBase64
+                ? 'bg-green-50 border-green-300 text-green-700'
+                : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+            }`}>
+            <ImagePlus className="w-3.5 h-3.5" />
+            Imagen
+          </button>
         </div>
         <div className="flex gap-1.5">
           <textarea
@@ -182,10 +242,10 @@ export default function WhatsAppPanel({
             onChange={e => setText(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
             rows={2}
-            placeholder="Escribe un mensaje…"
+            placeholder={imageBase64 ? 'Agrega un pie de foto (opcional)…' : 'Escribe un mensaje…'}
             className="flex-1 text-sm px-3 py-2 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-1 focus:ring-green-400"
           />
-          <button onClick={send} disabled={sending || !text.trim()}
+          <button onClick={send} disabled={sending || (!text.trim() && !imageBase64)}
             className="w-9 h-9 mt-auto flex items-center justify-center rounded-xl bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 transition-colors">
             <Send className="w-4 h-4" />
           </button>

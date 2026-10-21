@@ -92,6 +92,21 @@ export async function sendTextMessage(userId: string, toPhone: string, text: str
   })
 }
 
+export async function sendMediaMessage(
+  userId: string,
+  toPhone: string,
+  base64: string,
+  mimetype: string,
+  fileName: string,
+  caption = '',
+) {
+  const number = normalizePhone(toPhone)
+  return evoFetch(`/message/sendMedia/${instanceName(userId)}`, {
+    method: 'POST',
+    body: JSON.stringify({ number, mediatype: 'image', mimetype, media: base64, fileName, caption }),
+  })
+}
+
 export async function fetchMessages(userId: string, toPhone: string, count = 40) {
   const number = normalizePhone(toPhone)
   try {
