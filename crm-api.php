@@ -2412,6 +2412,7 @@ if ($action === 'outbound_calls_list') {
     $params = $onlyMine ? [$me['id']] : [];
     $stmt = db()->prepare("
         SELECT o.id, o.user_id, o.to_number, o.called_at,
+               o.direction, o.duration_sec, o.recording_url,
                p.name AS executive_name,
                c.id   AS contact_id,
                c.name AS contact_name,
