@@ -12,12 +12,14 @@ function UserCard({ profile, isCurrentUser }: { profile: Profile; isCurrentUser:
   const [polling, setPolling] = useState(false)
 
   const checkStatus = useCallback(async () => {
-    const res = await fetch(`/api/whatsapp/status?userId=${profile.id}`)
-    const d   = await res.json()
-    const s   = d.state
-    if (s === 'open')  setState('connected')
-    else if (s === 'not_created' || s === 'close' || s === 'unknown') setState('disconnected')
-    else               setState('disconnected')
+    try {
+      const res = await fetch(`/api/whatsapp/status?userId=${profile.id}`)
+      if (!res.ok) { setState('disconnected'); return }
+      const d = await res.json()
+      setState(d.state === 'open' ? 'connected' : 'disconnected')
+    } catch {
+      setState('disconnected')
+    }
   }, [profile.id])
 
   useEffect(() => { checkStatus() }, [checkStatus])
