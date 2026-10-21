@@ -14,14 +14,8 @@ export default async function LlamadasPage() {
 
   try {
     const [callsRes, usersRes] = await Promise.all([
-      fetch(`${CRM_API}?action=outbound_calls_list&limit=500`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: 'no-store',
-      }),
-      fetch(`${CRM_API}?action=profiles_list`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: 'no-store',
-      }),
+      fetch(`${CRM_API}?action=outbound_calls_list&limit=500&token=${token}`, { cache: 'no-store' }),
+      fetch(`${CRM_API}?action=profiles_list&token=${token}`, { cache: 'no-store' }),
     ])
     const callsJson = await callsRes.json()
     const usersJson = await usersRes.json()
