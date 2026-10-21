@@ -2821,5 +2821,72 @@ if ($action === 'campaign_communes') {
     ok(array_column($stmt->fetchAll(), 'commune'));
 }
 
+// ── WHATSAPP MESSAGES ─────────────────────────────────────────────────────────
+if ($action === 'log_whatsapp_message') {
+    // Accepts: token auth (from CRM send) OR internal secret (from webhook)
+    $internalSecret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
+    $validInternal  = function_exists('hash_equals') && $internalSecret !== '' &&
+                      hash_equals(getenv('INTERNAL_PDF_SECRET') ?: '', $internalSecret);
+    if (!$validInternal) requireAuth();
+
+    $b = body();
+    $userId     = $b['user_id']     ?? null;
+    $prospectId = $b['prospect_id'] ?? null;
+    $contactId  = $b['contact_id']  ?? null;
+    $direction  = $b['direction']   ?? 'out';
+    $phone      = $b['phone']       ?? null;
+    $message    = $b['message']     ?? '';
+    $wamid      = $b['wamid']       ?? null;
+    $senderName = $b['sender_name'] ?? null;
+
+    if (!$phone || !$message) err('phone y message requeridos');
+
+    // Create table if not exists
+    db()->exec("CREATE TABLE IF NOT EXISTS whatsapp_messages (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        user_id     VARCHAR(36),
+        prospect_id VARCHAR(36),
+        contact_id  VARCHAR(36),
+        direction   ENUM('in','out') DEFAULT 'out',
+        phone       VARCHAR(30),
+        message     TEXT,
+        wamid       VARCHAR(128) UNIQUE,
+        sender_name VARCHAR(120),
+        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_phone (phone),
+        INDEX idx_prospect (prospect_id)
+    )");
+
+    $stmt = db()->prepare("INSERT IGNORE INTO whatsapp_messages
+        (user_id, prospect_id, contact_id, direction, phone, message, wamid, sender_name)
+        VALUES (?,?,?,?,?,?,?,?)");
+    $stmt->execute([$userId, $prospectId, $contactId, $direction, $phone, $message, $wamid, $senderName]);
+    ok(['ok' => true, 'id' => db()->lastInsertId()]);
+}
+
+if ($action === 'get_whatsapp_messages') {
+    requireAuth();
+    $prospectId = $_GET['prospect_id'] ?? null;
+    $phone      = $_GET['phone']       ?? null;
+    if (!$phone) err('phone requerido');
+
+    db()->exec("CREATE TABLE IF NOT EXISTS whatsapp_messages (
+        id INT AUTO_INCREMENT PRIMARY KEY, user_id VARCHAR(36), prospect_id VARCHAR(36),
+        contact_id VARCHAR(36), direction ENUM('in','out') DEFAULT 'out', phone VARCHAR(30),
+        message TEXT, wamid VARCHAR(128) UNIQUE, sender_name VARCHAR(120),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_phone (phone), INDEX idx_prospect (prospect_id)
+    )");
+
+    $where  = ['phone = ?'];
+    $params = [$phone];
+    if ($prospectId) { $where[] = 'prospect_id = ?'; $params[] = $prospectId; }
+
+    $sql  = "SELECT * FROM whatsapp_messages WHERE " . implode(' AND ', $where) . " ORDER BY created_at ASC LIMIT 100";
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    ok($stmt->fetchAll());
+}
+
 // ── Not found ─────────────────────────────────────────────────────────────────
 err("Acción '$action' no encontrada", 404);

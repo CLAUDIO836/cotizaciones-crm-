@@ -8,6 +8,7 @@ import {
 } from '@/lib/prospectos-types'
 import { UserSession } from '@/lib/api'
 import BotonLlamada from './BotonLlamada'
+import WhatsAppPanel from '@/components/whatsapp/WhatsAppPanel'
 
 const RESULTS: { value: ActivityResult, label: string }[] = [
   { value: 'contacted',       label: '✅ Contactado' },
@@ -53,6 +54,9 @@ export default function ProspectoFicha({
   const [, startTransition] = useTransition()
 
   const isAdmin = user.role === 'admin'
+  const [waContactId, setWaContactId] = useState<string | null>(
+    prospect.contacts?.find(c => c.mobile ?? c.phone) ? (prospect.contacts.find(c => c.mobile ?? c.phone)?.id ?? null) : null
+  )
 
   // Max 14 days from today
   const maxDate = new Date()
@@ -169,7 +173,16 @@ export default function ProspectoFicha({
                           }}
                         />
                       )}
-                      <span className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-xs cursor-pointer hover:bg-blue-50">💬</span>
+                      {(c.mobile ?? c.phone) && (
+                        <button
+                          onClick={() => setWaContactId(waContactId === c.id ? null : c.id)}
+                          className={`w-7 h-7 flex items-center justify-center rounded border text-xs cursor-pointer transition-colors ${
+                            waContactId === c.id ? 'bg-green-100 border-green-400' : 'border-gray-200 hover:bg-green-50'
+                          }`}
+                          title="WhatsApp">
+                          💬
+                        </button>
+                      )}
                       <span className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-xs cursor-pointer hover:bg-gray-50">✉️</span>
                     </div>
                   </div>
@@ -307,6 +320,26 @@ export default function ProspectoFicha({
               ))}
             </div>
           </div>
+
+          {/* WhatsApp */}
+          {(() => {
+            const waContact = waContactId
+              ? prospect.contacts?.find(c => c.id === waContactId)
+              : null
+            const waPhone = waContact ? (waContact.mobile ?? waContact.phone ?? '') : ''
+            if (!waContact || !waPhone) return null
+            return (
+              <div className="bg-white border border-green-200 rounded-xl overflow-hidden flex flex-col" style={{ height: 420 }}>
+                <WhatsAppPanel
+                  phone={waPhone}
+                  contactName={waContact.name}
+                  prospectId={prospect.id}
+                  contactId={waContact.id}
+                  userName={user.name}
+                />
+              </div>
+            )
+          })()}
 
           {/* Asignación (solo admin) */}
           {isAdmin && (
