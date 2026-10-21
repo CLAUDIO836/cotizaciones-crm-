@@ -1,7 +1,7 @@
 'use client'
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { Phone, PhoneIncoming, PhoneOutgoing, ExternalLink, Search, X } from 'lucide-react'
+import { Phone, PhoneIncoming, PhoneOutgoing, ExternalLink, Search, X, Trash2 } from 'lucide-react'
 
 interface CallRow {
   id: string
@@ -45,20 +45,33 @@ function formatTime(dt?: string | null) {
   return { date: `${d}/${m}/${y}`, time: time?.slice(0,5) ?? '', dateVal: date ?? '' }
 }
 
+const CRM_API = 'https://www.transccl.cl/crm-api.php'
+
 export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
   const [search, setSearch]     = useState('')
+  const [rows, setRows]         = useState(calls)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo]     = useState('')
   const [executive, setExecutive] = useState('')
   const [direction, setDirection] = useState('')
 
+  async function deleteCall(id: string) {
+    if (!confirm('¿Eliminar esta llamada del historial?')) return
+    const res = await fetch(`/api/llamadas/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    if (res.ok) setRows(r => r.filter(c => c.id !== id))
+  }
+
   const filtered = useMemo(() => {
-    return calls.filter(c => {
+    return rows.filter(c => {
       const dt = formatTime(c.called_at_cl ?? c.called_at)
       if (dateFrom && dt.dateVal < dateFrom) return false
       if (dateTo   && dt.dateVal > dateTo)   return false
       if (executive && c.user_id !== executive) return false
-      if (direction && c.direction !== direction) return false
+      if (direction && (c.direction ?? 'outbound') !== direction) return false
       if (search) {
         const q = search.toLowerCase()
         const match =
@@ -184,6 +197,7 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
               <th className="text-left px-4 py-3 font-medium text-gray-500">Contacto / Empresa</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500 w-20">Duración</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500 w-28">Grabación</th>
+              {isAdmin && <th className="w-8" />}
             </tr>
           </thead>
           <tbody>
@@ -239,6 +253,14 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
                       ? <audio controls className="h-7 w-24" src={`/api/twilio/recording-proxy?url=${encodeURIComponent(c.recording_url)}`} />
                       : <span className="text-xs text-gray-300">—</span>}
                   </td>
+                  {isAdmin && (
+                    <td className="px-2 py-3">
+                      <button onClick={() => deleteCall(c.id)}
+                        className="text-gray-300 hover:text-red-500 transition-colors">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               )
             })}

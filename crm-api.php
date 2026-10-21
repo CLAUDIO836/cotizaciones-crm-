@@ -2474,6 +2474,17 @@ if ($action === 'log_inbound_call') {
     exit;
 }
 
+if ($action === 'delete_call') {
+    $me = requireAuth();
+    if (!isAdmin($me)) { http_response_code(403); echo json_encode(['error' => 'Solo administradores']); exit; }
+    $b  = body();
+    $id = $b['id'] ?? null;
+    if (!$id) { http_response_code(400); echo json_encode(['error' => 'id requerido']); exit; }
+    db()->prepare("DELETE FROM outbound_calls WHERE id = ?")->execute([$id]);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
 if ($action === 'call_recording_update') {
     $secret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
     $jwtSecret = getenv('CRM_JWT_SECRET') ?: JWT_SECRET;
