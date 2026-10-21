@@ -13,7 +13,10 @@ function UserCard({ profile, isCurrentUser }: { profile: Profile; isCurrentUser:
 
   const checkStatus = useCallback(async () => {
     try {
-      const res = await fetch(`/api/whatsapp/status?userId=${profile.id}`)
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 8000)
+      const res = await fetch(`/api/whatsapp/status?userId=${profile.id}`, { signal: ctrl.signal })
+      clearTimeout(timer)
       if (!res.ok) { setState('disconnected'); return }
       const d = await res.json()
       setState(d.state === 'open' ? 'connected' : 'disconnected')
