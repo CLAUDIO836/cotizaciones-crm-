@@ -60,20 +60,28 @@ export default function ProspectoFicha({
   const [newContact, setNewContact] = useState({ name: '', role: '', email: '', mobile: '' })
   const [addingContact, setAddingContact] = useState(false)
 
+  const [contactError, setContactError] = useState<string | null>(null)
+
   async function saveNewContact() {
     if (!newContact.name.trim()) return
     setAddingContact(true)
+    setContactError(null)
     try {
       const res = await fetch(`/api/prospectos/${prospect.id}/contacts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newContact),
       })
+      const data = await res.json().catch(() => ({}))
       if (res.ok) {
         setNewContact({ name: '', role: '', email: '', mobile: '' })
         setShowAddContact(false)
         startTransition(() => router.refresh())
+      } else {
+        setContactError(data.error ?? `Error ${res.status}`)
       }
+    } catch (e) {
+      setContactError(String(e))
     } finally {
       setAddingContact(false)
     }
@@ -417,8 +425,11 @@ export default function ProspectoFicha({
               </div>
             ))}
           </div>
+          {contactError && (
+            <p className="mt-3 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{contactError}</p>
+          )}
           <div className="flex gap-2 mt-5">
-            <button onClick={() => setShowAddContact(false)}
+            <button onClick={() => { setShowAddContact(false); setContactError(null) }}
               className="flex-1 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">
               Cancelar
             </button>
