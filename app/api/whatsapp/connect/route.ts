@@ -16,21 +16,28 @@ export async function POST(req: NextRequest) {
   try {
     const status = await getInstanceStatus(targetUserId)
 
-    if (status === 'not_created') {
-      await createInstance(targetUserId, user.name)
-    }
-
     if (status === 'open') {
       return NextResponse.json({ status: 'connected' })
     }
 
+    if (status === 'not_created') {
+      // createInstance already returns the QR in the response
+      const created = await createInstance(targetUserId, user.name)
+      const qrcode = created.qrcode?.base64 ?? null
+      return NextResponse.json({
+        status: 'qr',
+        instance: instanceName(targetUserId),
+        qrcode,
+      })
+    }
+
+    // Instance exists but not connected — fetch fresh QR
     const qrData = await getQRCode(targetUserId)
     const qrcode = qrData.qrcode?.base64 ?? qrData.base64 ?? null
     return NextResponse.json({
       status: 'qr',
       instance: instanceName(targetUserId),
       qrcode,
-      raw: qrcode ? undefined : qrData,
     })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
