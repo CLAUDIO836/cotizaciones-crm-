@@ -1,10 +1,11 @@
 import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
+import { getToken } from '@/lib/api'
 
 const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const token = req.cookies.get('crm_token')?.value
+  const token = await getToken()
   if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   const { id } = await params
