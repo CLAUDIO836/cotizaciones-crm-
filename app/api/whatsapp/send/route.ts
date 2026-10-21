@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   // Log activity in CRM
   const token = await getToken()
   if (token && prospectId) {
-    await fetch(`${CRM_API}?action=log_whatsapp_message&token=${token}`, {
+    await fetch(`${CRM_API}?action=log_whatsapp_message&token=${encodeURIComponent(token)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
