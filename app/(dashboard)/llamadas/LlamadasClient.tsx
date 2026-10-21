@@ -236,7 +236,7 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
                   </td>
                   <td className="px-4 py-3">
                     {c.recording_url
-                      ? <audio controls className="h-7 w-24" src={c.recording_url} />
+                      ? <audio controls className="h-7 w-24" src={`/api/twilio/recording-proxy?url=${encodeURIComponent(c.recording_url)}`} />
                       : <span className="text-xs text-gray-300">—</span>}
                   </td>
                 </tr>
