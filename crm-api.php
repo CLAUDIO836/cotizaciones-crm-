@@ -2416,7 +2416,7 @@ if ($action === 'outbound_calls_list') {
                c.id   AS contact_id,
                c.name AS contact_name,
                pr.id  AS prospect_id,
-               pr.company_name AS prospect_company
+               pr.name AS prospect_company
         FROM outbound_calls o
         JOIN profiles p ON p.id = o.user_id
         LEFT JOIN prospect_contacts c ON (
