@@ -2835,6 +2835,50 @@ if ($action === 'campaign_communes') {
     ok(array_column($stmt->fetchAll(), 'commune'));
 }
 
+// ── PLAN SEMANAL DE LLAMADAS ──────────────────────────────────────────────────
+if ($action === 'call_plan_week') {
+    requireAuth();
+    $campaign_id = $_GET['campaign_id'] ?? null;
+    if (!$campaign_id) err('campaign_id requerido');
+
+    // Communes with assigned executive and pending prospect count
+    $stmt = db()->prepare("
+        SELECT
+            ca.commune,
+            ca.user_id,
+            p.name  AS user_name,
+            COUNT(pr.id) AS pending_count
+        FROM commune_assignments ca
+        LEFT JOIN profiles  p  ON p.id  = ca.user_id
+        LEFT JOIN prospects pr ON pr.commune = ca.commune
+                               AND pr.campaign_id = ca.campaign_id
+                               AND pr.status NOT IN ('closed_won','closed_lost')
+        WHERE ca.campaign_id = ?
+        GROUP BY ca.commune, ca.user_id, p.name
+        ORDER BY p.name, COUNT(pr.id) DESC
+    ");
+    $stmt->execute([$campaign_id]);
+    $rows = $stmt->fetchAll();
+
+    // Group by executive
+    $byExec = [];
+    foreach ($rows as $r) {
+        $uid = $r['user_id'];
+        if (!isset($byExec[$uid])) {
+            $byExec[$uid] = [
+                'user_id'   => $uid,
+                'user_name' => $r['user_name'],
+                'communes'  => [],
+            ];
+        }
+        $byExec[$uid]['communes'][] = [
+            'commune' => $r['commune'],
+            'pending' => (int)$r['pending_count'],
+        ];
+    }
+    ok(array_values($byExec));
+}
+
 // ── WHATSAPP MESSAGES ─────────────────────────────────────────────────────────
 if ($action === 'log_whatsapp_message') {
     // Accepts: token auth (from CRM send) OR internal secret (from webhook)

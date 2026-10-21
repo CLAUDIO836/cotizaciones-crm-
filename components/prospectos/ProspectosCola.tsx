@@ -79,6 +79,10 @@ export default function ProspectosCola({
           <p className="text-sm text-gray-500">{prospects.length} prospectos en vista actual</p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href={`/prospectos/${campaign.id}/plan-semanal`}
+            className="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center gap-1.5">
+            📅 Plan semanal
+          </Link>
           <Link href={`/prospectos/${campaign.id}/importar`}
             className="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
             ↑ Importar CSV
