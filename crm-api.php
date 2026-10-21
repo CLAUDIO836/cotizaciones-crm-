@@ -2000,13 +2000,22 @@ if ($action === 'prospectos_init') {
         "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS celular VARCHAR(20) NULL",
 
         "CREATE TABLE IF NOT EXISTS outbound_calls (
-            id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            user_id    CHAR(36) NOT NULL,
-            to_number  VARCHAR(30) NOT NULL,
-            called_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            user_id        CHAR(36) NOT NULL,
+            to_number      VARCHAR(30) NOT NULL,
+            call_sid       VARCHAR(50) NULL,
+            duration_sec   INT NULL,
+            recording_url  VARCHAR(500) NULL,
+            direction      ENUM('outbound','inbound') NOT NULL DEFAULT 'outbound',
+            called_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_to_number (to_number),
+            INDEX idx_call_sid (call_sid),
             INDEX idx_called_at (called_at)
         )",
+        "ALTER TABLE outbound_calls ADD COLUMN IF NOT EXISTS call_sid VARCHAR(50) NULL",
+        "ALTER TABLE outbound_calls ADD COLUMN IF NOT EXISTS duration_sec INT NULL",
+        "ALTER TABLE outbound_calls ADD COLUMN IF NOT EXISTS recording_url VARCHAR(500) NULL",
+        "ALTER TABLE outbound_calls ADD COLUMN IF NOT EXISTS direction ENUM('outbound','inbound') NOT NULL DEFAULT 'outbound'",
 
         "CREATE TABLE IF NOT EXISTS prospect_campaigns (
             id           CHAR(36)     NOT NULL PRIMARY KEY,
@@ -2438,12 +2447,50 @@ if ($action === 'log_outbound_call') {
     $b = body();
     $userId   = $b['user_id']   ?? null;
     $toNumber = $b['to_number'] ?? null;
+    $callSid  = $b['call_sid']  ?? null;
     if (!$userId || !$toNumber) { echo '{}'; exit; }
     $normalized = preg_replace('/[^0-9+]/', '', $toNumber);
-    db()->prepare("INSERT INTO outbound_calls (user_id, to_number) VALUES (?, ?)")
-        ->execute([$userId, $normalized]);
+    db()->prepare("INSERT INTO outbound_calls (user_id, to_number, call_sid, direction) VALUES (?, ?, ?, 'outbound')")
+        ->execute([$userId, $normalized, $callSid]);
     echo json_encode(['ok' => true]);
     exit;
+}
+
+if ($action === 'log_inbound_call') {
+    // Llamado desde incoming_call_route al recibir llamada entrante
+    $secret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
+    $jwtSecret = getenv('CRM_JWT_SECRET') ?: JWT_SECRET;
+    if (!hash_equals($jwtSecret, $secret)) { http_response_code(403); echo '{}'; exit; }
+    $b = body();
+    $userId   = $b['user_id']   ?? null;
+    $fromNum  = $b['from_number'] ?? null;
+    $callSid  = $b['call_sid']    ?? null;
+    if (!$userId || !$fromNum) { echo '{}'; exit; }
+    $normalized = preg_replace('/[^0-9+]/', '', $fromNum);
+    db()->prepare("INSERT INTO outbound_calls (user_id, to_number, call_sid, direction) VALUES (?, ?, ?, 'inbound')")
+        ->execute([$userId, $normalized, $callSid]);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+if ($action === 'call_recording_update') {
+    $secret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
+    $jwtSecret = getenv('CRM_JWT_SECRET') ?: JWT_SECRET;
+    // Acepta tanto llamado interno como desde prospect_activities
+    $isInternal = $secret && hash_equals($jwtSecret, $secret);
+    $b = body();
+    if (!$isInternal) { $me = requireAuth(); }
+    $callSid      = $b['call_sid']      ?? null;
+    $recordingUrl = $b['recording_url'] ?? null;
+    $duration     = isset($b['recording_duration']) ? (int)$b['recording_duration'] : null;
+    if (!$callSid) { ok(['skipped' => true]); }
+    // Actualizar en outbound_calls
+    db()->prepare("UPDATE outbound_calls SET recording_url = ?, duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
+        ->execute([$recordingUrl, $duration, $callSid]);
+    // Actualizar en prospect_activities también
+    db()->prepare("UPDATE prospect_activities SET recording_url = ?, duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
+        ->execute([$recordingUrl, $duration, $callSid]);
+    ok(['updated' => true]);
 }
 
 // Devuelve el celular del último ejecutivo que llamó a un número dado (para routing de llamada entrante)
@@ -2454,7 +2501,7 @@ if ($action === 'incoming_call_route') {
 
     // 1. Buscar en outbound_calls (registrado por webhook Vercel al marcar)
     $stmt = db()->prepare("
-        SELECT p.celular, p.name
+        SELECT p.celular, p.name, p.id AS user_id
         FROM outbound_calls o
         JOIN profiles p ON p.id = o.user_id
         WHERE REGEXP_REPLACE(o.to_number, '[^0-9]', '') LIKE ?
@@ -2468,7 +2515,7 @@ if ($action === 'incoming_call_route') {
     // 2. Fallback: buscar por contacto en prospect_activities
     if (!$row) {
         $stmt2 = db()->prepare("
-            SELECT p.celular, p.name
+            SELECT p.celular, p.name, p.id AS user_id
             FROM prospect_activities a
             JOIN profiles p ON p.id = a.user_id
             JOIN prospect_contacts c ON c.id = a.contact_id
@@ -2482,12 +2529,24 @@ if ($action === 'incoming_call_route') {
         $row = $stmt2->fetch();
     }
     header('Content-Type: text/xml');
+    $callSid  = $_POST['CallSid'] ?? null;
+    $appUrl   = 'https://crm.transccl.cl';
+
     if ($row && $row['celular']) {
         $celular = preg_replace('/[^0-9+]/', '', $row['celular']);
         if (!str_starts_with($celular, '+')) $celular = '+56' . ltrim($celular, '0');
-        echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Dial callerId=\"+56229149664\"><Number>$celular</Number></Dial></Response>";
+
+        // Registrar llamada entrante en historial
+        $jwtSecret = getenv('CRM_JWT_SECRET') ?: JWT_SECRET;
+        @file_get_contents('https://www.transccl.cl/crm-api.php?action=log_inbound_call', false, stream_context_create(['http' => [
+            'method'  => 'POST',
+            'header'  => "Content-Type: application/json\r\nx-internal-secret: $jwtSecret\r\n",
+            'content' => json_encode(['user_id' => $row['user_id'] ?? null, 'from_number' => $normalized, 'call_sid' => $callSid]),
+            'ignore_errors' => true,
+        ]]));
+
+        echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Dial callerId=\"+56229149664\" record=\"record-from-answer\" recordingStatusCallback=\"$appUrl/api/twilio/recording\" recordingStatusCallbackMethod=\"POST\"><Number>$celular</Number></Dial></Response>";
     } else {
-        // Fallback: línea principal
         echo '<?xml version="1.0" encoding="UTF-8"?><Response><Dial callerId="+56229149664"><Number>+56229455713</Number></Dial></Response>';
     }
     exit;

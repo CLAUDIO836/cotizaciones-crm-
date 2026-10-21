@@ -18,11 +18,12 @@ export async function POST(req: NextRequest) {
     // Registrar quién llamó a este número para routing de llamadas entrantes
     if (userId) {
       const secret = process.env.INTERNAL_PDF_SECRET
+      const callSid = body.get('CallSid') as string | null
       if (secret) {
         fetch(`${CRM_API}?action=log_outbound_call`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-internal-secret': secret },
-          body: JSON.stringify({ user_id: userId, to_number: to }),
+          body: JSON.stringify({ user_id: userId, to_number: to, call_sid: callSid }),
         }).catch(() => {})
       }
     }

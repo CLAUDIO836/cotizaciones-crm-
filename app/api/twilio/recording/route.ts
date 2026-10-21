@@ -1,19 +1,24 @@
 import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
-import { crmPost } from '@/lib/api'
+
+const CRM_API = 'https://www.transccl.cl/crm-api.php'
 
 export async function POST(req: NextRequest) {
   const body = await req.formData()
-
-  const callSid        = body.get('CallSid') as string
-  const recordingUrl   = body.get('RecordingUrl') as string
-  const recordingDuration = body.get('RecordingDuration') as string
+  const callSid           = body.get('CallSid') as string | null
+  const recordingUrl      = body.get('RecordingUrl') as string | null
+  const recordingDuration = body.get('RecordingDuration') as string | null
 
   if (callSid && recordingUrl) {
-    await crmPost('call_recording_update', {
-      call_sid:         callSid,
-      recording_url:    recordingUrl + '.mp3',
-      recording_duration: recordingDuration ? parseInt(recordingDuration) : null,
+    const secret = process.env.INTERNAL_PDF_SECRET ?? ''
+    await fetch(`${CRM_API}?action=call_recording_update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': secret },
+      body: JSON.stringify({
+        call_sid:            callSid,
+        recording_url:       recordingUrl + '.mp3',
+        recording_duration:  recordingDuration ? parseInt(recordingDuration) : null,
+      }),
     }).catch(() => {})
   }
 
