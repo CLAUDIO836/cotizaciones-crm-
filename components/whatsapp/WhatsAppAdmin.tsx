@@ -44,19 +44,28 @@ function UserCard({ profile, isCurrentUser }: { profile: Profile; isCurrentUser:
 
   async function connect() {
     setState('loading')
-    const res = await fetch('/api/whatsapp/connect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: profile.id }),
-    })
-    const d = await res.json()
-    if (d.status === 'connected') {
-      setState('connected')
-    } else if (d.qrcode) {
-      setQrCode(d.qrcode)
-      setState('qr')
-      setPolling(true)
-    } else {
+    try {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 15000)
+      const res = await fetch('/api/whatsapp/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: profile.id }),
+        signal: ctrl.signal,
+      })
+      clearTimeout(timer)
+      if (!res.ok) { setState('error'); return }
+      const d = await res.json()
+      if (d.status === 'connected') {
+        setState('connected')
+      } else if (d.qrcode) {
+        setQrCode(d.qrcode)
+        setState('qr')
+        setPolling(true)
+      } else {
+        setState('error')
+      }
+    } catch {
       setState('error')
     }
   }
@@ -68,12 +77,14 @@ function UserCard({ profile, isCurrentUser }: { profile: Profile; isCurrentUser:
     setQrCode(null)
   }
 
+  const [errMsg, setErrMsg] = useState<string | null>(null)
+
   const stateLabel: Record<ConnState, { color: string; label: string }> = {
     loading:      { color: 'bg-gray-100 text-gray-500',   label: 'Verificando…' },
     connected:    { color: 'bg-green-100 text-green-700', label: 'Conectado' },
     qr:           { color: 'bg-yellow-100 text-yellow-700', label: 'Escanear QR' },
     disconnected: { color: 'bg-red-100 text-red-600',     label: 'Desconectado' },
-    error:        { color: 'bg-red-100 text-red-600',     label: 'Error' },
+    error:        { color: 'bg-orange-100 text-orange-700', label: 'Error al conectar' },
   }
   const { color, label } = stateLabel[state]
 
