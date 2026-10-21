@@ -115,6 +115,7 @@ export default function ProspectoFicha({
   }
 
   return (
+    <>
     <div className="p-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
@@ -429,5 +430,6 @@ export default function ProspectoFicha({
         </div>
       </div>
     )}
+    </>
   )
 }
