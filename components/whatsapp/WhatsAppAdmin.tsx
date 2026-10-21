@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { UserSession } from '@/lib/api'
-import Image from 'next/image'
 
 type Profile = { id: string; name: string; email: string; role: string }
 type ConnState = 'loading' | 'connected' | 'qr' | 'disconnected' | 'error'
@@ -109,7 +108,8 @@ function UserCard({ profile, isCurrentUser }: { profile: Profile; isCurrentUser:
         <div className="flex flex-col items-center gap-2 my-4">
           <p className="text-sm text-gray-600">Abre WhatsApp → Dispositivos vinculados → Vincular dispositivo</p>
           <div className="border-4 border-green-500 rounded-xl overflow-hidden">
-            <Image src={`data:image/png;base64,${qrCode}`} alt="QR WhatsApp" width={220} height={220} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}`} alt="QR WhatsApp" width={220} height={220} />
           </div>
           <p className="text-xs text-gray-400">El QR expira en 60 segundos. Actualiza si es necesario.</p>
           <button onClick={connect} className="text-xs text-blue-600 hover:underline">Actualizar QR</button>
