@@ -7,16 +7,25 @@ function headers() {
   return { 'Content-Type': 'application/json', apikey: KEY }
 }
 
-export async function evoFetch(path: string, opts: RequestInit = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: { ...headers(), ...(opts.headers ?? {}) },
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`Evolution API ${path} → ${res.status}: ${text}`)
+export async function evoFetch(path: string, opts: RequestInit = {}, timeoutMs = 20000) {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      ...opts,
+      headers: { ...headers(), ...(opts.headers ?? {}) },
+      signal: ctrl.signal,
+    })
+    clearTimeout(timer)
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`Evolution API ${path} → ${res.status}: ${text}`)
+    }
+    return res.json()
+  } catch (e) {
+    clearTimeout(timer)
+    throw e
   }
-  return res.json()
 }
 
 // ── Instances ─────────────────────────────────────────────────────────────────

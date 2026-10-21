@@ -13,20 +13,28 @@ export async function POST(req: NextRequest) {
     ? (body.userId ?? user.id)
     : user.id
 
-  const status = await getInstanceStatus(targetUserId)
+  try {
+    const status = await getInstanceStatus(targetUserId)
 
-  if (status === 'not_created') {
-    await createInstance(targetUserId, user.name)
+    if (status === 'not_created') {
+      await createInstance(targetUserId, user.name)
+    }
+
+    if (status === 'open') {
+      return NextResponse.json({ status: 'connected' })
+    }
+
+    const qrData = await getQRCode(targetUserId)
+    const qrcode = qrData.qrcode?.base64 ?? qrData.base64 ?? null
+    return NextResponse.json({
+      status: 'qr',
+      instance: instanceName(targetUserId),
+      qrcode,
+      raw: qrcode ? undefined : qrData,
+    })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error('[whatsapp/connect]', msg)
+    return NextResponse.json({ error: msg }, { status: 502 })
   }
-
-  if (status === 'open') {
-    return NextResponse.json({ status: 'connected' })
-  }
-
-  const qrData = await getQRCode(targetUserId)
-  return NextResponse.json({
-    status: 'qr',
-    instance: instanceName(targetUserId),
-    qrcode: qrData.qrcode?.base64 ?? qrData.base64 ?? null,
-  })
 }
