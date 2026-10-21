@@ -2327,7 +2327,7 @@ if ($action === 'prospect_contact_add') {
         ->execute([$cid, $prospect_id, $b['name'], $b['role'] ?? null, $b['phone'] ?? null, $b['mobile'] ?? null, $b['email'] ?? null, 0]);
     $stmt = db()->prepare("SELECT * FROM prospect_contacts WHERE id = ?");
     $stmt->execute([$cid]);
-    json_out(['ok' => true, 'contact' => $stmt->fetch()]);
+    ok($stmt->fetch());
 }
 
 // ── ACTIVITIES ────────────────────────────────────────────────────────────────

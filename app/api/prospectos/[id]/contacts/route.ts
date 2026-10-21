@@ -24,6 +24,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }),
   })
 
-  const data = await res.json()
-  return NextResponse.json(data, { status: res.ok ? 200 : 400 })
+  const text = await res.text()
+  try {
+    const data = JSON.parse(text)
+    if (data.error) return NextResponse.json({ error: data.error }, { status: 400 })
+    return NextResponse.json(data)
+  } catch {
+    console.error('[contacts POST] PHP returned:', text.slice(0, 300))
+    return NextResponse.json({ error: 'PHP error', raw: text.slice(0, 200) }, { status: 502 })
+  }
 }
