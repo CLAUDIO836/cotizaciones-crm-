@@ -2480,16 +2480,18 @@ if ($action === 'call_recording_update') {
     $isInternal = $secret && hash_equals($jwtSecret, $secret);
     $b = body();
     if (!$isInternal) { $me = requireAuth(); }
-    $callSid      = $b['call_sid']      ?? null;
-    $recordingUrl = $b['recording_url'] ?? null;
-    $duration     = isset($b['recording_duration']) ? (int)$b['recording_duration'] : null;
-    if (!$callSid) { ok(['skipped' => true]); }
-    // Actualizar en outbound_calls
-    db()->prepare("UPDATE outbound_calls SET recording_url = ?, duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
-        ->execute([$recordingUrl, $duration, $callSid]);
-    // Actualizar en prospect_activities también
-    db()->prepare("UPDATE prospect_activities SET recording_url = ?, duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
-        ->execute([$recordingUrl, $duration, $callSid]);
+    $callSid       = $b['call_sid']        ?? null;
+    $parentCallSid = $b['parent_call_sid'] ?? null;
+    $recordingUrl  = $b['recording_url']   ?? null;
+    $duration      = isset($b['recording_duration']) ? (int)$b['recording_duration'] : null;
+    if (!$callSid && !$parentCallSid) { ok(['skipped' => true]); }
+    // Actualizar por call_sid o parent_call_sid en outbound_calls
+    foreach (array_filter([$callSid, $parentCallSid]) as $sid) {
+        db()->prepare("UPDATE outbound_calls SET recording_url = COALESCE(recording_url, ?), duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
+            ->execute([$recordingUrl, $duration, $sid]);
+        db()->prepare("UPDATE prospect_activities SET recording_url = COALESCE(recording_url, ?), duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
+            ->execute([$recordingUrl, $duration, $sid]);
+    }
     ok(['updated' => true]);
 }
 

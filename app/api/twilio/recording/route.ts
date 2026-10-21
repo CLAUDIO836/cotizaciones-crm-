@@ -11,11 +11,14 @@ export async function POST(req: NextRequest) {
 
   if (callSid && recordingUrl) {
     const secret = process.env.INTERNAL_PDF_SECRET ?? ''
+    // Twilio puede enviar el SID del leg hijo; también enviamos ParentCallSid
+    const parentCallSid = body.get('ParentCallSid') as string | null
     await fetch(`${CRM_API}?action=call_recording_update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-internal-secret': secret },
       body: JSON.stringify({
         call_sid:            callSid,
+        parent_call_sid:     parentCallSid,
         recording_url:       recordingUrl + '.mp3',
         recording_duration:  recordingDuration ? parseInt(recordingDuration) : null,
       }),
