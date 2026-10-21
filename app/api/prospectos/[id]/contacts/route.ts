@@ -12,11 +12,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json()
 
   const token = req.cookies.get('crm_token')?.value
-  const res = await fetch(PHP, {
+  const res = await fetch(`${PHP}?action=prospect_contact_add`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({
-      action: 'prospect_contact_add',
       prospect_id: id,
       name: body.name,
       role: body.role || null,
