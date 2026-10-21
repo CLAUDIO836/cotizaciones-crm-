@@ -54,6 +54,31 @@ export default function ProspectoFicha({
   const [, startTransition] = useTransition()
 
   const isAdmin = user.role === 'admin'
+
+  // Add contact modal
+  const [showAddContact, setShowAddContact] = useState(false)
+  const [newContact, setNewContact] = useState({ name: '', role: '', email: '', mobile: '' })
+  const [addingContact, setAddingContact] = useState(false)
+
+  async function saveNewContact() {
+    if (!newContact.name.trim()) return
+    setAddingContact(true)
+    try {
+      const res = await fetch(`/api/prospectos/${prospect.id}/contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newContact),
+      })
+      if (res.ok) {
+        setNewContact({ name: '', role: '', email: '', mobile: '' })
+        setShowAddContact(false)
+        startTransition(() => router.refresh())
+      }
+    } finally {
+      setAddingContact(false)
+    }
+  }
+
   const [waContactId, setWaContactId] = useState<string | null>(
     prospect.contacts?.find(c => c.mobile ?? c.phone) ? (prospect.contacts.find(c => c.mobile ?? c.phone)?.id ?? null) : null
   )
@@ -141,7 +166,7 @@ export default function ProspectoFicha({
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
             <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
               <span className="font-semibold text-gray-800 text-sm">Contactos</span>
-              <button className="text-xs text-blue-600 hover:underline">+ Agregar</button>
+              <button onClick={() => setShowAddContact(true)} className="text-xs text-blue-600 hover:underline">+ Agregar</button>
             </div>
             <div className="p-4 flex flex-col gap-2">
               {(prospect.contacts ?? []).length === 0 && (
@@ -366,5 +391,43 @@ export default function ProspectoFicha({
         </div>
       </div>
     </div>
+
+    {/* Modal agregar contacto */}
+    {showAddContact && (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+          <h2 className="text-base font-bold text-gray-900 mb-4">Agregar contacto</h2>
+          <div className="flex flex-col gap-3">
+            {[
+              { label: 'Nombre *', key: 'name', placeholder: 'Juan Pérez', type: 'text' },
+              { label: 'Cargo', key: 'role', placeholder: 'Director, Secretaria…', type: 'text' },
+              { label: 'Email', key: 'email', placeholder: 'juan@colegio.cl', type: 'email' },
+              { label: 'Celular', key: 'mobile', placeholder: '+56912345678', type: 'tel' },
+            ].map(({ label, key, placeholder, type }) => (
+              <div key={key}>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</label>
+                <input
+                  type={type}
+                  value={newContact[key as keyof typeof newContact]}
+                  onChange={e => setNewContact(p => ({ ...p, [key]: e.target.value }))}
+                  placeholder={placeholder}
+                  className="mt-1 w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-5">
+            <button onClick={() => setShowAddContact(false)}
+              className="flex-1 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">
+              Cancelar
+            </button>
+            <button onClick={saveNewContact} disabled={addingContact || !newContact.name.trim()}
+              className="flex-1 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+              {addingContact ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   )
 }

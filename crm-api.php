@@ -2316,6 +2316,20 @@ if ($action === 'prospect_contacts_upsert') {
     ok();
 }
 
+if ($action === 'prospect_contact_add') {
+    requireAuth();
+    $b = body();
+    $prospect_id = $b['prospect_id'] ?? '';
+    if (!$prospect_id) err('prospect_id requerido');
+    if (!($b['name'] ?? '')) err('name requerido');
+    $cid = uuid();
+    db()->prepare("INSERT INTO prospect_contacts (id, prospect_id, name, role, phone, mobile, email, is_primary) VALUES (?,?,?,?,?,?,?,?)")
+        ->execute([$cid, $prospect_id, $b['name'], $b['role'] ?? null, $b['phone'] ?? null, $b['mobile'] ?? null, $b['email'] ?? null, 0]);
+    $stmt = db()->prepare("SELECT * FROM prospect_contacts WHERE id = ?");
+    $stmt->execute([$cid]);
+    json_out(['ok' => true, 'contact' => $stmt->fetch()]);
+}
+
 // ── ACTIVITIES ────────────────────────────────────────────────────────────────
 if ($action === 'activity_create') {
     $me = requireAuth();
