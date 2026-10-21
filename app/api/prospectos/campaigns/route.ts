@@ -7,9 +7,9 @@ export async function POST(req: NextRequest) {
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await req.json()
   const action = body._action === 'update' ? 'campaigns_update' : 'campaigns_create'
-  const res = await fetch(`${CRM_API}?action=${action}`, {
+  const res = await fetch(`${CRM_API}?action=${action}&token=${encodeURIComponent(token)}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
   return NextResponse.json(await res.json(), { status: res.status })

@@ -3,9 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 
 async function call(token: string, action: string, body: unknown) {
-  const res = await fetch(`${CRM_API}?action=${action}`, {
+  const res = await fetch(`${CRM_API}?action=${action}&token=${encodeURIComponent(token)}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
   return NextResponse.json(await res.json(), { status: res.status })

@@ -9,9 +9,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params
   const body = await req.json()
 
-  const res = await fetch(`${CRM_API}?action=prospect_contact_add`, {
+  const res = await fetch(`${CRM_API}?action=prospect_contact_add&token=${encodeURIComponent(token)}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       prospect_id: id,
       name: body.name,
