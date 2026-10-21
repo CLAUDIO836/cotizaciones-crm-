@@ -45,7 +45,6 @@ export async function createInstance(userId: string, userName: string) {
       webhookByEvents: true,
       webhookEvents: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
       webhookBase64: false,
-      chatwootAccountId: null,
     }),
   })
 }
