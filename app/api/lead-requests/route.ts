@@ -17,7 +17,7 @@ const TIPO_LABELS: Record<string, string> = {
 export async function POST(request: NextRequest) {
   const body = await request.json()
 
-  const res = await fetch(`${CRM_API}?action=leads_create&token=${encodeURIComponent(token)}`, {
+  const res = await fetch(`${CRM_API}?action=leads_create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
