@@ -218,7 +218,6 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
             </button>
           )}
         </div>
-        </div>
       </div>
 
       {/* Resumen */}
