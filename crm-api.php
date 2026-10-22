@@ -2505,6 +2505,22 @@ if ($action === 'call_recording_update') {
     ok(['updated' => true]);
 }
 
+// ── DIAGNÓSTICO llamadas recientes (temporal) ─────────────────────────────────
+if ($action === 'diag_recent_calls') {
+    $secret = $_GET['_secret'] ?? '';
+    $expected = getenv('INTERNAL_PDF_SECRET') ?: JWT_SECRET;
+    if (!hash_equals($expected, $secret)) { http_response_code(403); exit; }
+    $rows = db()->query("
+        SELECT o.id, o.user_id, o.to_number, o.called_at, o.duration_sec,
+               o.recording_url, o.call_sid, p.name as exec_name
+        FROM outbound_calls o
+        LEFT JOIN profiles p ON p.id = o.user_id
+        ORDER BY o.called_at DESC LIMIT 5
+    ")->fetchAll();
+    foreach ($rows as &$r) { $r['called_at_cl'] = date('Y-m-d H:i:s', strtotime($r['called_at']) - 3*3600); }
+    ok($rows);
+}
+
 // ── BACKFILL duration en outbound_calls desde prospect_activities (admin one-time) ─
 if ($action === 'repair_call_durations') {
     $secret = $_GET['_secret'] ?? '';

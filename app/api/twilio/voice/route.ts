@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     const dial = twiml.dial({
       callerId: '+56229149664',
       record:    'record-from-answer',
-      recordingStatusCallback: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://cotizaciones-crm.vercel.app'}/api/twilio/recording`,
+      recordingStatusCallback: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm.transccl.cl'}/api/twilio/recording`,
       recordingStatusCallbackMethod: 'POST',
     })
     dial.number({}, to)
