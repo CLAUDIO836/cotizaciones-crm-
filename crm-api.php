@@ -2055,17 +2055,21 @@ if ($action === 'prospectos_init') {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
         "CREATE TABLE IF NOT EXISTS prospect_contacts (
-            id           CHAR(36)     NOT NULL PRIMARY KEY,
-            prospect_id  CHAR(36)     NOT NULL,
-            name         VARCHAR(255) NOT NULL,
-            role         VARCHAR(100) NULL,
-            phone        VARCHAR(30)  NULL,
-            mobile       VARCHAR(30)  NULL,
-            email        VARCHAR(255) NULL,
-            is_primary   TINYINT(1)   NOT NULL DEFAULT 0,
-            created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            id                CHAR(36)     NOT NULL PRIMARY KEY,
+            prospect_id       CHAR(36)     NOT NULL,
+            name              VARCHAR(255) NOT NULL,
+            role              VARCHAR(100) NULL,
+            phone             VARCHAR(30)  NULL,
+            mobile            VARCHAR(30)  NULL,
+            email             VARCHAR(255) NULL,
+            anexo             VARCHAR(20)  NULL,
+            call_instructions VARCHAR(255) NULL,
+            is_primary        TINYINT(1)   NOT NULL DEFAULT 0,
+            created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_prospect (prospect_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        "ALTER TABLE prospect_contacts ADD COLUMN IF NOT EXISTS anexo VARCHAR(20) NULL",
+        "ALTER TABLE prospect_contacts ADD COLUMN IF NOT EXISTS call_instructions VARCHAR(255) NULL",
 
         "CREATE TABLE IF NOT EXISTS prospect_activities (
             id            CHAR(36)     NOT NULL PRIMARY KEY,
@@ -2323,8 +2327,8 @@ if ($action === 'prospect_contact_add') {
     if (!$prospect_id) err('prospect_id requerido');
     if (!($b['name'] ?? '')) err('name requerido');
     $cid = uuid();
-    db()->prepare("INSERT INTO prospect_contacts (id, prospect_id, name, role, phone, mobile, email, is_primary) VALUES (?,?,?,?,?,?,?,?)")
-        ->execute([$cid, $prospect_id, $b['name'], $b['role'] ?? null, $b['phone'] ?? null, $b['mobile'] ?? null, $b['email'] ?? null, 0]);
+    db()->prepare("INSERT INTO prospect_contacts (id, prospect_id, name, role, phone, mobile, email, anexo, call_instructions, is_primary) VALUES (?,?,?,?,?,?,?,?,?,?)")
+        ->execute([$cid, $prospect_id, $b['name'], $b['role'] ?? null, $b['phone'] ?? null, $b['mobile'] ?? null, $b['email'] ?? null, $b['anexo'] ?? null, $b['call_instructions'] ?? null, 0]);
     $stmt = db()->prepare("SELECT * FROM prospect_contacts WHERE id = ?");
     $stmt->execute([$cid]);
     ok($stmt->fetch());

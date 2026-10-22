@@ -18,6 +18,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       role: body.role || null,
       email: body.email || null,
       mobile: body.mobile || null,
+      anexo: body.anexo || null,
+      call_instructions: body.call_instructions || null,
     }),
   })
   const text = await res.text()

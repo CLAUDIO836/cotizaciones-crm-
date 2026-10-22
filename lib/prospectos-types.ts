@@ -28,6 +28,8 @@ export type ProspectContact = {
   phone: string | null
   mobile: string | null
   email: string | null
+  anexo: string | null
+  call_instructions: string | null
   is_primary: number
 }
 

@@ -57,7 +57,7 @@ export default function ProspectoFicha({
 
   // Add contact modal
   const [showAddContact, setShowAddContact] = useState(false)
-  const [newContact, setNewContact] = useState({ name: '', role: '', email: '', mobile: '' })
+  const [newContact, setNewContact] = useState({ name: '', role: '', email: '', mobile: '', anexo: '', call_instructions: '' })
   const [addingContact, setAddingContact] = useState(false)
 
   const [contactError, setContactError] = useState<string | null>(null)
@@ -74,7 +74,7 @@ export default function ProspectoFicha({
       })
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
-        setNewContact({ name: '', role: '', email: '', mobile: '' })
+        setNewContact({ name: '', role: '', email: '', mobile: '', anexo: '', call_instructions: '' })
         setShowAddContact(false)
         startTransition(() => router.refresh())
       } else {
@@ -189,6 +189,12 @@ export default function ProspectoFicha({
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900 text-sm">{c.name}</p>
                     <p className="text-xs text-gray-500">{c.role ?? '—'} · {c.email ?? 'Sin email'}</p>
+                    {c.anexo && (
+                      <p className="text-xs font-semibold text-orange-600 mt-0.5">📞 Anexo: {c.anexo}</p>
+                    )}
+                    {c.call_instructions && (
+                      <p className="text-xs text-blue-600 mt-0.5 bg-blue-50 rounded px-1.5 py-0.5">💡 {c.call_instructions}</p>
+                    )}
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-xs text-gray-500">{c.mobile ?? c.phone ?? '—'}</p>
@@ -412,6 +418,8 @@ export default function ProspectoFicha({
               { label: 'Cargo', key: 'role', placeholder: 'Director, Secretaria…', type: 'text' },
               { label: 'Email', key: 'email', placeholder: 'juan@colegio.cl', type: 'email' },
               { label: 'Celular', key: 'mobile', placeholder: '+56912345678', type: 'tel' },
+              { label: 'Anexo', key: 'anexo', placeholder: 'Ej: 205', type: 'text' },
+              { label: 'Instrucciones de llamada', key: 'call_instructions', placeholder: 'Ej: Marcar 2, pedir con secretaría', type: 'text' },
             ].map(({ label, key, placeholder, type }) => (
               <div key={key}>
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</label>
