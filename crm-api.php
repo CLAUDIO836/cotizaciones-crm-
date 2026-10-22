@@ -2804,9 +2804,9 @@ if ($action === 'delete_call') {
 
 if ($action === 'call_recording_update') {
     $secret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
-    $pdfSecret = getenv('INTERNAL_PDF_SECRET') ?: '';
-    // Acepta secreto interno (INTERNAL_PDF_SECRET) o sesión autenticada
-    $isInternal = $secret !== '' && $pdfSecret !== '' && hash_equals($pdfSecret, $secret);
+    // getenv vacío en cPanel → fallback a JWT_SECRET (constante con valor hardcodeado)
+    $pdfSecret = getenv('INTERNAL_PDF_SECRET') ?: JWT_SECRET;
+    $isInternal = $secret !== '' && hash_equals($pdfSecret, $secret);
     $b = body();
     if (!$isInternal) { $me = requireAuth(); }
     $callSid       = $b['call_sid']        ?? null;
