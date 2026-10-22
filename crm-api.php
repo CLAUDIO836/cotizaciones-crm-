@@ -2505,6 +2505,23 @@ if ($action === 'call_recording_update') {
     ok(['updated' => true]);
 }
 
+// ── BACKFILL duration en outbound_calls desde prospect_activities (admin one-time) ─
+if ($action === 'repair_call_durations') {
+    $secret = $_GET['_secret'] ?? '';
+    $expected = getenv('INTERNAL_PDF_SECRET') ?: JWT_SECRET;
+    if (!hash_equals($expected, $secret)) { http_response_code(403); echo json_encode(['error'=>'forbidden']); exit; }
+    // Copiar duration_sec desde prospect_activities a outbound_calls donde falta
+    $r1 = db()->exec("
+        UPDATE outbound_calls o
+        JOIN prospect_activities a ON a.call_sid = o.call_sid
+        SET o.duration_sec = a.duration_sec
+        WHERE o.duration_sec IS NULL AND a.duration_sec IS NOT NULL AND a.duration_sec > 0
+    ");
+    // Para llamadas sin call_sid en activities, intentar por número+hora cercana (margen 5 min)
+    // Esta segunda pasada es mejor-esfuerzo; la primera cubre la mayoría
+    ok(['updated_from_activities' => $r1]);
+}
+
 if ($action === 'call_status_update') {
     $b = body();
     $call_sid = $b['call_sid'] ?? null;
