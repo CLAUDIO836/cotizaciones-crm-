@@ -59,8 +59,31 @@ export default function ProspectoFicha({
   const [showAddContact, setShowAddContact] = useState(false)
   const [newContact, setNewContact] = useState({ name: '', role: '', email: '', mobile: '', anexo: '', call_instructions: '' })
   const [addingContact, setAddingContact] = useState(false)
-
   const [contactError, setContactError] = useState<string | null>(null)
+
+  // Edit contact modal
+  const emptyEdit = { id: '', name: '', role: '', email: '', mobile: '', anexo: '', call_instructions: '' }
+  const [editContact, setEditContact] = useState(emptyEdit)
+  const [showEditContact, setShowEditContact] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
+  async function saveEditContact() {
+    if (!editContact.name.trim()) return
+    setSavingEdit(true)
+    setEditError(null)
+    try {
+      const res = await fetch(`/api/prospectos/${prospect.id}/contacts`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editContact),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) { setShowEditContact(false); startTransition(() => router.refresh()) }
+      else setEditError(data.error ?? `Error ${res.status}`)
+    } catch (e) { setEditError(String(e)) }
+    setSavingEdit(false)
+  }
 
   async function saveNewContact() {
     if (!newContact.name.trim()) return
@@ -224,6 +247,10 @@ export default function ProspectoFicha({
                         </button>
                       )}
                       <span className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-xs cursor-pointer hover:bg-gray-50">✉️</span>
+                      <button
+                        onClick={() => { setEditContact({ id: c.id, name: c.name, role: c.role ?? '', email: c.email ?? '', mobile: c.mobile ?? '', anexo: c.anexo ?? '', call_instructions: c.call_instructions ?? '' }); setEditError(null); setShowEditContact(true) }}
+                        className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-xs cursor-pointer hover:bg-gray-50 text-gray-400 hover:text-gray-700"
+                        title="Editar contacto">✏️</button>
                     </div>
                   </div>
                 </div>
@@ -408,6 +435,46 @@ export default function ProspectoFicha({
     </div>
 
     {/* Modal agregar contacto */}
+    {showEditContact && (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+          <h2 className="text-base font-bold text-gray-900 mb-4">Editar contacto</h2>
+          <div className="flex flex-col gap-3">
+            {[
+              { label: 'Nombre *', key: 'name', placeholder: 'Juan Pérez', type: 'text' },
+              { label: 'Cargo', key: 'role', placeholder: 'Director, Secretaria…', type: 'text' },
+              { label: 'Email', key: 'email', placeholder: 'juan@colegio.cl', type: 'email' },
+              { label: 'Celular', key: 'mobile', placeholder: '+56912345678', type: 'tel' },
+              { label: 'Anexo', key: 'anexo', placeholder: 'Ej: 205', type: 'text' },
+              { label: 'Instrucciones de llamada', key: 'call_instructions', placeholder: 'Ej: Marcar 2, pedir con secretaría', type: 'text' },
+            ].map(({ label, key, placeholder, type }) => (
+              <div key={key}>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</label>
+                <input
+                  type={type}
+                  value={editContact[key as keyof typeof editContact]}
+                  onChange={e => setEditContact(p => ({ ...p, [key]: e.target.value }))}
+                  placeholder={placeholder}
+                  className="mt-1 w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            ))}
+          </div>
+          {editError && <p className="mt-3 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{editError}</p>}
+          <div className="flex gap-2 mt-5">
+            <button onClick={() => { setShowEditContact(false); setEditError(null) }}
+              className="flex-1 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">
+              Cancelar
+            </button>
+            <button onClick={saveEditContact} disabled={savingEdit || !editContact.name.trim()}
+              className="flex-1 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+              {savingEdit ? 'Guardando…' : 'Guardar cambios'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     {showAddContact && (
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">

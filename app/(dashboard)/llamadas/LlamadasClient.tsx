@@ -47,6 +47,14 @@ function formatTime(dt?: string | null) {
 
 const CRM_API = 'https://www.transccl.cl/crm-api.php'
 
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+const CURRENT_YEAR = new Date().getFullYear()
+const YEARS = Array.from({ length: 3 }, (_, i) => CURRENT_YEAR - i)
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10)
+}
+
 export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
   const [search, setSearch]     = useState('')
   const [rows, setRows]         = useState(calls)
@@ -54,6 +62,22 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
   const [dateTo, setDateTo]     = useState('')
   const [executive, setExecutive] = useState('')
   const [direction, setDirection] = useState('')
+  const [quickYear, setQuickYear]   = useState('')
+  const [quickMonth, setQuickMonth] = useState('')
+
+  function applyQuick(year: string, month: string) {
+    setQuickYear(year); setQuickMonth(month)
+    if (!year) { setDateFrom(''); setDateTo(''); return }
+    const y = parseInt(year)
+    if (month) {
+      const m = parseInt(month)
+      const last = new Date(y, m, 0).getDate()
+      setDateFrom(`${y}-${String(m).padStart(2,'0')}-01`)
+      setDateTo(`${y}-${String(m).padStart(2,'0')}-${String(last).padStart(2,'0')}`)
+    } else {
+      setDateFrom(`${y}-01-01`); setDateTo(`${y}-12-31`)
+    }
+  }
 
   async function deleteCall(id: string) {
     if (!confirm('¿Eliminar esta llamada del historial?')) return
@@ -91,6 +115,7 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
 
   function clearFilters() {
     setSearch(''); setDateFrom(''); setDateTo(''); setExecutive(''); setDirection('')
+    setQuickYear(''); setQuickMonth('')
   }
 
   const hasFilters = search || dateFrom || dateTo || executive || direction
@@ -110,6 +135,30 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
 
       {/* Filtros */}
       <div className="bg-white rounded-xl border p-4 space-y-3">
+        {/* Accesos rápidos */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <button onClick={() => { const t = todayStr(); setDateFrom(t); setDateTo(t); setQuickYear(''); setQuickMonth('') }}
+            className={`px-3 py-1.5 text-xs rounded-lg border font-medium transition-colors ${dateFrom === todayStr() && dateTo === todayStr() ? 'bg-green-600 text-white border-green-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+            Hoy
+          </button>
+          <select value={quickYear} onChange={e => applyQuick(e.target.value, quickMonth)}
+            className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none">
+            <option value="">Año</option>
+            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select value={quickMonth} onChange={e => applyQuick(quickYear, e.target.value)}
+            className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none">
+            <option value="">Mes</option>
+            {MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+          </select>
+          {isAdmin && (
+            <select value={executive} onChange={e => setExecutive(e.target.value)}
+              className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none">
+              <option value="">Todos los ejecutivos</option>
+              {executives.map(ex => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
+            </select>
+          )}
+        </div>
         <div className="flex flex-wrap gap-3 items-end">
           {/* Búsqueda */}
           <div className="relative flex-1 min-w-48">
@@ -168,6 +217,7 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
               <X className="w-3.5 h-3.5" /> Limpiar
             </button>
           )}
+        </div>
         </div>
       </div>
 

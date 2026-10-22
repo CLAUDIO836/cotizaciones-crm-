@@ -2320,6 +2320,19 @@ if ($action === 'prospect_contacts_upsert') {
     ok();
 }
 
+if ($action === 'prospect_contact_update') {
+    requireAuth();
+    $b = body();
+    $id = $b['id'] ?? '';
+    if (!$id) err('id requerido');
+    if (!($b['name'] ?? '')) err('name requerido');
+    db()->prepare("UPDATE prospect_contacts SET name=?, role=?, phone=?, mobile=?, email=?, anexo=?, call_instructions=? WHERE id=?")
+        ->execute([$b['name'], $b['role'] ?? null, $b['phone'] ?? null, $b['mobile'] ?? null, $b['email'] ?? null, $b['anexo'] ?? null, $b['call_instructions'] ?? null, $id]);
+    $stmt = db()->prepare("SELECT * FROM prospect_contacts WHERE id = ?");
+    $stmt->execute([$id]);
+    ok($stmt->fetch());
+}
+
 if ($action === 'prospect_contact_add') {
     requireAuth();
     $b = body();
@@ -2505,9 +2518,9 @@ if ($action === 'delete_call') {
 
 if ($action === 'call_recording_update') {
     $secret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
-    $jwtSecret = getenv('CRM_JWT_SECRET') ?: JWT_SECRET;
-    // Acepta tanto llamado interno como desde prospect_activities
-    $isInternal = $secret && hash_equals($jwtSecret, $secret);
+    $pdfSecret = getenv('INTERNAL_PDF_SECRET') ?: '';
+    // Acepta secreto interno (INTERNAL_PDF_SECRET) o sesión autenticada
+    $isInternal = $secret !== '' && $pdfSecret !== '' && hash_equals($pdfSecret, $secret);
     $b = body();
     if (!$isInternal) { $me = requireAuth(); }
     $callSid       = $b['call_sid']        ?? null;

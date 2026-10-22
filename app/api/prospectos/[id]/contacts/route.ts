@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 
+function contactFields(body: Record<string, string | null>) {
+  return {
+    name:              body.name,
+    role:              body.role || null,
+    email:             body.email || null,
+    mobile:            body.mobile || null,
+    anexo:             body.anexo || null,
+    call_instructions: body.call_instructions || null,
+  }
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const token = req.cookies.get('crm_token')?.value
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -12,21 +23,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const res = await fetch(`${CRM_API}?action=prospect_contact_add&token=${encodeURIComponent(token)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prospect_id: id,
-      name: body.name,
-      role: body.role || null,
-      email: body.email || null,
-      mobile: body.mobile || null,
-      anexo: body.anexo || null,
-      call_instructions: body.call_instructions || null,
-    }),
+    body: JSON.stringify({ prospect_id: id, ...contactFields(body) }),
   })
   const text = await res.text()
   try {
     return NextResponse.json(JSON.parse(text), { status: res.status })
   } catch {
     console.error('[contacts POST] PHP:', text.slice(0, 300))
+    return NextResponse.json({ error: text.slice(0, 200) }, { status: 502 })
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  const token = req.cookies.get('crm_token')?.value
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json()
+  if (!body.id) return NextResponse.json({ error: 'id requerido' }, { status: 400 })
+
+  const res = await fetch(`${CRM_API}?action=prospect_contact_update&token=${encodeURIComponent(token)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: body.id, ...contactFields(body) }),
+  })
+  const text = await res.text()
+  try {
+    return NextResponse.json(JSON.parse(text), { status: res.status })
+  } catch {
     return NextResponse.json({ error: text.slice(0, 200) }, { status: 502 })
   }
 }
