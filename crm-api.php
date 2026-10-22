@@ -2494,16 +2494,7 @@ if ($action === 'activities_list') {
 }
 
 // ── TWILIO CALLBACKS ──────────────────────────────────────────────────────────
-if ($action === 'call_recording_update') {
-    $b = body();
-    $call_sid       = $b['call_sid'] ?? null;
-    $recording_url  = $b['recording_url'] ?? null;
-    $duration       = isset($b['recording_duration']) ? (int)$b['recording_duration'] : null;
-    if (!$call_sid || !$recording_url) ok(['skipped' => true]);
-    db()->prepare("UPDATE prospect_activities SET recording_url = ?, duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
-        ->execute([$recording_url, $duration, $call_sid]);
-    ok(['updated' => true]);
-}
+// (call_recording_update definido más abajo — este bloque eliminado para evitar duplicado)
 
 // ── DIAGNÓSTICO llamadas recientes (temporal) ─────────────────────────────────
 if ($action === 'diag_recent_calls') {
