@@ -2347,6 +2347,92 @@ if ($action === 'prospect_contact_add') {
     ok($stmt->fetch());
 }
 
+// ── PHONE SYNC ────────────────────────────────────────────────────────────────
+if ($action === 'phone_sync') {
+    // Internal action: sync phone numbers from sheet into prospect_contacts
+    // Auth via INTERNAL_PDF_SECRET header
+    $secret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? ($_GET['_secret'] ?? '');
+    $expected = getenv('INTERNAL_PDF_SECRET') ?: JWT_SECRET;
+    if ($secret === '' || !hash_equals($expected, $secret)) {
+        http_response_code(403); echo json_encode(['error'=>'forbidden']); exit;
+    }
+    $b = body();
+    $records = $b['records'] ?? [];
+
+    function normName(string $s): string {
+        $s = strtoupper(trim($s));
+        $s = preg_replace('/\s+/', ' ', $s);
+        // remove common legal suffixes
+        return $s;
+    }
+
+    $updated = 0; $created = 0; $skipped = 0; $details = [];
+
+    foreach ($records as $rec) {
+        $school  = trim($rec['school'] ?? '');
+        $commune = trim($rec['commune'] ?? '');
+        $phone   = $rec['phone'] ?? null;
+        $mobile  = $rec['mobile'] ?? null;
+        $cname   = trim($rec['contact_name'] ?? '');
+        $cargo   = trim($rec['cargo'] ?? '');
+        $mail    = trim($rec['mail'] ?? '');
+        if (!$school || (!$phone && !$mobile)) { $skipped++; continue; }
+
+        // Find prospect by name (normalized, commune)
+        $stmt = db()->prepare("SELECT id FROM prospects WHERE UPPER(TRIM(name)) = ? AND UPPER(TRIM(commune)) = ? LIMIT 1");
+        $stmt->execute([normName($school), normName($commune)]);
+        $prospect = $stmt->fetch();
+
+        // Fallback: partial match (school name contained in prospect name or vice versa)
+        if (!$prospect) {
+            $stmt = db()->prepare("SELECT id FROM prospects WHERE UPPER(TRIM(commune)) = ? AND (UPPER(TRIM(name)) LIKE ? OR ? LIKE CONCAT('%', UPPER(TRIM(name)), '%')) LIMIT 1");
+            $sn = normName($school);
+            $stmt->execute([normName($commune), '%'.$sn.'%', $sn]);
+            $prospect = $stmt->fetch();
+        }
+
+        if (!$prospect) { $skipped++; $details[] = "NO_MATCH: $school ($commune)"; continue; }
+        $pid = $prospect['id'];
+
+        // Check existing contacts for this phone
+        $phoneClean = preg_replace('/[^0-9]/', '', $phone ?? '');
+        $mobClean   = preg_replace('/[^0-9]/', '', $mobile ?? '');
+        $stmt = db()->prepare("SELECT id, phone, mobile FROM prospect_contacts WHERE prospect_id = ?");
+        $stmt->execute([$pid]);
+        $contacts = $stmt->fetchAll();
+
+        $phoneExists = false;
+        foreach ($contacts as $c) {
+            $cp = preg_replace('/[^0-9]/', '', $c['phone'] ?? '');
+            $cm = preg_replace('/[^0-9]/', '', $c['mobile'] ?? '');
+            if (($phoneClean && $cp === $phoneClean) || ($mobClean && $cm === $mobClean)) {
+                $phoneExists = true; break;
+            }
+        }
+        if ($phoneExists) { $skipped++; continue; }
+
+        // Try to update primary contact if it has no phone/mobile
+        $updated_existing = false;
+        foreach ($contacts as $c) {
+            if (!$c['phone'] && !$c['mobile']) {
+                db()->prepare("UPDATE prospect_contacts SET phone=?, mobile=? WHERE id=?")
+                    ->execute([$phone, $mobile, $c['id']]);
+                $updated++; $updated_existing = true; break;
+            }
+        }
+        if ($updated_existing) continue;
+
+        // Create new contact
+        $cid = uuid();
+        $isPrimary = count($contacts) === 0 ? 1 : 0;
+        db()->prepare("INSERT INTO prospect_contacts (id, prospect_id, name, role, phone, mobile, email, is_primary) VALUES (?,?,?,?,?,?,?,?)")
+            ->execute([$cid, $pid, $cname ?: $school, $cargo ?: null, $phone, $mobile, $mail ?: null, $isPrimary]);
+        $created++;
+    }
+
+    ok(['updated'=>$updated, 'created'=>$created, 'skipped'=>$skipped, 'no_match_sample'=>array_slice($details,0,20)]);
+}
+
 // ── ACTIVITIES ────────────────────────────────────────────────────────────────
 if ($action === 'activity_create') {
     $me = requireAuth();
@@ -2470,6 +2556,162 @@ if ($action === 'outbound_calls_list') {
         }
     }
     ok($rows);
+}
+
+// ── CALL DASHBOARD ────────────────────────────────────────────────────────────
+if ($action === 'call_dashboard') {
+    $me       = requireAuth();
+    $onlyMine = !isAdmin($me);
+
+    $campaign_id = $_GET['campaign_id'] ?? null;
+    if (!$campaign_id) err('campaign_id requerido');
+
+    $date_from      = $_GET['date_from']   ?? date('Y-m-01');
+    $date_to        = $_GET['date_to']     ?? date('Y-m-d');
+    $filter_user    = $onlyMine ? $me['id'] : ($_GET['user_id'] ?? null);
+    $filter_commune = $_GET['commune'] ?? null;
+
+    $where  = [
+        "pr.campaign_id = ?",
+        "DATE_SUB(o.called_at, INTERVAL 3 HOUR) BETWEEN ? AND ?",
+    ];
+    $params = [$campaign_id, $date_from . ' 00:00:00', $date_to . ' 23:59:59'];
+
+    if ($filter_user)    { $where[] = "o.user_id = ?"; $params[] = $filter_user; }
+    if ($filter_commune) { $where[] = "pr.commune = ?"; $params[] = $filter_commune; }
+
+    $whereStr = implode(' AND ', $where);
+
+    $baseJoin = "
+        FROM outbound_calls o
+        JOIN profiles pf ON pf.id = o.user_id
+        LEFT JOIN prospect_contacts c ON (
+            REGEXP_REPLACE(c.mobile, '[^0-9]', '') = REGEXP_REPLACE(o.to_number, '[^0-9]', '')
+            OR REGEXP_REPLACE(c.phone, '[^0-9]', '') = REGEXP_REPLACE(o.to_number, '[^0-9]', '')
+        )
+        LEFT JOIN prospects pr ON pr.id = c.prospect_id
+    ";
+
+    // 1. Summary
+    $stmt = db()->prepare("
+        SELECT COUNT(*) as total,
+               SUM(CASE WHEN COALESCE(o.duration_sec,0) > 0 THEN 1 ELSE 0 END) as answered,
+               COALESCE(SUM(o.duration_sec), 0) as total_seconds
+        $baseJoin WHERE $whereStr
+    ");
+    $stmt->execute($params);
+    $sumRow = $stmt->fetch();
+
+    // 2. Daily breakdown
+    $stmt = db()->prepare("
+        SELECT DATE(DATE_SUB(o.called_at, INTERVAL 3 HOUR)) as date,
+               COUNT(*) as total,
+               SUM(CASE WHEN COALESCE(o.duration_sec,0) > 0 THEN 1 ELSE 0 END) as answered,
+               COALESCE(SUM(o.duration_sec), 0) as total_seconds
+        $baseJoin WHERE $whereStr
+        GROUP BY DATE(DATE_SUB(o.called_at, INTERVAL 3 HOUR))
+        ORDER BY date DESC
+    ");
+    $stmt->execute($params);
+    $daily = $stmt->fetchAll();
+
+    // 3. Executive stats
+    $stmt = db()->prepare("
+        SELECT o.user_id, pf.name as executive_name,
+               COUNT(*) as total,
+               SUM(CASE WHEN COALESCE(o.duration_sec,0) > 0 THEN 1 ELSE 0 END) as answered,
+               COALESCE(SUM(o.duration_sec), 0) as total_seconds,
+               COUNT(DISTINCT DATE(DATE_SUB(o.called_at, INTERVAL 3 HOUR))) as days_active
+        $baseJoin WHERE $whereStr
+        GROUP BY o.user_id, pf.name
+        ORDER BY total DESC
+    ");
+    $stmt->execute($params);
+    $execStats = $stmt->fetchAll();
+
+    // 4. Commune stats
+    $stmt = db()->prepare("
+        SELECT COALESCE(pr.commune, 'Sin asignar') as commune,
+               COUNT(*) as total,
+               SUM(CASE WHEN COALESCE(o.duration_sec,0) > 0 THEN 1 ELSE 0 END) as answered,
+               COUNT(DISTINCT pr.id) as prospects_called
+        $baseJoin WHERE $whereStr
+        GROUP BY pr.commune
+        ORDER BY total DESC
+    ");
+    $stmt->execute($params);
+    $communeStats = $stmt->fetchAll();
+
+    // Total prospects per commune for coverage %
+    $stmtTotals = db()->prepare("
+        SELECT commune, COUNT(*) as total_prospects
+        FROM prospects WHERE campaign_id = ? GROUP BY commune
+    ");
+    $stmtTotals->execute([$campaign_id]);
+    $communeTotals = [];
+    foreach ($stmtTotals->fetchAll() as $r) {
+        $communeTotals[$r['commune']] = (int)$r['total_prospects'];
+    }
+
+    // 5. Top prospects by engagement
+    $stmt = db()->prepare("
+        SELECT pr.id as prospect_id, pr.name as prospect_name, pr.commune, pr.status,
+               COUNT(*) as total_calls,
+               SUM(CASE WHEN COALESCE(o.duration_sec,0) > 0 THEN 1 ELSE 0 END) as answered,
+               CAST(AVG(NULLIF(o.duration_sec, 0)) AS UNSIGNED) as avg_duration,
+               MAX(CASE WHEN o.recording_url IS NOT NULL AND COALESCE(o.duration_sec,0) > 0
+                        THEN o.recording_url ELSE NULL END) as best_recording
+        $baseJoin
+        WHERE $whereStr AND pr.id IS NOT NULL
+        GROUP BY pr.id, pr.name, pr.commune, pr.status
+        HAVING SUM(CASE WHEN COALESCE(o.duration_sec,0) > 0 THEN 1 ELSE 0 END) > 0
+        ORDER BY answered DESC, avg_duration DESC
+        LIMIT 15
+    ");
+    $stmt->execute($params);
+    $topProspects = $stmt->fetchAll();
+
+    // Cast + derive rates
+    foreach ($daily as &$r) {
+        $r['total']         = (int)$r['total'];
+        $r['answered']      = (int)$r['answered'];
+        $r['total_seconds'] = (int)$r['total_seconds'];
+        $r['pct_answered']  = $r['total'] > 0 ? round($r['answered'] / $r['total'] * 100) : 0;
+    }
+    foreach ($execStats as &$r) {
+        $r['total']         = (int)$r['total'];
+        $r['answered']      = (int)$r['answered'];
+        $r['total_seconds'] = (int)$r['total_seconds'];
+        $r['days_active']   = (int)$r['days_active'];
+        $r['pct_answered']  = $r['total'] > 0 ? round($r['answered'] / $r['total'] * 100) : 0;
+        $r['daily_avg']     = $r['days_active'] > 0 ? round($r['total'] / $r['days_active'], 1) : 0;
+    }
+    foreach ($communeStats as &$r) {
+        $r['total']           = (int)$r['total'];
+        $r['answered']        = (int)$r['answered'];
+        $r['prospects_called'] = (int)$r['prospects_called'];
+        $r['total_prospects'] = $communeTotals[$r['commune']] ?? 0;
+        $r['pct_answered']    = $r['total'] > 0 ? round($r['answered'] / $r['total'] * 100) : 0;
+        $r['coverage_pct']    = $r['total_prospects'] > 0 ? round($r['prospects_called'] / $r['total_prospects'] * 100) : 0;
+    }
+    foreach ($topProspects as &$r) {
+        $r['total_calls'] = (int)$r['total_calls'];
+        $r['answered']    = (int)$r['answered'];
+        $r['avg_duration'] = $r['avg_duration'] ? (int)$r['avg_duration'] : null;
+    }
+
+    ok([
+        'summary' => [
+            'total'         => (int)$sumRow['total'],
+            'answered'      => (int)$sumRow['answered'],
+            'pct_answered'  => $sumRow['total'] > 0 ? round($sumRow['answered'] / $sumRow['total'] * 100) : 0,
+            'total_seconds' => (int)$sumRow['total_seconds'],
+        ],
+        'daily'           => $daily,
+        'executive_stats' => array_values($execStats),
+        'commune_stats'   => array_values($communeStats),
+        'top_prospects'   => array_values($topProspects),
+    ]);
 }
 
 if ($action === 'log_outbound_call') {
