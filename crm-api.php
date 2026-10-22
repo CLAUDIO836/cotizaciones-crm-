@@ -2596,141 +2596,165 @@ if ($action === 'call_dashboard') {
         "DATE_SUB(o.called_at, INTERVAL 3 HOUR) BETWEEN ? AND ?",
     ];
     $params = [$campaign_id, $date_from . ' 00:00:00', $date_to . ' 23:59:59'];
-
     if ($filter_user)    { $where[] = "o.user_id = ?"; $params[] = $filter_user; }
     if ($filter_commune) { $where[] = "pr.commune = ?"; $params[] = $filter_commune; }
-
     $whereStr = implode(' AND ', $where);
 
-    $baseJoin = "
-        FROM outbound_calls o
-        JOIN profiles pf ON pf.id = o.user_id
-        LEFT JOIN prospect_contacts c ON (
+    $phoneJoin = "
+        JOIN prospect_contacts c ON (
             RIGHT(REGEXP_REPLACE(c.mobile, '[^0-9]', ''), 9) = RIGHT(REGEXP_REPLACE(o.to_number, '[^0-9]', ''), 9)
-            OR RIGHT(REGEXP_REPLACE(c.phone,  '[^0-9]', ''), 9) = RIGHT(REGEXP_REPLACE(o.to_number, '[^0-9]', ''), 9)
+            OR RIGHT(REGEXP_REPLACE(c.phone, '[^0-9]', ''), 9) = RIGHT(REGEXP_REPLACE(o.to_number, '[^0-9]', ''), 9)
         )
-        LEFT JOIN prospects pr ON pr.id = c.prospect_id
     ";
 
-    // 1. Summary
-    $stmt = db()->prepare("
-        SELECT COUNT(*) as total,
-               SUM(CASE WHEN COALESCE(o.duration_sec,0) > 0 THEN 1 ELSE 0 END) as answered,
-               COALESCE(SUM(o.duration_sec), 0) as total_seconds
-        $baseJoin WHERE $whereStr
-    ");
-    $stmt->execute($params);
-    $sumRow = $stmt->fetch();
-
-    // 2. Daily breakdown
-    $stmt = db()->prepare("
-        SELECT DATE(DATE_SUB(o.called_at, INTERVAL 3 HOUR)) as date,
-               COUNT(*) as total,
-               SUM(CASE WHEN COALESCE(o.duration_sec,0) > 0 THEN 1 ELSE 0 END) as answered,
-               COALESCE(SUM(o.duration_sec), 0) as total_seconds
-        $baseJoin WHERE $whereStr
-        GROUP BY DATE(DATE_SUB(o.called_at, INTERVAL 3 HOUR))
-        ORDER BY date DESC
-    ");
-    $stmt->execute($params);
-    $daily = $stmt->fetchAll();
-
-    // 3. Executive stats
-    $stmt = db()->prepare("
-        SELECT o.user_id, pf.name as executive_name,
-               COUNT(*) as total,
-               SUM(CASE WHEN COALESCE(o.duration_sec,0) > 0 THEN 1 ELSE 0 END) as answered,
-               COALESCE(SUM(o.duration_sec), 0) as total_seconds,
-               COUNT(DISTINCT DATE(DATE_SUB(o.called_at, INTERVAL 3 HOUR))) as days_active
-        $baseJoin WHERE $whereStr
-        GROUP BY o.user_id, pf.name
-        ORDER BY total DESC
-    ");
-    $stmt->execute($params);
-    $execStats = $stmt->fetchAll();
-
-    // 4. Commune stats
-    $stmt = db()->prepare("
-        SELECT COALESCE(pr.commune, 'Sin asignar') as commune,
-               COUNT(*) as total,
-               SUM(CASE WHEN COALESCE(o.duration_sec,0) > 0 THEN 1 ELSE 0 END) as answered,
-               COUNT(DISTINCT pr.id) as prospects_called
-        $baseJoin WHERE $whereStr
-        GROUP BY pr.commune
-        ORDER BY total DESC
-    ");
-    $stmt->execute($params);
-    $communeStats = $stmt->fetchAll();
-
-    // Total prospects per commune for coverage %
-    $stmtTotals = db()->prepare("
-        SELECT commune, COUNT(*) as total_prospects
-        FROM prospects WHERE campaign_id = ? GROUP BY commune
-    ");
-    $stmtTotals->execute([$campaign_id]);
-    $communeTotals = [];
-    foreach ($stmtTotals->fetchAll() as $r) {
-        $communeTotals[$r['commune']] = (int)$r['total_prospects'];
-    }
-
-    // 5. Top prospects by engagement
+    // ── 1. Mejor llamada por colegio (prospect) ───────────────────────────────
     $stmt = db()->prepare("
         SELECT pr.id as prospect_id, pr.name as prospect_name, pr.commune, pr.status,
-               COUNT(*) as total_calls,
-               SUM(CASE WHEN COALESCE(o.duration_sec,0) > 0 THEN 1 ELSE 0 END) as answered,
-               CAST(AVG(NULLIF(o.duration_sec, 0)) AS UNSIGNED) as avg_duration,
-               MAX(CASE WHEN o.recording_url IS NOT NULL AND COALESCE(o.duration_sec,0) > 0
+               MAX(COALESCE(o.duration_sec, 0)) as best_duration,
+               COUNT(*) as call_count,
+               MAX(CASE WHEN o.recording_url IS NOT NULL AND COALESCE(o.duration_sec,0) >= 60
                         THEN o.recording_url ELSE NULL END) as best_recording
-        $baseJoin
-        WHERE $whereStr AND pr.id IS NOT NULL
+        FROM outbound_calls o
+        $phoneJoin
+        JOIN prospects pr ON pr.id = c.prospect_id
+        WHERE $whereStr
         GROUP BY pr.id, pr.name, pr.commune, pr.status
-        HAVING SUM(CASE WHEN COALESCE(o.duration_sec,0) > 0 THEN 1 ELSE 0 END) > 0
-        ORDER BY answered DESC, avg_duration DESC
-        LIMIT 15
     ");
     $stmt->execute($params);
-    $topProspects = $stmt->fetchAll();
+    $prospectRows = $stmt->fetchAll();
 
-    // Cast + derive rates
-    foreach ($daily as &$r) {
-        $r['total']         = (int)$r['total'];
-        $r['answered']      = (int)$r['answered'];
-        $r['total_seconds'] = (int)$r['total_seconds'];
-        $r['pct_answered']  = $r['total'] > 0 ? round($r['answered'] / $r['total'] * 100) : 0;
+    // Clasificar cada colegio por su mejor llamada
+    function classifyDuration(int $d): string {
+        if ($d >= 60) return 'con_intencion';
+        if ($d >= 15) return 'contactado';
+        if ($d >= 5)  return 'fria';
+        return 'fallida';
     }
-    foreach ($execStats as &$r) {
-        $r['total']         = (int)$r['total'];
-        $r['answered']      = (int)$r['answered'];
-        $r['total_seconds'] = (int)$r['total_seconds'];
-        $r['days_active']   = (int)$r['days_active'];
-        $r['pct_answered']  = $r['total'] > 0 ? round($r['answered'] / $r['total'] * 100) : 0;
-        $r['daily_avg']     = $r['days_active'] > 0 ? round($r['total'] / $r['days_active'], 1) : 0;
+
+    $summary = ['con_intencion' => 0, 'contactado' => 0, 'fria' => 0, 'fallida' => 0, 'total_colegios' => 0];
+    foreach ($prospectRows as &$p) {
+        $p['best_duration'] = (int)$p['best_duration'];
+        $p['call_count']    = (int)$p['call_count'];
+        $p['category']      = classifyDuration($p['best_duration']);
+        $summary[$p['category']]++;
+        $summary['total_colegios']++;
     }
-    foreach ($communeStats as &$r) {
-        $r['total']           = (int)$r['total'];
-        $r['answered']        = (int)$r['answered'];
-        $r['prospects_called'] = (int)$r['prospects_called'];
-        $r['total_prospects'] = $communeTotals[$r['commune']] ?? 0;
-        $r['pct_answered']    = $r['total'] > 0 ? round($r['answered'] / $r['total'] * 100) : 0;
-        $r['coverage_pct']    = $r['total_prospects'] > 0 ? round($r['prospects_called'] / $r['total_prospects'] * 100) : 0;
+    unset($p);
+
+    // Total colegios campaña (para % cobertura)
+    $stmtTotal = db()->prepare(
+        "SELECT COUNT(*) FROM prospects WHERE campaign_id = ?" . ($filter_commune ? " AND commune = ?" : "")
+    );
+    $stmtTotal->execute($filter_commune ? [$campaign_id, $filter_commune] : [$campaign_id]);
+    $totalCampaign = (int)$stmtTotal->fetchColumn();
+    $summary['total_campaign']  = $totalCampaign;
+    $summary['coverage_pct']    = $totalCampaign > 0 ? round($summary['total_colegios'] / $totalCampaign * 100) : 0;
+    $summary['intencion_pct']   = $totalCampaign > 0 ? round($summary['con_intencion']  / $totalCampaign * 100) : 0;
+
+    // ── 2. Detalle por ejecutivo × día × colegio ─────────────────────────────
+    $stmt = db()->prepare("
+        SELECT o.user_id, pf.name as executive_name,
+               DATE(DATE_SUB(o.called_at, INTERVAL 3 HOUR)) as date,
+               pr.id as prospect_id,
+               MAX(COALESCE(o.duration_sec, 0)) as best_duration
+        FROM outbound_calls o
+        JOIN profiles pf ON pf.id = o.user_id
+        $phoneJoin
+        JOIN prospects pr ON pr.id = c.prospect_id
+        WHERE $whereStr
+        GROUP BY o.user_id, pf.name, DATE(DATE_SUB(o.called_at, INTERVAL 3 HOUR)), pr.id
+    ");
+    $stmt->execute($params);
+    $execDailyRows = $stmt->fetchAll();
+
+    $execMap = [];
+    foreach ($execDailyRows as $r) {
+        $uid  = $r['user_id'];
+        $date = $r['date'];
+        $cat  = classifyDuration((int)$r['best_duration']);
+        if (!isset($execMap[$uid])) {
+            $execMap[$uid] = [
+                'user_id' => $uid, 'executive_name' => $r['executive_name'],
+                'con_intencion' => 0, 'contactado' => 0, 'fria' => 0, 'fallida' => 0,
+                'total_colegios' => 0, 'days' => [], 'daily_intencion' => [],
+            ];
+        }
+        $execMap[$uid][$cat]++;
+        $execMap[$uid]['total_colegios']++;
+        $execMap[$uid]['days'][$date] = true;
+        if ($cat === 'con_intencion')
+            $execMap[$uid]['daily_intencion'][$date] = ($execMap[$uid]['daily_intencion'][$date] ?? 0) + 1;
     }
-    foreach ($topProspects as &$r) {
-        $r['total_calls'] = (int)$r['total_calls'];
-        $r['answered']    = (int)$r['answered'];
-        $r['avg_duration'] = $r['avg_duration'] ? (int)$r['avg_duration'] : null;
+
+    $execStats = [];
+    foreach ($execMap as $e) {
+        $days = count($e['days']);
+        $execStats[] = [
+            'user_id'              => $e['user_id'],
+            'executive_name'       => $e['executive_name'],
+            'con_intencion'        => $e['con_intencion'],
+            'contactado'           => $e['contactado'],
+            'fria'                 => $e['fria'],
+            'fallida'              => $e['fallida'],
+            'total_colegios'       => $e['total_colegios'],
+            'days_active'          => $days,
+            'daily_avg_intencion'  => $days > 0 ? round($e['con_intencion'] / $days, 1) : 0,
+        ];
     }
+    usort($execStats, fn($a,$b) => $b['con_intencion'] - $a['con_intencion']);
+
+    // ── 3. Comunas ────────────────────────────────────────────────────────────
+    $stmtCommTotals = db()->prepare("SELECT commune, COUNT(*) as t FROM prospects WHERE campaign_id = ? GROUP BY commune");
+    $stmtCommTotals->execute([$campaign_id]);
+    $commTotals = [];
+    foreach ($stmtCommTotals->fetchAll() as $r) $commTotals[$r['commune']] = (int)$r['t'];
+
+    $commMap = [];
+    foreach ($prospectRows as $p) {
+        $c = $p['commune'] ?? 'Sin asignar';
+        if (!isset($commMap[$c])) $commMap[$c] = ['con_intencion'=>0,'contactado'=>0,'fria'=>0,'fallida'=>0,'llamados'=>0];
+        $commMap[$c][$p['category']]++;
+        $commMap[$c]['llamados']++;
+    }
+
+    $communeStats = [];
+    foreach ($commMap as $comm => $d) {
+        $total = $commTotals[$comm] ?? 0;
+        $communeStats[] = [
+            'commune'       => $comm,
+            'total'         => $total,
+            'llamados'      => $d['llamados'],
+            'con_intencion' => $d['con_intencion'],
+            'contactado'    => $d['contactado'],
+            'fria'          => $d['fria'],
+            'fallida'       => $d['fallida'],
+            'sin_contacto'  => max(0, $total - $d['llamados']),
+            'coverage_pct'  => $total > 0 ? round($d['llamados']       / $total * 100) : 0,
+            'intencion_pct' => $total > 0 ? round($d['con_intencion']  / $total * 100) : 0,
+        ];
+    }
+    // Añadir comunas sin ninguna llamada
+    foreach ($commTotals as $comm => $total) {
+        if (!isset($commMap[$comm]) && (!$filter_commune || $comm === $filter_commune)) {
+            $communeStats[] = [
+                'commune' => $comm, 'total' => $total, 'llamados' => 0,
+                'con_intencion' => 0, 'contactado' => 0, 'fria' => 0, 'fallida' => 0,
+                'sin_contacto' => $total, 'coverage_pct' => 0, 'intencion_pct' => 0,
+            ];
+        }
+    }
+    usort($communeStats, fn($a,$b) => $b['con_intencion'] - $a['con_intencion']);
+
+    // ── 4. Top prospectos (mejor vínculo = mayor duración ≥15s) ──────────────
+    $topProspects = array_values(array_filter($prospectRows, fn($p) => $p['best_duration'] >= 15));
+    usort($topProspects, fn($a,$b) => $b['best_duration'] - $a['best_duration']);
+    $topProspects = array_slice($topProspects, 0, 15);
 
     ok([
-        'summary' => [
-            'total'         => (int)$sumRow['total'],
-            'answered'      => (int)$sumRow['answered'],
-            'pct_answered'  => $sumRow['total'] > 0 ? round($sumRow['answered'] / $sumRow['total'] * 100) : 0,
-            'total_seconds' => (int)$sumRow['total_seconds'],
-        ],
-        'daily'           => $daily,
-        'executive_stats' => array_values($execStats),
-        'commune_stats'   => array_values($communeStats),
-        'top_prospects'   => array_values($topProspects),
+        'summary'        => $summary,
+        'executive_stats' => $execStats,
+        'commune_stats'  => array_values($communeStats),
+        'top_prospects'  => $topProspects,
     ]);
 }
 

@@ -2,51 +2,51 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import {
-  Phone, PhoneCall, Clock, Target, TrendingUp, ArrowLeft,
-  ChevronDown, ChevronUp, Play, Pencil, Check, X,
+  TrendingUp, ArrowLeft, Target, Pencil, Check, X,
+  ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { Campaign } from '@/lib/prospectos-types'
 import { UserSession } from '@/lib/api'
 
-const STORAGE_KEY = 'crm_daily_call_goal'
+const STORAGE_KEY = 'crm_daily_intencion_goal'
 const DEFAULT_GOAL = 36
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Summary {
-  total: number
-  answered: number
-  pct_answered: number
-  total_seconds: number
-}
-
-interface DailyRow {
-  date: string
-  total: number
-  answered: number
-  total_seconds: number
-  pct_answered: number
+  con_intencion: number
+  contactado: number
+  fria: number
+  fallida: number
+  total_colegios: number
+  total_campaign: number
+  coverage_pct: number
+  intencion_pct: number
 }
 
 interface ExecRow {
   user_id: string
   executive_name: string
-  total: number
-  answered: number
-  pct_answered: number
-  total_seconds: number
+  con_intencion: number
+  contactado: number
+  fria: number
+  fallida: number
+  total_colegios: number
   days_active: number
-  daily_avg: number
+  daily_avg_intencion: number
 }
 
 interface CommuneRow {
   commune: string
   total: number
-  answered: number
-  pct_answered: number
-  prospects_called: number
-  total_prospects: number
+  llamados: number
+  con_intencion: number
+  contactado: number
+  fria: number
+  fallida: number
+  sin_contacto: number
   coverage_pct: number
+  intencion_pct: number
 }
 
 interface TopProspect {
@@ -54,15 +54,14 @@ interface TopProspect {
   prospect_name: string
   commune: string
   status: string
-  total_calls: number
-  answered: number
-  avg_duration: number | null
+  best_duration: number
+  call_count: number
+  category: string
   best_recording: string | null
 }
 
 interface DashboardData {
   summary: Summary
-  daily: DailyRow[]
   executive_stats: ExecRow[]
   commune_stats: CommuneRow[]
   top_prospects: TopProspect[]
@@ -70,48 +69,54 @@ interface DashboardData {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtDur(sec: number | null): string {
+function fmtDur(sec: number): string {
   if (!sec) return '—'
   const m = Math.floor(sec / 60)
   const s = sec % 60
-  return `${m}:${String(s).padStart(2, '0')}`
+  return m > 0 ? `${m}m ${String(s).padStart(2, '0')}s` : `${s}s`
 }
 
-function fmtHours(sec: number): string {
-  if (sec < 60) return `${sec}s`
-  if (sec < 3600) return `${Math.round(sec / 60)}m`
-  return `${(sec / 3600).toFixed(1)}h`
+const CAT_LABEL: Record<string, string> = {
+  con_intencion: 'Con intención',
+  contactado:    'Contactado',
+  fria:          'Llamada fría',
+  fallida:       'Fallida',
+}
+const CAT_COLOR: Record<string, string> = {
+  con_intencion: 'bg-green-100 text-green-700',
+  contactado:    'bg-yellow-100 text-yellow-700',
+  fria:          'bg-orange-100 text-orange-700',
+  fallida:       'bg-red-100 text-red-700',
+}
+const CAT_DOT: Record<string, string> = {
+  con_intencion: 'bg-green-500',
+  contactado:    'bg-yellow-400',
+  fria:          'bg-orange-400',
+  fallida:       'bg-red-400',
 }
 
-const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10)
-}
+function todayStr() { return new Date().toISOString().slice(0, 10) }
 
 function monthRange(year: number, month: number) {
-  const m = String(month).padStart(2, '0')
+  const m   = String(month).padStart(2, '0')
   const last = new Date(year, month, 0).getDate()
-  return {
-    from: `${year}-${m}-01`,
-    to:   `${year}-${m}-${String(last).padStart(2, '0')}`,
-  }
+  return { from: `${year}-${m}-01`, to: `${year}-${m}-${String(last).padStart(2, '0')}` }
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function StatCard({ icon, label, value, sub, color = '#1B8A4B' }: {
-  icon: React.ReactNode; label: string; value: string; sub?: string; color?: string
+function BigCard({ value, label, sub, dot }: {
+  value: number | string; label: string; sub?: string; dot: string
 }) {
   return (
     <div className="bg-white rounded-xl border p-5 flex items-center gap-4">
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0"
-        style={{ background: color }}>
-        {icon}
-      </div>
+      <div className={`w-3 h-10 rounded-full flex-shrink-0 ${dot}`} />
       <div>
-        <div className="text-2xl font-bold text-gray-900 tabular-nums">{value}</div>
-        <div className="text-xs text-gray-500 font-medium">{label}</div>
+        <div className="text-3xl font-bold text-gray-900 tabular-nums leading-none">{value}</div>
+        <div className="text-sm font-semibold text-gray-700 mt-1">{label}</div>
         {sub && <div className="text-xs text-gray-400 mt-0.5">{sub}</div>}
       </div>
     </div>
@@ -119,65 +124,44 @@ function StatCard({ icon, label, value, sub, color = '#1B8A4B' }: {
 }
 
 function GoalBar({ exec, goal }: { exec: ExecRow; goal: number }) {
-  const pct = Math.min(100, Math.round((exec.daily_avg / goal) * 100))
+  const pct   = Math.min(100, Math.round((exec.daily_avg_intencion / goal) * 100))
   const color = pct >= 100 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626'
   return (
     <div>
-      <div className="flex justify-between items-center mb-1">
-        <span className="text-sm font-medium text-gray-800">{exec.executive_name}</span>
-        <span className="text-xs text-gray-500 tabular-nums">
-          {exec.daily_avg.toFixed(1)} / {goal} por día · {exec.total} total
-        </span>
+      <div className="flex justify-between items-center mb-1.5">
+        <span className="text-sm font-semibold text-gray-800">{exec.executive_name}</span>
+        <div className="text-xs text-gray-500 tabular-nums text-right">
+          <span className="font-bold" style={{ color }}>{exec.daily_avg_intencion.toFixed(1)}</span>
+          <span className="text-gray-400"> / {goal} colegios/día con intención</span>
+          <span className="ml-2 text-gray-400">· {exec.con_intencion} total</span>
+        </div>
       </div>
-      <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+      <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
         <div className="h-full rounded-full transition-all duration-500"
           style={{ width: `${pct}%`, background: color }} />
       </div>
-    </div>
-  )
-}
-
-function CommuneBadge({ row }: { row: CommuneRow }) {
-  const grade = row.pct_answered >= 50 ? '🟢' : row.pct_answered >= 25 ? '🟡' : '🔴'
-  return (
-    <div className="flex items-center gap-3 py-2 border-b last:border-0">
-      <span className="text-base w-5">{grade}</span>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-medium text-sm text-gray-800 truncate">{row.commune}</span>
-          <span className="text-xs text-gray-500 tabular-nums whitespace-nowrap">
-            {row.answered}/{row.total} contestadas
-          </span>
-        </div>
-        <div className="mt-1 flex items-center gap-3">
-          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full rounded-full bg-green-500"
-              style={{ width: `${row.pct_answered}%` }} />
-          </div>
-          <span className="text-xs text-gray-400 tabular-nums w-16 text-right">
-            {row.coverage_pct}% cobertura
-          </span>
-        </div>
+      <div className="flex gap-4 mt-1.5 text-xs text-gray-400 tabular-nums">
+        <span><span className="font-medium text-yellow-600">{exec.contactado}</span> contactados</span>
+        <span><span className="font-medium text-orange-500">{exec.fria}</span> frías</span>
+        <span><span className="font-medium text-red-400">{exec.fallida}</span> fallidas</span>
       </div>
     </div>
   )
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function ProspectosDashboard({
-  campaign, user, isAdmin, executives,
+  campaign, isAdmin, executives,
 }: {
   campaign: Campaign
   user: UserSession
   isAdmin: boolean
   executives: { id: string; name: string }[]
 }) {
-  const today = todayStr()
   const now   = new Date()
   const year  = now.getFullYear()
   const month = now.getMonth() + 1
-
   const { from: initFrom, to: initTo } = monthRange(year, month)
 
   const [dateFrom,   setDateFrom]   = useState(initFrom)
@@ -188,18 +172,19 @@ export default function ProspectosDashboard({
   const [quickMonth, setQuickMonth] = useState(String(month))
   const [loading,    setLoading]    = useState(false)
   const [data,       setData]       = useState<DashboardData | null>(null)
-  const [showDaily,  setShowDaily]  = useState(false)
+  const [showComm,   setShowComm]   = useState(true)
+  const [showTop,    setShowTop]    = useState(true)
 
-  // Editable goal
-  const [goal,       setGoal]       = useState(DEFAULT_GOAL)
-  const [editGoal,   setEditGoal]   = useState(false)
-  const [goalInput,  setGoalInput]  = useState(String(DEFAULT_GOAL))
+  // Meta editable
+  const [goal,      setGoal]      = useState(DEFAULT_GOAL)
+  const [editGoal,  setEditGoal]  = useState(false)
+  const [goalInput, setGoalInput] = useState(String(DEFAULT_GOAL))
   const goalRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) { setGoal(parseInt(stored)); setGoalInput(stored) }
+      const v = localStorage.getItem(STORAGE_KEY)
+      if (v) { setGoal(parseInt(v)); setGoalInput(v) }
     } catch { /* ignore */ }
   }, [])
 
@@ -215,12 +200,8 @@ export default function ProspectosDashboard({
     setQuickYear(y); setQuickMonth(m)
     if (!y) { setDateFrom(''); setDateTo(''); return }
     const yi = parseInt(y)
-    if (m) {
-      const { from, to } = monthRange(yi, parseInt(m))
-      setDateFrom(from); setDateTo(to)
-    } else {
-      setDateFrom(`${yi}-01-01`); setDateTo(`${yi}-12-31`)
-    }
+    if (m) { const r = monthRange(yi, parseInt(m)); setDateFrom(r.from); setDateTo(r.to) }
+    else   { setDateFrom(`${yi}-01-01`); setDateTo(`${yi}-12-31`) }
   }
 
   const fetchData = useCallback(async () => {
@@ -231,15 +212,11 @@ export default function ProspectosDashboard({
       if (dateTo)     qs.set('date_to', dateTo)
       if (filterUser) qs.set('user_id', filterUser)
       if (filterComm) qs.set('commune', filterComm)
-
-      const res = await fetch(`/api/prospectos/${campaign.id}/dashboard?${qs}`)
+      const res  = await fetch(`/api/prospectos/${campaign.id}/dashboard?${qs}`)
       const json = await res.json()
       setData(json.data ?? null)
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setLoading(false)
-    }
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
   }, [campaign.id, dateFrom, dateTo, filterUser, filterComm])
 
   useEffect(() => { fetchData() }, [fetchData])
@@ -248,14 +225,15 @@ export default function ProspectosDashboard({
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
+
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <Link href={`/prospectos/${campaign.id}`}
-            className="text-gray-400 hover:text-gray-600 transition-colors">
+            className="text-gray-400 hover:text-gray-600">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white flex-shrink-0"
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
             style={{ background: '#1B8A4B' }}>
             <TrendingUp className="w-5 h-5" />
           </div>
@@ -267,31 +245,23 @@ export default function ProspectosDashboard({
 
         {/* Meta editable */}
         <div className="flex items-center gap-2 bg-white border rounded-xl px-4 py-2">
-          <Target className="w-4 h-4 text-green-600" />
-          <span className="text-sm text-gray-600">Meta diaria:</span>
+          <Target className="w-4 h-4 text-green-600 flex-shrink-0" />
+          <span className="text-sm text-gray-600">Meta:</span>
           {editGoal ? (
             <>
-              <input
-                ref={goalRef}
-                type="number"
-                value={goalInput}
+              <input ref={goalRef} type="number" value={goalInput}
                 onChange={e => setGoalInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') saveGoal(); if (e.key === 'Escape') setEditGoal(false) }}
-                className="w-14 text-sm font-bold text-center border-b-2 border-green-500 outline-none bg-transparent"
-                autoFocus
-              />
-              <button onClick={saveGoal} className="text-green-600 hover:text-green-700">
-                <Check className="w-4 h-4" />
-              </button>
-              <button onClick={() => setEditGoal(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-3.5 h-3.5" />
-              </button>
+                className="w-14 text-sm font-bold text-center border-b-2 border-green-500 outline-none bg-transparent" autoFocus />
+              <span className="text-xs text-gray-400">colegios/día</span>
+              <button onClick={saveGoal} className="text-green-600"><Check className="w-4 h-4" /></button>
+              <button onClick={() => setEditGoal(false)} className="text-gray-400"><X className="w-3.5 h-3.5" /></button>
             </>
           ) : (
             <>
-              <span className="text-sm font-bold text-gray-900">{goal} llamadas</span>
-              <button onClick={() => { setEditGoal(true); setGoalInput(String(goal)) }}
-                className="text-gray-400 hover:text-gray-600">
+              <span className="text-sm font-bold text-gray-900">{goal} colegios/día</span>
+              <span className="text-xs text-gray-400">con intención</span>
+              <button onClick={() => { setEditGoal(true); setGoalInput(String(goal)) }} className="text-gray-400 hover:text-gray-600">
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             </>
@@ -300,104 +270,121 @@ export default function ProspectosDashboard({
       </div>
 
       {/* Filtros */}
-      <div className="bg-white rounded-xl border p-4">
-        <div className="flex flex-wrap gap-2 items-center">
-          <button
-            onClick={() => { setDateFrom(today); setDateTo(today); setQuickYear(''); setQuickMonth('') }}
-            className={`px-3 py-1.5 text-xs rounded-lg border font-medium transition-colors ${
-              dateFrom === today && dateTo === today
-                ? 'bg-green-600 text-white border-green-600'
-                : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-            }`}>
-            Hoy
+      <div className="bg-white rounded-xl border p-4 flex flex-wrap gap-2 items-center">
+        <button
+          onClick={() => { setDateFrom(todayStr()); setDateTo(todayStr()); setQuickYear(''); setQuickMonth('') }}
+          className={`px-3 py-1.5 text-xs rounded-lg border font-medium transition-colors ${
+            dateFrom === todayStr() && dateTo === todayStr()
+              ? 'bg-green-600 text-white border-green-600'
+              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+          }`}>Hoy</button>
+        <select value={quickYear} onChange={e => applyQuick(e.target.value, quickMonth)}
+          className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none">
+          <option value="">Año</option>
+          {[year, year-1].map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <select value={quickMonth} onChange={e => applyQuick(quickYear, e.target.value)}
+          className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none">
+          <option value="">Mes</option>
+          {MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+        </select>
+        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+          className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none" />
+        <span className="text-xs text-gray-400">al</span>
+        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+          className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none" />
+        {isAdmin && (
+          <select value={filterUser} onChange={e => setFilterUser(e.target.value)}
+            className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none">
+            <option value="">Todos los ejecutivos</option>
+            {executives.map(ex => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
+          </select>
+        )}
+        <select value={filterComm} onChange={e => setFilterComm(e.target.value)}
+          className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none">
+          <option value="">Todas las comunas</option>
+          {(data?.commune_stats ?? []).filter(c => c.llamados > 0).map(c => (
+            <option key={c.commune} value={c.commune}>{c.commune}</option>
+          ))}
+        </select>
+        {(filterUser || filterComm) && (
+          <button onClick={() => { setFilterUser(''); setFilterComm('') }}
+            className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">
+            <X className="w-3 h-3" /> Limpiar
           </button>
-          <select value={quickYear} onChange={e => applyQuick(e.target.value, quickMonth)}
-            className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none">
-            <option value="">Año</option>
-            {[year, year - 1].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <select value={quickMonth} onChange={e => applyQuick(quickYear, e.target.value)}
-            className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none">
-            <option value="">Mes</option>
-            {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-          </select>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-            className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none" />
-          <span className="text-xs text-gray-400">al</span>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-            className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none" />
-          {isAdmin && (
-            <select value={filterUser} onChange={e => setFilterUser(e.target.value)}
-              className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none">
-              <option value="">Todos los ejecutivos</option>
-              {executives.map(ex => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
-            </select>
-          )}
-          <select value={filterComm} onChange={e => setFilterComm(e.target.value)}
-            className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none">
-            <option value="">Todas las comunas</option>
-            {(data?.commune_stats ?? []).map(c => (
-              <option key={c.commune} value={c.commune}>{c.commune}</option>
-            ))}
-          </select>
-          {(filterUser || filterComm) && (
-            <button onClick={() => { setFilterUser(''); setFilterComm('') }}
-              className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">
-              <X className="w-3 h-3" /> Limpiar
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
-          <div className="w-4 h-4 border-2 border-gray-300 border-t-green-500 rounded-full animate-spin" />
-          Cargando datos...
+        <div className="flex items-center justify-center py-16 gap-2 text-gray-400">
+          <div className="w-4 h-4 border-2 border-gray-200 border-t-green-500 rounded-full animate-spin" />
+          Cargando...
         </div>
       )}
 
       {!loading && data && (
         <>
-          {/* Summary cards */}
+          {/* ── Summary cards ── */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard icon={<Phone className="w-5 h-5" />}
-              label="Llamadas totales" value={String(s?.total ?? 0)} />
-            <StatCard icon={<PhoneCall className="w-5 h-5" />}
-              label="Contestadas" value={String(s?.answered ?? 0)}
-              sub={`${s?.pct_answered ?? 0}% efectividad`}
-              color="#2563eb" />
-            <StatCard icon={<Clock className="w-5 h-5" />}
-              label="Tiempo total" value={fmtHours(s?.total_seconds ?? 0)}
-              color="#7c3aed" />
-            <StatCard icon={<Target className="w-5 h-5" />}
-              label="Promedio diario" value={
-                data.executive_stats.length > 0
-                  ? (data.executive_stats.reduce((acc, e) => acc + e.daily_avg, 0) / data.executive_stats.length).toFixed(1)
-                  : '0'
-              }
-              sub={`Meta: ${goal} por ejecutivo`}
-              color="#d97706" />
+            <BigCard value={s?.con_intencion ?? 0}
+              label="Con intención de venta"
+              sub={`≥1 min · ${s?.intencion_pct ?? 0}% del total campaña`}
+              dot="bg-green-500" />
+            <BigCard value={s?.contactado ?? 0}
+              label="Contactados"
+              sub="15 – 59 segundos"
+              dot="bg-yellow-400" />
+            <BigCard value={s?.fria ?? 0}
+              label="Llamada fría"
+              sub="5 – 14 segundos"
+              dot="bg-orange-400" />
+            <BigCard value={s?.fallida ?? 0}
+              label="Fallidas / No contestó"
+              sub="0 – 4 segundos"
+              dot="bg-red-400" />
           </div>
 
-          {/* Meta por ejecutivo */}
-          {data.executive_stats.length > 0 && (
-            <div className="bg-white rounded-xl border p-5">
-              <h2 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                <Target className="w-4 h-4 text-green-600" />
-                Progreso meta diaria por ejecutivo
-                <span className="text-xs font-normal text-gray-400 ml-1">
-                  ({goal} llamadas/día · promedio del período)
-                </span>
-              </h2>
-              <div className="space-y-4">
-                {data.executive_stats.map(exec => (
-                  <GoalBar key={exec.user_id} exec={exec} goal={goal} />
+          {/* Cobertura global */}
+          {s && (
+            <div className="bg-white rounded-xl border px-5 py-4 flex items-center gap-6 flex-wrap">
+              <div>
+                <span className="text-2xl font-bold text-gray-900 tabular-nums">{s.total_colegios}</span>
+                <span className="text-gray-400 text-sm ml-1">/ {s.total_campaign} colegios llamados</span>
+              </div>
+              <div className="flex-1 min-w-48">
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Cobertura total</span>
+                  <span className="font-semibold">{s.coverage_pct}%</span>
+                </div>
+                <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-blue-500 transition-all"
+                    style={{ width: `${s.coverage_pct}%` }} />
+                </div>
+              </div>
+              <div className="flex gap-3 text-xs flex-wrap">
+                {(['con_intencion','contactado','fria','fallida'] as const).map(cat => (
+                  <span key={cat} className={`px-2 py-1 rounded-full font-medium ${CAT_COLOR[cat]}`}>
+                    {s[cat]} {CAT_LABEL[cat].toLowerCase()}
+                  </span>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Tabla ejecutivos */}
+          {/* ── Meta por ejecutivo ── */}
+          {data.executive_stats.length > 0 && (
+            <div className="bg-white rounded-xl border p-5 space-y-5">
+              <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+                <Target className="w-4 h-4 text-green-600" />
+                Progreso meta — colegios con intención por ejecutivo
+              </h2>
+              {data.executive_stats.map(exec => (
+                <GoalBar key={exec.user_id} exec={exec} goal={goal} />
+              ))}
+            </div>
+          )}
+
+          {/* ── Tabla ejecutivos (admin) ── */}
           {isAdmin && data.executive_stats.length > 0 && (
             <div className="bg-white rounded-xl border overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100">
@@ -407,29 +394,29 @@ export default function ProspectosDashboard({
                 <thead className="bg-gray-50 border-b text-xs text-gray-500 font-medium">
                   <tr>
                     <th className="text-left px-5 py-3">Ejecutivo</th>
-                    <th className="text-center px-3 py-3">Total</th>
-                    <th className="text-center px-3 py-3">Contestadas</th>
-                    <th className="text-center px-3 py-3">% Efect.</th>
-                    <th className="text-center px-3 py-3">Días activo</th>
-                    <th className="text-center px-3 py-3">Prom/día</th>
-                    <th className="text-center px-3 py-3">T. total</th>
+                    <th className="text-center px-3 py-3 text-green-600">Con intención</th>
+                    <th className="text-center px-3 py-3 text-yellow-600">Contactado</th>
+                    <th className="text-center px-3 py-3 text-orange-500">Fría</th>
+                    <th className="text-center px-3 py-3 text-red-400">Fallida</th>
+                    <th className="text-center px-3 py-3">Total col.</th>
+                    <th className="text-center px-3 py-3">Días</th>
+                    <th className="text-center px-3 py-3">Inten./día</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.executive_stats.map(exec => {
-                    const onGoal = exec.daily_avg >= goal
+                    const onGoal = exec.daily_avg_intencion >= goal
                     return (
                       <tr key={exec.user_id} className="border-b last:border-0 hover:bg-gray-50">
                         <td className="px-5 py-3 font-medium text-gray-800">{exec.executive_name}</td>
-                        <td className="px-3 py-3 text-center tabular-nums">{exec.total}</td>
-                        <td className="px-3 py-3 text-center tabular-nums text-blue-600">{exec.answered}</td>
-                        <td className="px-3 py-3 text-center tabular-nums">{exec.pct_answered}%</td>
-                        <td className="px-3 py-3 text-center tabular-nums">{exec.days_active}</td>
-                        <td className={`px-3 py-3 text-center tabular-nums font-semibold ${onGoal ? 'text-green-600' : 'text-red-500'}`}>
-                          {exec.daily_avg.toFixed(1)}
-                        </td>
-                        <td className="px-3 py-3 text-center tabular-nums text-gray-500">
-                          {fmtHours(exec.total_seconds)}
+                        <td className="px-3 py-3 text-center tabular-nums font-bold text-green-600">{exec.con_intencion}</td>
+                        <td className="px-3 py-3 text-center tabular-nums text-yellow-600">{exec.contactado}</td>
+                        <td className="px-3 py-3 text-center tabular-nums text-orange-500">{exec.fria}</td>
+                        <td className="px-3 py-3 text-center tabular-nums text-red-400">{exec.fallida}</td>
+                        <td className="px-3 py-3 text-center tabular-nums">{exec.total_colegios}</td>
+                        <td className="px-3 py-3 text-center tabular-nums text-gray-500">{exec.days_active}</td>
+                        <td className={`px-3 py-3 text-center tabular-nums font-bold ${onGoal ? 'text-green-600' : 'text-red-500'}`}>
+                          {exec.daily_avg_intencion.toFixed(1)}
                         </td>
                       </tr>
                     )
@@ -439,56 +426,54 @@ export default function ProspectosDashboard({
             </div>
           )}
 
-          {/* Comunas */}
+          {/* ── Comunas ── */}
           {data.commune_stats.length > 0 && (
-            <div className="bg-white rounded-xl border p-5">
-              <h2 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                <Phone className="w-4 h-4 text-green-600" />
-                Rendimiento por comuna
-                <span className="text-xs font-normal text-gray-400 ml-1">
-                  🟢 &gt;50% contestadas · 🟡 25–50% · 🔴 &lt;25%
-                </span>
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
-                {data.commune_stats.map(c => (
-                  <CommuneBadge key={c.commune} row={c} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Detalle diario (colapsable) */}
-          {data.daily.length > 0 && (
             <div className="bg-white rounded-xl border overflow-hidden">
-              <button
-                className="w-full px-5 py-4 flex items-center justify-between text-left"
-                onClick={() => setShowDaily(v => !v)}>
-                <h2 className="font-semibold text-gray-800">Detalle por día</h2>
-                {showDaily ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+              <button className="w-full px-5 py-4 flex items-center justify-between"
+                onClick={() => setShowComm(v => !v)}>
+                <h2 className="font-semibold text-gray-800">Rendimiento por comuna</h2>
+                {showComm ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
               </button>
-              {showDaily && (
+              {showComm && (
                 <table className="w-full text-sm border-t">
                   <thead className="bg-gray-50 border-b text-xs text-gray-500 font-medium">
                     <tr>
-                      <th className="text-left px-5 py-3">Fecha</th>
+                      <th className="text-left px-5 py-3">Comuna</th>
                       <th className="text-center px-3 py-3">Total</th>
-                      <th className="text-center px-3 py-3">Contestadas</th>
-                      <th className="text-center px-3 py-3">% Efect.</th>
-                      <th className="text-center px-3 py-3">T. llamadas</th>
+                      <th className="text-center px-3 py-3">Llamados</th>
+                      <th className="text-center px-3 py-3 text-green-600">Intención</th>
+                      <th className="text-center px-3 py-3 text-yellow-600">Contactado</th>
+                      <th className="text-center px-3 py-3 text-orange-500">Fría</th>
+                      <th className="text-center px-3 py-3 text-red-400">Fallida</th>
+                      <th className="text-center px-3 py-3">Sin contacto</th>
+                      <th className="text-center px-3 py-3">Cobertura</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.daily.map(row => {
-                      const [y, m, d] = row.date.split('-')
+                    {data.commune_stats.map(c => {
+                      const dot = c.intencion_pct >= 20 ? 'bg-green-500' : c.intencion_pct >= 5 ? 'bg-yellow-400' : c.llamados > 0 ? 'bg-orange-400' : 'bg-red-300'
                       return (
-                        <tr key={row.date} className="border-b last:border-0 hover:bg-gray-50">
-                          <td className="px-5 py-2.5 font-medium text-gray-700 tabular-nums">
-                            {d}/{m}/{y}
+                        <tr key={c.commune} className="border-b last:border-0 hover:bg-gray-50">
+                          <td className="px-5 py-2.5 font-medium text-gray-800 flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
+                            {c.commune}
                           </td>
-                          <td className="px-3 py-2.5 text-center tabular-nums">{row.total}</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums text-blue-600">{row.answered}</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums">{row.pct_answered}%</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums text-gray-500">{fmtHours(row.total_seconds)}</td>
+                          <td className="px-3 py-2.5 text-center tabular-nums text-gray-500">{c.total}</td>
+                          <td className="px-3 py-2.5 text-center tabular-nums">{c.llamados}</td>
+                          <td className="px-3 py-2.5 text-center tabular-nums font-bold text-green-600">{c.con_intencion}</td>
+                          <td className="px-3 py-2.5 text-center tabular-nums text-yellow-600">{c.contactado}</td>
+                          <td className="px-3 py-2.5 text-center tabular-nums text-orange-500">{c.fria}</td>
+                          <td className="px-3 py-2.5 text-center tabular-nums text-red-400">{c.fallida}</td>
+                          <td className="px-3 py-2.5 text-center tabular-nums text-gray-400">{c.sin_contacto}</td>
+                          <td className="px-3 py-2.5 text-center">
+                            <div className="flex items-center gap-1.5">
+                              <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden w-16">
+                                <div className="h-full rounded-full bg-blue-400"
+                                  style={{ width: `${c.coverage_pct}%` }} />
+                              </div>
+                              <span className="text-xs tabular-nums text-gray-500 w-8">{c.coverage_pct}%</span>
+                            </div>
+                          </td>
                         </tr>
                       )
                     })}
@@ -498,59 +483,68 @@ export default function ProspectosDashboard({
             </div>
           )}
 
-          {/* Top prospectos */}
+          {/* ── Top prospectos ── */}
           {data.top_prospects.length > 0 && (
             <div className="bg-white rounded-xl border overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100">
-                <h2 className="font-semibold text-gray-800">Mejor vínculo — Prospectos más enganchados</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Más llamadas contestadas y mayor duración promedio</p>
-              </div>
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b text-xs text-gray-500 font-medium">
-                  <tr>
-                    <th className="text-left px-5 py-3">Colegio</th>
-                    <th className="text-left px-3 py-3">Comuna</th>
-                    <th className="text-center px-3 py-3">Llamadas</th>
-                    <th className="text-center px-3 py-3">Contest.</th>
-                    <th className="text-center px-3 py-3">Duración prom.</th>
-                    <th className="text-left px-3 py-3">Grabación</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.top_prospects.map(p => (
-                    <tr key={p.prospect_id} className="border-b last:border-0 hover:bg-gray-50">
-                      <td className="px-5 py-3">
-                        <Link href={`/prospectos/${p.prospect_id}`}
-                          className="font-medium text-gray-900 hover:text-green-700 hover:underline text-xs">
-                          {p.prospect_name}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-3 text-xs text-gray-500">{p.commune}</td>
-                      <td className="px-3 py-3 text-center tabular-nums text-xs">{p.total_calls}</td>
-                      <td className="px-3 py-3 text-center tabular-nums text-xs font-semibold text-blue-600">{p.answered}</td>
-                      <td className="px-3 py-3 text-center tabular-nums text-xs text-gray-500">{fmtDur(p.avg_duration)}</td>
-                      <td className="px-3 py-3">
-                        {p.best_recording ? (
-                          <audio controls className="h-7 w-36"
-                            src={`/api/twilio/recording-proxy?url=${encodeURIComponent(p.best_recording)}`}>
-                            <track kind="captions" />
-                          </audio>
-                        ) : (
-                          <span className="flex items-center gap-1 text-xs text-gray-300">
-                            <Play className="w-3 h-3" /> Sin grab.
-                          </span>
-                        )}
-                      </td>
+              <button className="w-full px-5 py-4 flex items-center justify-between"
+                onClick={() => setShowTop(v => !v)}>
+                <div>
+                  <h2 className="font-semibold text-gray-800 text-left">Mejor vínculo — Colegios más enganchados</h2>
+                  <p className="text-xs text-gray-400 text-left">Ordenados por duración de mejor llamada (≥15 seg)</p>
+                </div>
+                {showTop ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+              </button>
+              {showTop && (
+                <table className="w-full text-sm border-t">
+                  <thead className="bg-gray-50 border-b text-xs text-gray-500 font-medium">
+                    <tr>
+                      <th className="text-left px-5 py-3">Colegio</th>
+                      <th className="text-left px-3 py-3">Comuna</th>
+                      <th className="text-center px-3 py-3">Categoría</th>
+                      <th className="text-center px-3 py-3">Mejor llamada</th>
+                      <th className="text-center px-3 py-3"># llamadas</th>
+                      <th className="text-left px-3 py-3">Grabación</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {data.top_prospects.map(p => (
+                      <tr key={p.prospect_id} className="border-b last:border-0 hover:bg-gray-50">
+                        <td className="px-5 py-3">
+                          <Link href={`/prospectos/${p.prospect_id}`}
+                            className="font-medium text-gray-900 hover:text-green-700 hover:underline text-xs">
+                            {p.prospect_name}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-gray-500">{p.commune}</td>
+                        <td className="px-3 py-3 text-center">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${CAT_COLOR[p.category]}`}>
+                            <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1 ${CAT_DOT[p.category]}`} />
+                            {CAT_LABEL[p.category]}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-center text-xs font-mono font-semibold text-gray-700">
+                          {fmtDur(p.best_duration)}
+                        </td>
+                        <td className="px-3 py-3 text-center text-xs tabular-nums text-gray-500">{p.call_count}</td>
+                        <td className="px-3 py-3">
+                          {p.best_recording
+                            ? <audio controls className="h-7 w-36"
+                                src={`/api/twilio/recording-proxy?url=${encodeURIComponent(p.best_recording)}`}>
+                                <track kind="captions" />
+                              </audio>
+                            : <span className="text-xs text-gray-300">Sin grab.</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           )}
 
-          {!s?.total && (
+          {!s?.total_colegios && (
             <div className="text-center py-16 text-gray-400 text-sm">
-              No hay llamadas para el período y filtros seleccionados
+              No hay llamadas para el período seleccionado
             </div>
           )}
         </>
