@@ -2513,6 +2513,9 @@ if ($action === 'call_status_update') {
     if ($duration !== null) {
         db()->prepare("UPDATE prospect_activities SET duration_sec = ? WHERE call_sid = ?")
             ->execute([$duration, $call_sid]);
+        // También actualizar outbound_calls (solo si aún no tiene duración)
+        db()->prepare("UPDATE outbound_calls SET duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
+            ->execute([$duration, $call_sid]);
     }
     ok(['updated' => true]);
 }
@@ -2538,8 +2541,8 @@ if ($action === 'outbound_calls_list') {
         FROM outbound_calls o
         JOIN profiles p ON p.id = o.user_id
         LEFT JOIN prospect_contacts c ON (
-            REGEXP_REPLACE(c.mobile, '[^0-9]', '') = REGEXP_REPLACE(o.to_number, '[^0-9]', '')
-            OR REGEXP_REPLACE(c.phone, '[^0-9]', '') = REGEXP_REPLACE(o.to_number, '[^0-9]', '')
+            RIGHT(REGEXP_REPLACE(c.mobile, '[^0-9]', ''), 9) = RIGHT(REGEXP_REPLACE(o.to_number, '[^0-9]', ''), 9)
+            OR RIGHT(REGEXP_REPLACE(c.phone,  '[^0-9]', ''), 9) = RIGHT(REGEXP_REPLACE(o.to_number, '[^0-9]', ''), 9)
         )
         LEFT JOIN prospects pr ON pr.id = c.prospect_id
         $whereClause
@@ -2586,8 +2589,8 @@ if ($action === 'call_dashboard') {
         FROM outbound_calls o
         JOIN profiles pf ON pf.id = o.user_id
         LEFT JOIN prospect_contacts c ON (
-            REGEXP_REPLACE(c.mobile, '[^0-9]', '') = REGEXP_REPLACE(o.to_number, '[^0-9]', '')
-            OR REGEXP_REPLACE(c.phone, '[^0-9]', '') = REGEXP_REPLACE(o.to_number, '[^0-9]', '')
+            RIGHT(REGEXP_REPLACE(c.mobile, '[^0-9]', ''), 9) = RIGHT(REGEXP_REPLACE(o.to_number, '[^0-9]', ''), 9)
+            OR RIGHT(REGEXP_REPLACE(c.phone,  '[^0-9]', ''), 9) = RIGHT(REGEXP_REPLACE(o.to_number, '[^0-9]', ''), 9)
         )
         LEFT JOIN prospects pr ON pr.id = c.prospect_id
     ";
