@@ -26,12 +26,14 @@ export async function fetchProspects(params: {
   status?: string
   commune?: string
   q?: string
+  call_cat?: string
 }): Promise<Prospect[]> {
   const token = await getToken()
   const q: Record<string, string> = { campaign_id: params.campaign_id }
-  if (params.status)  q.status  = params.status
-  if (params.commune) q.commune = params.commune
-  if (params.q)       q.q       = params.q
+  if (params.status)   q.status   = params.status
+  if (params.commune)  q.commune  = params.commune
+  if (params.q)        q.q        = params.q
+  if (params.call_cat) q.call_cat = params.call_cat
   const res = await crmGet('prospects_list', q, token)
   return (res.data as Prospect[]) ?? []
 }

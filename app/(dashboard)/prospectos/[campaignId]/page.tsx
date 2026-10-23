@@ -9,7 +9,7 @@ export default async function CampaignQueuePage({
   searchParams,
 }: {
   params: Promise<{ campaignId: string }>
-  searchParams: Promise<{ status?: string; commune?: string; q?: string }>
+  searchParams: Promise<{ status?: string; commune?: string; q?: string; call_cat?: string }>
 }) {
   const user = await getSession()
   if (!user) redirect('/login')
@@ -21,9 +21,10 @@ export default async function CampaignQueuePage({
     fetchCampaigns(),
     fetchProspects({
       campaign_id: campaignId,
-      status:  sp.status,
-      commune: sp.commune,
-      q:       sp.q,
+      status:   sp.status,
+      commune:  sp.commune,
+      q:        sp.q,
+      call_cat: sp.call_cat,
     }),
     fetchCampaignCommunes(campaignId),
   ])
@@ -37,7 +38,7 @@ export default async function CampaignQueuePage({
       prospects={prospects}
       communes={communes}
       user={user}
-      filters={{ status: sp.status, commune: sp.commune, q: sp.q }}
+      filters={{ status: sp.status, commune: sp.commune, q: sp.q, call_cat: sp.call_cat }}
     />
   )
 }

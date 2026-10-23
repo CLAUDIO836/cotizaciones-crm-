@@ -2181,11 +2181,26 @@ if ($action === 'prospects_list') {
     $search = $_GET['q'] ?? null;
     if ($search) { $where .= ' AND p.name LIKE ?'; $vals[] = "%$search%"; }
 
+    // Filtro por categoría de llamada (basado en mejor duración)
+    $call_cat = $_GET['call_cat'] ?? null;
+    if ($call_cat === 'sin_llamar') {
+        $where .= ' AND NOT EXISTS (SELECT 1 FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call" AND a.duration_sec IS NOT NULL)';
+    } elseif ($call_cat === 'con_intencion') {
+        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") >= 60';
+    } elseif ($call_cat === 'contactado_call') {
+        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") BETWEEN 15 AND 59';
+    } elseif ($call_cat === 'fria') {
+        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") BETWEEN 5 AND 14';
+    } elseif ($call_cat === 'fallida') {
+        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") BETWEEN 0 AND 4';
+    }
+
     $stmt = db()->prepare("
         SELECT p.*,
                pr.name AS assigned_name,
                (SELECT COUNT(*) FROM prospect_activities WHERE prospect_id = p.id) AS activity_count,
-               (SELECT MAX(created_at) FROM prospect_activities WHERE prospect_id = p.id) AS last_activity_at
+               (SELECT MAX(created_at) FROM prospect_activities WHERE prospect_id = p.id) AS last_activity_at,
+               (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = 'call') AS best_call_duration
         FROM prospects p
         LEFT JOIN profiles pr ON pr.id = p.assigned_to
         WHERE $where

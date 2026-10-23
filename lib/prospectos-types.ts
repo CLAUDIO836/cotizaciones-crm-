@@ -69,6 +69,7 @@ export type Prospect = {
   updated_at: string
   activity_count?: number
   last_activity_at?: string | null
+  best_call_duration?: number | null
   contacts?: ProspectContact[]
   activities?: ProspectActivity[]
   exception_user_id?: string | null
@@ -138,6 +139,40 @@ export const RESULT_LABELS: Record<ActivityResult, string> = {
   not_interested:   'No interesado',
   follow_up:        'Volver a llamar',
   quote_requested:  'Pidió cotización',
+}
+
+export type CallCategory = 'sin_llamar' | 'fallida' | 'fria' | 'contactado_call' | 'con_intencion'
+
+export function classifyCall(duration: number | null | undefined): CallCategory {
+  if (duration === null || duration === undefined) return 'sin_llamar'
+  if (duration >= 60) return 'con_intencion'
+  if (duration >= 15) return 'contactado_call'
+  if (duration >= 5)  return 'fria'
+  return 'fallida'
+}
+
+export const CALL_LABELS: Record<CallCategory, string> = {
+  sin_llamar:    'Sin llamar',
+  fallida:       'Fallida (0–4s)',
+  fria:          'Fría (5–14s)',
+  contactado_call: 'Contactado (15–59s)',
+  con_intencion: 'Con intención (+60s)',
+}
+
+export const CALL_LABELS_SHORT: Record<CallCategory, string> = {
+  sin_llamar:    'Sin llamar',
+  fallida:       'Fallida',
+  fria:          'Fría',
+  contactado_call: 'Contactado',
+  con_intencion: 'Con intención',
+}
+
+export const CALL_COLORS: Record<CallCategory, string> = {
+  sin_llamar:    'bg-gray-100 text-gray-500',
+  fallida:       'bg-red-100 text-red-700',
+  fria:          'bg-orange-100 text-orange-700',
+  contactado_call: 'bg-blue-100 text-blue-700',
+  con_intencion: 'bg-green-100 text-green-700',
 }
 
 export function daysSince(dateStr: string | null | undefined): number | null {

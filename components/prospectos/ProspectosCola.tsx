@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Campaign, Prospect, ProspectStatus, STATUS_LABELS, STATUS_COLORS, daysSince, daysUntil } from '@/lib/prospectos-types'
+import { Campaign, Prospect, CallCategory, classifyCall, CALL_LABELS, CALL_LABELS_SHORT, CALL_COLORS, daysSince, daysUntil } from '@/lib/prospectos-types'
 import { UserSession } from '@/lib/api'
 
 const DAILY_GOAL = 35
@@ -36,7 +36,7 @@ export default function ProspectosCola({
   prospects: Prospect[]
   communes: string[]
   user: UserSession
-  filters: { status?: string; commune?: string; q?: string }
+  filters: { status?: string; commune?: string; q?: string; call_cat?: string }
 }) {
   const router = useRouter()
   const [search, setSearch] = useState(filters.q ?? '')
@@ -53,9 +53,10 @@ export default function ProspectosCola({
 
   function applyFilter(key: string, value: string) {
     const sp = new URLSearchParams()
-    if (key !== 'status'  && filters.status)  sp.set('status',  filters.status)
-    if (key !== 'commune' && filters.commune) sp.set('commune', filters.commune)
-    if (key !== 'q'       && filters.q)       sp.set('q',       filters.q)
+    if (key !== 'status'   && filters.status)   sp.set('status',   filters.status)
+    if (key !== 'commune'  && filters.commune)  sp.set('commune',  filters.commune)
+    if (key !== 'q'        && filters.q)        sp.set('q',        filters.q)
+    if (key !== 'call_cat' && filters.call_cat) sp.set('call_cat', filters.call_cat)
     if (value) sp.set(key, value)
     startTransition(() => router.push(`/prospectos/${campaign.id}?${sp.toString()}`))
   }
@@ -65,7 +66,7 @@ export default function ProspectosCola({
     applyFilter('q', search)
   }
 
-  const statuses: (ProspectStatus | '')[] = ['', 'new', 'following', 'quoting', 'closed_won', 'closed_lost']
+  const callCategories: (CallCategory | '')[] = ['', 'sin_llamar', 'fallida', 'fria', 'contactado_call', 'con_intencion']
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -145,16 +146,16 @@ export default function ProspectosCola({
           {communes.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
-        <div className="flex gap-1">
-          {statuses.map(s => (
-            <button key={s}
-              onClick={() => applyFilter('status', s)}
+        <div className="flex gap-1 flex-wrap">
+          {callCategories.map(cat => (
+            <button key={cat}
+              onClick={() => applyFilter('call_cat', cat)}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                (filters.status ?? '') === s
+                (filters.call_cat ?? '') === cat
                   ? 'bg-gray-800 text-white'
                   : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
               }`}>
-              {s === '' ? 'Todos' : STATUS_LABELS[s as ProspectStatus]}
+              {cat === '' ? 'Todos' : CALL_LABELS_SHORT[cat as CallCategory]}
             </button>
           ))}
         </div>
@@ -180,10 +181,18 @@ export default function ProspectosCola({
                   <span>{p.contacts[0].role}: {p.contacts[0].name}</span>
                 )}
               </p>
-              <div className="flex gap-2 mt-1.5">
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[p.status]}`}>
-                  {STATUS_LABELS[p.status]}
-                </span>
+              <div className="flex gap-2 mt-1.5 flex-wrap">
+                {(() => {
+                  const cat = classifyCall(p.best_call_duration)
+                  return (
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CALL_COLORS[cat]}`}>
+                      {CALL_LABELS_SHORT[cat]}
+                      {cat !== 'sin_llamar' && p.best_call_duration != null && (
+                        <span className="ml-1 opacity-70">{p.best_call_duration}s</span>
+                      )}
+                    </span>
+                  )
+                })()}
                 {p.activity_count! > 0 && (
                   <span className="text-xs text-gray-400">{p.activity_count} gestiones</span>
                 )}
