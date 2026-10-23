@@ -2540,6 +2540,15 @@ if ($action === 'call_status_update') {
         // También actualizar outbound_calls (solo si aún no tiene duración)
         db()->prepare("UPDATE outbound_calls SET duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
             ->execute([$duration, $call_sid]);
+        // Si la llamada fue al menos "fría" (≥5s), pasar el colegio a "contacted" si aún está en "new"
+        if ($duration >= 5) {
+            db()->prepare("
+                UPDATE prospects p
+                JOIN prospect_activities a ON a.prospect_id = p.id
+                SET p.status = 'contacted'
+                WHERE a.call_sid = ? AND p.status = 'new'
+            ")->execute([$call_sid]);
+        }
     }
     ok(['updated' => true]);
 }
