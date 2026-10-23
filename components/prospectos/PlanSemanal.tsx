@@ -54,7 +54,14 @@ export default function PlanSemanal({
     try {
       const res = await fetch(`/api/prospectos/call-plan?campaign_id=${campaignId}`)
       const d = await res.json()
-      if (d.error) { setError(d.error); return }
+      if (d.error) {
+        // Si viene HTML crudo (error 500 del servidor), mostrar mensaje genérico
+        const msg = typeof d.error === 'string' && d.error.startsWith('<')
+          ? 'Error al cargar el plan. Intenta recargar la página.'
+          : d.error
+        setError(msg)
+        return
+      }
       setPlan(buildPlan(d.data ?? []))
     } catch {
       setError('No se pudo cargar el plan')

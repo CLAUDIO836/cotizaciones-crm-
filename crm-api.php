@@ -3175,24 +3175,29 @@ if ($action === 'call_plan_week') {
     $campaign_id = $_GET['campaign_id'] ?? null;
     if (!$campaign_id) err('campaign_id requerido');
 
-    // Communes with assigned executive and pending prospect count
-    $stmt = db()->prepare("
-        SELECT
-            ca.commune,
-            ca.user_id,
-            p.name  AS user_name,
-            COUNT(pr.id) AS pending_count
-        FROM commune_assignments ca
-        LEFT JOIN profiles  p  ON p.id  = ca.user_id
-        LEFT JOIN prospects pr ON pr.commune = ca.commune
-                               AND pr.campaign_id = ca.campaign_id
-                               AND pr.status NOT IN ('closed_won','closed_lost')
-        WHERE ca.campaign_id = ?
-        GROUP BY ca.commune, ca.user_id, p.name
-        ORDER BY p.name, COUNT(pr.id) DESC
-    ");
-    $stmt->execute([$campaign_id]);
-    $rows = $stmt->fetchAll();
+    try {
+        // Communes with assigned executive and pending prospect count
+        // Only count colegios sin llamar o con llamada fallida (< 5s) — los "sin gestionar"
+        $stmt = db()->prepare("
+            SELECT
+                ca.commune,
+                ca.user_id,
+                p.name  AS user_name,
+                COUNT(pr.id) AS pending_count
+            FROM commune_assignments ca
+            LEFT JOIN profiles  p  ON p.id  = ca.user_id
+            LEFT JOIN prospects pr ON pr.commune    = ca.commune
+                                   AND pr.campaign_id = ca.campaign_id
+                                   AND pr.status NOT IN ('closed_won','closed_lost')
+            WHERE ca.campaign_id = ?
+            GROUP BY ca.commune, ca.user_id, p.name
+            ORDER BY p.name, COUNT(pr.id) DESC
+        ");
+        $stmt->execute([$campaign_id]);
+        $rows = $stmt->fetchAll();
+    } catch (Exception $e) {
+        err('Error al consultar plan: ' . $e->getMessage(), 500);
+    }
 
     // Group by executive
     $byExec = [];
