@@ -19,7 +19,9 @@ function LoginContent() {
   useEffect(() => {
     const error = searchParams.get('error')
     if (error === 'domain') toast.error('Solo cuentas @transccl.cl permitidas')
-    else if (error === 'crm') toast.error('Error al acceder al sistema')
+    else if (error === 'crm') toast.error('Error al acceder al sistema CRM')
+    else if (error === 'config') toast.error('Google OAuth no está configurado — contacta al administrador')
+    else if (error === 'token') toast.error('No se pudo autenticar con Google — intenta de nuevo')
     else if (error) toast.error('Error de autenticación')
   }, [searchParams])
 

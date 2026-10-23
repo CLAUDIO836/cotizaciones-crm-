@@ -11,6 +11,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${origin}/login?error=no_code`)
   }
 
+  // Verificar que las credenciales de Google están configuradas
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    console.error('Google auth: GOOGLE_CLIENT_ID o GOOGLE_CLIENT_SECRET no configurados')
+    return NextResponse.redirect(`${origin}/login?error=config`)
+  }
+
   try {
     // 1. Intercambiar code por tokens de Google
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -18,14 +24,17 @@ export async function GET(req: NextRequest) {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         code,
-        client_id: process.env.GOOGLE_CLIENT_ID!,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
         redirect_uri: `${origin}/api/auth/callback/google`,
         grant_type: 'authorization_code',
       }),
     })
     const tokens = await tokenRes.json()
-    if (!tokens.access_token) throw new Error('No access token')
+    if (!tokens.access_token) {
+      console.error('Google auth: token exchange failed', tokens.error, tokens.error_description)
+      return NextResponse.redirect(`${origin}/login?error=token`)
+    }
 
     // 2. Obtener info del usuario de Google
     const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -48,6 +57,7 @@ export async function GET(req: NextRequest) {
     })
     const crmJson = await crmRes.json()
     if (!crmRes.ok || !crmJson.data?.token) {
+      console.error('Google auth: CRM auth failed', crmRes.status, crmJson)
       return NextResponse.redirect(`${origin}/login?error=crm`)
     }
 
