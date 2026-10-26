@@ -2354,12 +2354,16 @@ if ($action === 'prospect_contact_add') {
     $prospect_id = $b['prospect_id'] ?? '';
     if (!$prospect_id) err('prospect_id requerido');
     if (!($b['name'] ?? '')) err('name requerido');
-    $cid = uuid();
-    db()->prepare("INSERT INTO prospect_contacts (id, prospect_id, name, role, phone, mobile, email, anexo, call_instructions, is_primary) VALUES (?,?,?,?,?,?,?,?,?,?)")
-        ->execute([$cid, $prospect_id, $b['name'], $b['role'] ?? null, $b['phone'] ?? null, $b['mobile'] ?? null, $b['email'] ?? null, $b['anexo'] ?? null, $b['call_instructions'] ?? null, 0]);
-    $stmt = db()->prepare("SELECT * FROM prospect_contacts WHERE id = ?");
-    $stmt->execute([$cid]);
-    ok($stmt->fetch());
+    try {
+        $cid = uuid();
+        db()->prepare("INSERT INTO prospect_contacts (id, prospect_id, name, role, phone, mobile, email, anexo, call_instructions, is_primary) VALUES (?,?,?,?,?,?,?,?,?,?)")
+            ->execute([$cid, $prospect_id, $b['name'], $b['role'] ?? null, $b['phone'] ?? null, $b['mobile'] ?? null, $b['email'] ?? null, $b['anexo'] ?? null, $b['call_instructions'] ?? null, 0]);
+        $stmt = db()->prepare("SELECT * FROM prospect_contacts WHERE id = ?");
+        $stmt->execute([$cid]);
+        ok($stmt->fetch());
+    } catch (Exception $e) {
+        err('Error al guardar contacto: ' . $e->getMessage());
+    }
 }
 
 // ── PHONE SYNC ────────────────────────────────────────────────────────────────
