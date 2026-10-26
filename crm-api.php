@@ -7,7 +7,9 @@
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
-header('Access-Control-Allow-Origin: *');
+$_cors_origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+$_cors_allowed = ['https://crm.transccl.cl', 'https://www.transccl.cl', 'http://localhost:3001', 'http://localhost:3000'];
+header('Access-Control-Allow-Origin: ' . (in_array($_cors_origin, $_cors_allowed) ? $_cors_origin : 'https://crm.transccl.cl'));
 header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Authorization, Content-Type');
 
@@ -17,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit; }
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'transccl_crm');
 define('DB_USER', 'transccl_crm_user');
-define('DB_PASS', 'Claudio@1978');
+define('DB_PASS', getenv('CRM_DB_PASSWORD') ?: 'Claudio@1978');
 define('JWT_SECRET', getenv('CRM_JWT_SECRET') ?: 'aaf2874032a28f19d5ee92733d7d33baee9dd198f6efceb271d544a8deaf1312');
 define('SESSION_HOURS', 72);
 
@@ -183,13 +185,11 @@ if ($action === 'google_auth') {
     $user = $stmt->fetch();
 
     if (!$user) {
-        // Crear perfil con rol vendedor por defecto
+        // Crear perfil inactivo — requiere aprobación de admin antes de poder ingresar
         $id = uuid();
-        db()->prepare('INSERT INTO profiles (id, email, name, role, password_hash, active) VALUES (?, ?, ?, ?, ?, 1)')
+        db()->prepare('INSERT INTO profiles (id, email, name, role, password_hash, active) VALUES (?, ?, ?, ?, ?, 0)')
              ->execute([$id, $email, $name ?: $email, 'vendedor', password_hash(bin2hex(random_bytes(16)), PASSWORD_BCRYPT)]);
-        $stmt = db()->prepare('SELECT * FROM profiles WHERE id = ? LIMIT 1');
-        $stmt->execute([$id]);
-        $user = $stmt->fetch();
+        err('pending_approval', 403);
     } elseif ($name && $name !== $user['name']) {
         // Sincronizar nombre desde Google si cambió en Google Workspace
         db()->prepare('UPDATE profiles SET name = ? WHERE id = ?')->execute([$name, $user['id']]);

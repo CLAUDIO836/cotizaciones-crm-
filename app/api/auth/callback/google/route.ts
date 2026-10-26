@@ -58,7 +58,8 @@ export async function GET(req: NextRequest) {
     const crmJson = await crmRes.json()
     if (!crmRes.ok || !crmJson.data?.token) {
       console.error('Google auth: CRM auth failed', crmRes.status, crmJson)
-      return NextResponse.redirect(`${origin}/login?error=crm`)
+      const isPending = crmJson.error === 'pending_approval'
+      return NextResponse.redirect(`${origin}/login?error=${isPending ? 'pending' : 'crm'}`)
     }
 
     const { token } = crmJson.data
