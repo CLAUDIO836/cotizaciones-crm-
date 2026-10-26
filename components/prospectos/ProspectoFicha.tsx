@@ -82,7 +82,7 @@ export default function ProspectoFicha({
       if (res.ok) { setShowEditContact(false); startTransition(() => router.refresh()) }
       else setEditError(data.error ?? `Error ${res.status}`)
     } catch (e) { setEditError(String(e)) }
-    setSavingEdit(false)
+    finally { setSavingEdit(false) }
   }
 
   async function saveNewContact() {
@@ -248,7 +248,7 @@ export default function ProspectoFicha({
                       )}
                       <span className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-xs cursor-pointer hover:bg-gray-50">✉️</span>
                       <button
-                        onClick={() => { setEditContact({ id: c.id, name: c.name, role: c.role ?? '', email: c.email ?? '', mobile: c.mobile ?? '', anexo: c.anexo ?? '', call_instructions: c.call_instructions ?? '' }); setEditError(null); setShowEditContact(true) }}
+                        onClick={() => { setEditContact({ id: c.id, name: c.name ?? '', role: c.role ?? '', email: c.email ?? '', mobile: c.mobile ?? '', anexo: c.anexo ?? '', call_instructions: c.call_instructions ?? '' }); setEditError(null); setShowEditContact(true) }}
                         className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-xs cursor-pointer hover:bg-gray-50 text-gray-400 hover:text-gray-700"
                         title="Editar contacto">✏️</button>
                     </div>
