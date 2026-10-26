@@ -3289,5 +3289,136 @@ if ($action === 'get_whatsapp_messages') {
     ok($stmt->fetchAll());
 }
 
+// ── WHATSAPP META CLOUD API ───────────────────────────────────────────────────
+
+// Recibe mensaje entrante desde el webhook Meta Cloud API
+if ($action === 'wa_cloud_receive') {
+    $internalSecret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
+    $valid = $internalSecret !== '' && hash_equals(getenv('INTERNAL_PDF_SECRET') ?: '', $internalSecret);
+    if (!$valid) err('Unauthorized', 401);
+
+    $b = body();
+    $wamid = $b['wamid']        ?? null;
+    $phone = $b['phone']        ?? null;
+    $text  = $b['text']         ?? '';
+    $name  = $b['contact_name'] ?? null;
+    $ts    = $b['ts']           ?? null;
+
+    if (!$wamid || !$phone) err('wamid y phone requeridos');
+
+    $pdo = db();
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS wa_cloud_conversations (
+        id           CHAR(36)     NOT NULL PRIMARY KEY,
+        phone        VARCHAR(30)  NOT NULL,
+        contact_name VARCHAR(120),
+        assigned_to  VARCHAR(36),
+        bot_active   TINYINT(1)   NOT NULL DEFAULT 1,
+        last_msg_at  DATETIME,
+        created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_phone (phone),
+        INDEX idx_assigned (assigned_to),
+        INDEX idx_last_msg (last_msg_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS wa_cloud_messages (
+        id              CHAR(36)     NOT NULL PRIMARY KEY,
+        conversation_id CHAR(36)     NOT NULL,
+        wamid           VARCHAR(128) NOT NULL,
+        direction       ENUM('in','out') NOT NULL DEFAULT 'in',
+        msg_type        VARCHAR(20)  NOT NULL DEFAULT 'text',
+        content         TEXT,
+        status          VARCHAR(20)  NOT NULL DEFAULT 'received',
+        created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_wamid (wamid),
+        INDEX idx_conv (conversation_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS wa_cloud_leads (
+        id              CHAR(36)  NOT NULL PRIMARY KEY,
+        conversation_id CHAR(36)  NOT NULL,
+        data            JSON,
+        ficha_status    VARCHAR(30) NOT NULL DEFAULT 'in_progress',
+        created_at      DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at      DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_conv (conversation_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Upsert conversación
+    $convId = null;
+    $stmt = $pdo->prepare("SELECT id, bot_active FROM wa_cloud_conversations WHERE phone = ?");
+    $stmt->execute([$phone]);
+    $conv = $stmt->fetch();
+
+    if ($conv) {
+        $convId = $conv['id'];
+        $pdo->prepare("UPDATE wa_cloud_conversations SET last_msg_at = NOW(), contact_name = COALESCE(?, contact_name) WHERE id = ?")
+            ->execute([$name ?: null, $convId]);
+    } else {
+        $convId = uuid();
+        $pdo->prepare("INSERT INTO wa_cloud_conversations (id, phone, contact_name, last_msg_at) VALUES (?,?,?,NOW())")
+            ->execute([$convId, $phone, $name ?: null]);
+    }
+
+    // INSERT IGNORE deduplica por wamid
+    $msgId = uuid();
+    $created_at = $ts ? date('Y-m-d H:i:s', intval($ts / 1000)) : date('Y-m-d H:i:s');
+    $stmt = $pdo->prepare("INSERT IGNORE INTO wa_cloud_messages (id, conversation_id, wamid, direction, content, created_at) VALUES (?,?,?,'in',?,?)");
+    $stmt->execute([$msgId, $convId, $wamid, $text, $created_at]);
+    $isNew = $stmt->rowCount() > 0;
+
+    ok(['ok' => true, 'conversation_id' => $convId, 'bot_active' => (bool)($conv['bot_active'] ?? 1), 'new' => $isNew]);
+}
+
+// Envía mensaje saliente via Meta Cloud API
+if ($action === 'wa_cloud_send') {
+    requireAuth();
+    $b = body();
+    $phone    = $b['phone']    ?? null;
+    $text     = $b['text']     ?? null;
+    $template = $b['template'] ?? null;  // para mensajes fuera de ventana 24h
+
+    if (!$phone) err('phone requerido');
+    if (!$text && !$template) err('text o template requerido');
+
+    $waToken  = getenv('WHATSAPP_TOKEN')           ?: '';
+    $phoneId  = getenv('WHATSAPP_PHONE_NUMBER_ID') ?: '';
+    if (!$waToken || !$phoneId) err('WHATSAPP_TOKEN y WHATSAPP_PHONE_NUMBER_ID no configurados', 503);
+
+    if ($text) {
+        $payload = ['messaging_product' => 'whatsapp', 'to' => $phone, 'type' => 'text', 'text' => ['body' => $text]];
+    } else {
+        $payload = ['messaging_product' => 'whatsapp', 'to' => $phone, 'type' => 'template', 'template' => $template];
+    }
+
+    $ch = curl_init("https://graph.facebook.com/v21.0/{$phoneId}/messages");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => ["Authorization: Bearer {$waToken}", 'Content-Type: application/json'],
+        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_TIMEOUT        => 10,
+    ]);
+    $resp   = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $respData = json_decode($resp, true) ?? [];
+    if ($status >= 400) err($respData['error']['message'] ?? "Meta API error $status", $status);
+
+    // Guardar mensaje saliente en DB
+    $wamid = $respData['messages'][0]['id'] ?? null;
+    $convStmt = db()->prepare("SELECT id FROM wa_cloud_conversations WHERE phone = ?");
+    $convStmt->execute([$phone]);
+    $conv = $convStmt->fetch();
+    if ($conv && $wamid) {
+        $msgId = uuid();
+        db()->prepare("INSERT IGNORE INTO wa_cloud_messages (id, conversation_id, wamid, direction, content) VALUES (?,?,?,'out',?)")
+            ->execute([$msgId, $conv['id'], $wamid, $text ?? json_encode($template)]);
+    }
+
+    ok($respData);
+}
+
 // ── Not found ─────────────────────────────────────────────────────────────────
 err("Acción '$action' no encontrada", 404);
