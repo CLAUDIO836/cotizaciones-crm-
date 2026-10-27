@@ -2552,6 +2552,46 @@ if ($action === 'diag_campaign_contacts') {
 }
 
 // ── BACKFILL duration en outbound_calls desde prospect_activities (admin one-time) ─
+if ($action === 'cleanup_ghosts') {
+    $secret = $_GET['_secret'] ?? '';
+    $expected = getenv('INTERNAL_PDF_SECRET') ?: JWT_SECRET;
+    if (!hash_equals($expected, $secret)) { http_response_code(403); echo json_encode(['error'=>'forbidden']); exit; }
+    $b = body();
+    $merges     = $b['merges']     ?? [];   // [{contact_id, to_prospect_id}]
+    $delete_ids = $b['delete_ids'] ?? [];   // prospect UUIDs to delete
+
+    $merged  = 0;
+    $deleted = 0;
+    $errors  = [];
+
+    // 1. Move contacts to real schools
+    $stmt_move = db()->prepare("UPDATE prospect_contacts SET prospect_id=? WHERE id=?");
+    foreach ($merges as $m) {
+        $cid = $m['contact_id'] ?? null;
+        $tid = $m['to_prospect_id'] ?? null;
+        if (!$cid || !$tid) continue;
+        try { $stmt_move->execute([$tid, $cid]); $merged++; }
+        catch (Exception $e) { $errors[] = "merge $cid: ".$e->getMessage(); }
+    }
+
+    // 2. Delete ghost prospects (contacts, activities, then prospect)
+    $del_contacts   = db()->prepare("DELETE FROM prospect_contacts   WHERE prospect_id=?");
+    $del_activities = db()->prepare("DELETE FROM prospect_activities WHERE prospect_id=?");
+    $del_prospect   = db()->prepare("DELETE FROM prospects           WHERE id=?");
+    foreach ($delete_ids as $pid) {
+        if (!$pid) continue;
+        try {
+            $del_contacts->execute([$pid]);
+            $del_activities->execute([$pid]);
+            $del_prospect->execute([$pid]);
+            $deleted++;
+        } catch (Exception $e) { $errors[] = "delete $pid: ".$e->getMessage(); }
+    }
+
+    echo json_encode(['ok'=>true, 'merged'=>$merged, 'deleted'=>$deleted, 'errors'=>$errors]);
+    exit;
+}
+
 if ($action === 'patch_contact_phones') {
     $secret = $_GET['_secret'] ?? '';
     $expected = getenv('INTERNAL_PDF_SECRET') ?: JWT_SECRET;
