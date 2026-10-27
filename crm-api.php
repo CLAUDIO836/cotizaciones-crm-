@@ -3537,5 +3537,79 @@ if ($action === 'wa_cloud_take') {
     ok(['bot_active' => (bool)$botActive, 'assigned_to' => !$botActive ? $user['id'] : null]);
 }
 
+// ── Bot: historial de conversación (autenticado con X-Internal-Secret) ───────
+if ($action === 'wa_cloud_history') {
+    $secret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
+    if (!$secret || !hash_equals($secret, getenv('INTERNAL_PDF_SECRET') ?: '')) {
+        err('Forbidden', 403);
+    }
+    $b = body();
+    $convId = $b['conversation_id'] ?? null;
+    if (!$convId) err('conversation_id requerido');
+    $stmt = db()->prepare("SELECT direction, content FROM wa_cloud_messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 20");
+    $stmt->execute([$convId]);
+    $rows = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC));
+    ok($rows);
+}
+
+// ── Bot: enviar mensaje saliente (autenticado con X-Internal-Secret) ─────────
+if ($action === 'wa_cloud_bot_send') {
+    $secret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
+    if (!$secret || !hash_equals($secret, getenv('INTERNAL_PDF_SECRET') ?: '')) {
+        err('Forbidden', 403);
+    }
+    $b = body();
+    $phone = $b['phone'] ?? null;
+    $text  = $b['text']  ?? null;
+    if (!$phone || !$text) err('phone y text requeridos');
+
+    $waToken = getenv('WHATSAPP_TOKEN')           ?: '';
+    $phoneId = getenv('WHATSAPP_PHONE_NUMBER_ID') ?: '';
+    if (!$waToken || !$phoneId) err('WHATSAPP_TOKEN y WHATSAPP_PHONE_NUMBER_ID no configurados', 503);
+
+    $payload = ['messaging_product' => 'whatsapp', 'to' => $phone, 'type' => 'text', 'text' => ['body' => $text]];
+    $ch = curl_init("https://graph.facebook.com/v21.0/{$phoneId}/messages");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => ["Authorization: Bearer {$waToken}", 'Content-Type: application/json'],
+        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_TIMEOUT        => 10,
+    ]);
+    $resp   = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $respData = json_decode($resp, true) ?? [];
+    if ($status >= 400) err($respData['error']['message'] ?? "Meta API error $status", $status);
+
+    // Guardar mensaje saliente en DB
+    $wamid = $respData['messages'][0]['id'] ?? null;
+    $convStmt = db()->prepare("SELECT id FROM wa_cloud_conversations WHERE phone = ?");
+    $convStmt->execute([$phone]);
+    $conv = $convStmt->fetch();
+    if ($conv && $wamid) {
+        $msgId = uuid();
+        db()->prepare("INSERT IGNORE INTO wa_cloud_messages (id, conversation_id, wamid, direction, content) VALUES (?,?,?,'out',?)")
+            ->execute([$msgId, $conv['id'], $wamid, $text]);
+    }
+
+    ok($respData);
+}
+
+// ── Bot: escalar a humano (autenticado con X-Internal-Secret) ────────────────
+if ($action === 'wa_cloud_bot_escalate') {
+    $secret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
+    if (!$secret || !hash_equals($secret, getenv('INTERNAL_PDF_SECRET') ?: '')) {
+        err('Forbidden', 403);
+    }
+    $b = body();
+    $convId = $b['conversation_id'] ?? null;
+    if (!$convId) err('conversation_id requerido');
+    db()->prepare("UPDATE wa_cloud_conversations SET bot_active = 0 WHERE id = ?")
+        ->execute([$convId]);
+    ok(['escalated' => true]);
+}
+
 // ── Not found ─────────────────────────────────────────────────────────────────
 err("Acción '$action' no encontrada", 404);
