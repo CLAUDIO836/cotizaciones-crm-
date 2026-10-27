@@ -28,13 +28,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm.transccl.cl'
     const dial = twiml.dial({
       callerId: '+56229149664',
       record:    'record-from-answer',
-      recordingStatusCallback: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm.transccl.cl'}/api/twilio/recording`,
+      recordingStatusCallback: `${appUrl}/api/twilio/recording`,
       recordingStatusCallbackMethod: 'POST',
     })
-    dial.number({}, to)
+    dial.number({
+      statusCallback: `${appUrl}/api/twilio/child-status`,
+      statusCallbackEvent: ['completed'],
+      statusCallbackMethod: 'POST',
+    }, to)
   } else {
     twiml.say({ language: 'es-MX' }, 'No se especificó un número de destino.')
   }

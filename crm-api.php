@@ -2639,11 +2639,50 @@ if ($action === 'call_status_update') {
     if ($duration !== null) {
         db()->prepare("UPDATE prospect_activities SET duration_sec = ? WHERE call_sid = ?")
             ->execute([$duration, $call_sid]);
-        // También actualizar outbound_calls (solo si aún no tiene duración)
         db()->prepare("UPDATE outbound_calls SET duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
             ->execute([$duration, $call_sid]);
-        // Si la llamada fue al menos "fría" (≥5s), pasar el colegio a "contacted" si aún está en "new"
-        if ($duration >= 5) {
+
+        // Auto-crear prospect_activity si no existe para esta llamada Twilio
+        $existing = db()->prepare("SELECT id FROM prospect_activities WHERE call_sid = ? LIMIT 1");
+        $existing->execute([$call_sid]);
+        if (!$existing->fetch()) {
+            // Buscar outbound_call para obtener to_number y user_id
+            $oc = db()->prepare("SELECT user_id, to_number FROM outbound_calls WHERE call_sid = ? LIMIT 1");
+            $oc->execute([$call_sid]);
+            $ocRow = $oc->fetch();
+            if ($ocRow) {
+                // Buscar contacto y prospecto que coincidan con el número (últimos 9 dígitos)
+                $phone9 = substr(preg_replace('/[^0-9]/', '', $ocRow['to_number']), -9);
+                $contact = db()->prepare("
+                    SELECT c.id AS contact_id, c.prospect_id
+                    FROM prospect_contacts c
+                    WHERE RIGHT(REGEXP_REPLACE(c.mobile,'[^0-9]',''),9) = ?
+                       OR RIGHT(REGEXP_REPLACE(c.phone, '[^0-9]',''),9) = ?
+                    LIMIT 1
+                ");
+                $contact->execute([$phone9, $phone9]);
+                $cRow = $contact->fetch();
+                if ($cRow) {
+                    $result = $duration >= 60 ? 'interested'
+                            : ($duration >= 15 ? 'contacted'
+                            : ($duration >= 5  ? 'cold' : 'no_answer'));
+                    db()->prepare("INSERT INTO prospect_activities
+                        (id, prospect_id, contact_id, user_id, type, result, duration_sec, call_sid, created_at)
+                        VALUES (UUID(), ?, ?, ?, 'call', ?, ?, ?, NOW())")
+                        ->execute([$cRow['prospect_id'], $cRow['contact_id'],
+                                   $ocRow['user_id'], $result, $duration, $call_sid]);
+                    // Actualizar status del prospecto
+                    if ($duration >= 60) {
+                        db()->prepare("UPDATE prospects SET status='quoting' WHERE id=? AND status='new'")
+                            ->execute([$cRow['prospect_id']]);
+                    } elseif ($duration >= 5) {
+                        db()->prepare("UPDATE prospects SET status='contacted' WHERE id=? AND status='new'")
+                            ->execute([$cRow['prospect_id']]);
+                    }
+                }
+            }
+        } elseif ($duration >= 5) {
+            // Activity ya existe: solo actualizar status del prospecto
             db()->prepare("
                 UPDATE prospects p
                 JOIN prospect_activities a ON a.prospect_id = p.id
@@ -2954,17 +2993,27 @@ if ($action === 'call_recording_update') {
     $isInternal = $secret !== '' && hash_equals($pdfSecret, $secret);
     $b = body();
     if (!$isInternal) { $me = requireAuth(); }
-    $callSid       = $b['call_sid']        ?? null;
-    $parentCallSid = $b['parent_call_sid'] ?? null;
-    $recordingUrl  = $b['recording_url']   ?? null;
-    $duration      = isset($b['recording_duration']) ? (int)$b['recording_duration'] : null;
+    $callSid       = $b['call_sid']          ?? null;
+    $parentCallSid = $b['parent_call_sid']   ?? null;
+    $recordingUrl  = $b['recording_url']     ?? null;
+    $duration      = isset($b['recording_duration']) ? (int)$b['recording_duration']
+                   : (isset($b['call_duration'])     ? (int)$b['call_duration'] : null);
     if (!$callSid && !$parentCallSid) { ok(['skipped' => true]); }
-    // Actualizar por call_sid o parent_call_sid en outbound_calls
-    foreach (array_filter([$callSid, $parentCallSid]) as $sid) {
-        db()->prepare("UPDATE outbound_calls SET recording_url = COALESCE(recording_url, ?), duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
-            ->execute([$recordingUrl, $duration, $sid]);
-        db()->prepare("UPDATE prospect_activities SET recording_url = COALESCE(recording_url, ?), duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
-            ->execute([$recordingUrl, $duration, $sid]);
+    // Priorizar parentCallSid (coincide con outbound_calls.call_sid del leg browser)
+    $sids = array_values(array_filter(array_unique([$parentCallSid, $callSid])));
+    foreach ($sids as $sid) {
+        if ($recordingUrl) {
+            db()->prepare("UPDATE outbound_calls SET recording_url = COALESCE(recording_url, ?), duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
+                ->execute([$recordingUrl, $duration, $sid]);
+            db()->prepare("UPDATE prospect_activities SET recording_url = COALESCE(recording_url, ?), duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
+                ->execute([$recordingUrl, $duration, $sid]);
+        } else {
+            // child-status sin grabación: al menos actualizar duración
+            db()->prepare("UPDATE outbound_calls SET duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
+                ->execute([$duration, $sid]);
+            db()->prepare("UPDATE prospect_activities SET duration_sec = COALESCE(duration_sec, ?) WHERE call_sid = ?")
+                ->execute([$duration, $sid]);
+        }
     }
     ok(['updated' => true]);
 }
