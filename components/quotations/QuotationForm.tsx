@@ -150,12 +150,16 @@ function serializeItemDescription(item: Item): string {
 interface Seller { id: string; name: string; email?: string }
 interface Company { id: string; name: string }
 
+const SER_EDUCACIONALES_ID = '12'
+
 interface Props {
   clients: Client[]
   pipelines?: Pipeline[]
   sellers?: Seller[]
   companies?: Company[]
   userId: string
+  prefilledPhone?: string
+  prefilledName?: string
   quotation?: {
     id: string
     client_id: string
@@ -231,7 +235,7 @@ const DEFAULT_DIARIO_ITEM: Item = {
   ruta_nombre: '', desde_item: '', hasta_item: '', hora_salida_item: '', hora_retorno_item: '', tiene_paradas: false, obs_paradas: '',
 }
 
-export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation }: Props) {
+export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation, prefilledPhone, prefilledName }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
 
@@ -250,8 +254,32 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   const [hasta, setHasta] = useState(quotation?.hasta ?? '')
   const [desdePlaceId, setDesdePlaceId] = useState<string>()
   const [hastaPlaceId, setHastaPlaceId] = useState<string>()
+  const [hastaLat, setHastaLat] = useState<number>()
+  const [hastaLng, setHastaLng] = useState<number>()
+  const [vespucio, setVespucio] = useState<boolean | null>(null)
   const [distanciaKm, setDistanciaKm] = useState<number | null>(null)
   const [duracionText, setDuracionText] = useState<string | null>(null)
+
+  // Pre-fill desde WhatsApp
+  useEffect(() => {
+    if (prefilledPhone) {
+      setNewClientCelular(prefilledPhone)
+      setShowNewClient(true)
+    }
+    if (prefilledName) setNewClientName(prefilledName)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Check Vespucio cuando pipeline = SER_EDUCACIONALES y hay coordenadas de destino
+  useEffect(() => {
+    if (pipelineId !== SER_EDUCACIONALES_ID || !hastaLat || !hastaLng) {
+      setVespucio(null)
+      return
+    }
+    fetch(`/api/geo/vespucio?lat=${hastaLat}&lng=${hastaLng}`)
+      .then(r => r.json())
+      .then(d => setVespucio(d.inside ?? null))
+      .catch(() => setVespucio(null))
+  }, [pipelineId, hastaLat, hastaLng])
 
   useEffect(() => {
     if (!desdePlaceId || !hastaPlaceId) { setDistanciaKm(null); setDuracionText(null); return }
@@ -646,9 +674,26 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
               <Label>Hasta</Label>
               <AddressInput
                 value={hasta}
-                onChange={(addr, _lat, _lng, pid) => { setHasta(addr); if (pid) setHastaPlaceId(pid) }}
+                onChange={(addr, lat, lng, pid) => {
+                  setHasta(addr)
+                  if (pid) setHastaPlaceId(pid)
+                  if (lat !== undefined) setHastaLat(lat)
+                  if (lng !== undefined) setHastaLng(lng)
+                  if (!addr) { setHastaLat(undefined); setHastaLng(undefined); setVespucio(null) }
+                }}
                 placeholder="Dirección de destino"
               />
+              {pipelineId === SER_EDUCACIONALES_ID && vespucio !== null && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 20,
+                  background: vespucio ? '#dcfce7' : '#fff7ed',
+                  color: vespucio ? '#15803d' : '#c2410c',
+                  border: `1px solid ${vespucio ? '#86efac' : '#fed7aa'}`,
+                }}>
+                  {vespucio ? '✓ Dentro de Vespucio' : '⚠ Fuera de Vespucio'}
+                </span>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Fecha salida</Label>

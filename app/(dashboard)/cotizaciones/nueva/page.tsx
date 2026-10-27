@@ -16,9 +16,14 @@ async function getPipedrivePipelines() {
   } catch { return [] }
 }
 
-export default async function NuevaCotizacionPage() {
+export default async function NuevaCotizacionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ phone?: string; name?: string; conv_id?: string }>
+}) {
   const session = await getSession()
   if (!session) redirect('/login')
+  const params = await searchParams
   const [clients, sellers, companies, pipelines] = await Promise.all([
     fetchClients(),
     fetchProfiles(),
@@ -29,7 +34,15 @@ export default async function NuevaCotizacionPage() {
   return (
     <div className="p-6 max-w-4xl">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Nueva cotización</h1>
-      <QuotationForm clients={clients ?? []} pipelines={pipelines} sellers={sellers ?? []} companies={companies ?? []} userId={session.id} />
+      <QuotationForm
+        clients={clients ?? []}
+        pipelines={pipelines}
+        sellers={sellers ?? []}
+        companies={companies ?? []}
+        userId={session.id}
+        prefilledPhone={params.phone}
+        prefilledName={params.name}
+      />
     </div>
   )
 }

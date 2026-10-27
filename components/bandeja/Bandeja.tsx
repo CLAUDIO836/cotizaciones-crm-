@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { UserSession } from '@/lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -71,6 +72,7 @@ function SemDot({ color }: { color: ReturnType<typeof semaphoreColor> }) {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function Bandeja({ user }: { user: UserSession }) {
   const isAdmin = user.role === 'admin'
+  const router = useRouter()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -245,6 +247,17 @@ export default function Bandeja({ user }: { user: UserSession }) {
                     Devolver al bot
                   </button>
                 )}
+                <button
+                  onClick={() => {
+                    const params = new URLSearchParams({ phone: activeConv.phone })
+                    if (activeConv.contact_name) params.set('name', activeConv.contact_name)
+                    if (activeConv.id) params.set('conv_id', activeConv.id)
+                    router.push(`/cotizaciones/nueva?${params.toString()}`)
+                  }}
+                  style={btnStyle('#1B8A4B')}
+                >
+                  Cotizar
+                </button>
               </div>
             </div>
 
