@@ -3420,5 +3420,122 @@ if ($action === 'wa_cloud_send') {
     ok($respData);
 }
 
+// ── Bandeja WhatsApp: listar conversaciones ───────────────────────────────────
+if ($action === 'wa_cloud_list') {
+    $user = requireAuth();
+    $isAdmin = isAdmin($user);
+
+    // Sin asignar: todos ven; asignadas: solo la propia o admin
+    if ($isAdmin) {
+        $stmt = db()->prepare("
+            SELECT c.id, c.phone, c.contact_name, c.assigned_to, c.bot_active, c.last_msg_at,
+                   p.name AS assigned_name,
+                   m.content AS last_message
+            FROM wa_cloud_conversations c
+            LEFT JOIN profiles p ON p.id = c.assigned_to
+            LEFT JOIN wa_cloud_messages m ON m.id = (
+                SELECT id FROM wa_cloud_messages
+                WHERE conversation_id = c.id
+                ORDER BY created_at DESC LIMIT 1
+            )
+            ORDER BY c.last_msg_at DESC
+            LIMIT 100
+        ");
+        $stmt->execute();
+    } else {
+        // Vendedor: ve las sin asignar + las propias
+        $stmt = db()->prepare("
+            SELECT c.id, c.phone, c.contact_name, c.assigned_to, c.bot_active, c.last_msg_at,
+                   p.name AS assigned_name,
+                   m.content AS last_message
+            FROM wa_cloud_conversations c
+            LEFT JOIN profiles p ON p.id = c.assigned_to
+            LEFT JOIN wa_cloud_messages m ON m.id = (
+                SELECT id FROM wa_cloud_messages
+                WHERE conversation_id = c.id
+                ORDER BY created_at DESC LIMIT 1
+            )
+            WHERE c.assigned_to IS NULL OR c.assigned_to = ?
+            ORDER BY c.last_msg_at DESC
+            LIMIT 100
+        ");
+        $stmt->execute([$user['id']]);
+    }
+
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Convertir last_msg_at a timestamp UTC
+    foreach ($rows as &$r) {
+        $r['bot_active'] = (bool)(int)$r['bot_active'];
+    }
+    ok($rows);
+}
+
+// ── Bandeja WhatsApp: mensajes de una conversación ───────────────────────────
+if ($action === 'wa_cloud_messages') {
+    $user = requireAuth();
+    $convId = $_GET['conv_id'] ?? null;
+    if (!$convId) err('conv_id requerido');
+
+    // Verificar acceso
+    $conv = db()->prepare("SELECT * FROM wa_cloud_conversations WHERE id = ?");
+    $conv->execute([$convId]);
+    $convRow = $conv->fetch(PDO::FETCH_ASSOC);
+    if (!$convRow) err('Conversación no encontrada', 404);
+    if (!isAdmin($user) && $convRow['assigned_to'] && $convRow['assigned_to'] !== $user['id']) {
+        err('Forbidden', 403);
+    }
+
+    $stmt = db()->prepare("
+        SELECT id, direction, content, msg_type, status, created_at
+        FROM wa_cloud_messages
+        WHERE conversation_id = ?
+        ORDER BY created_at ASC
+        LIMIT 200
+    ");
+    $stmt->execute([$convId]);
+    $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    ok(['conversation' => $convRow, 'messages' => $messages]);
+}
+
+// ── Bandeja WhatsApp: asignar conversación ────────────────────────────────────
+if ($action === 'wa_cloud_assign') {
+    $user = requireAuth();
+    $b = body();
+    $convId    = $b['conv_id']    ?? null;
+    $assignTo  = $b['assign_to']  ?? null;  // user_id o null para desasignar
+
+    if (!$convId) err('conv_id requerido');
+
+    $stmt = db()->prepare("UPDATE wa_cloud_conversations SET assigned_to = ? WHERE id = ?");
+    $stmt->execute([$assignTo ?: null, $convId]);
+    ok(['assigned_to' => $assignTo]);
+}
+
+// ── Bandeja WhatsApp: tomar chat (humano) / liberar (bot) ────────────────────
+if ($action === 'wa_cloud_take') {
+    $user = requireAuth();
+    $b = body();
+    $convId    = $b['conv_id']   ?? null;
+    $botActive = $b['bot_active'] ?? null;  // true = bot retoma, false = humano toma
+
+    if (!$convId || !isset($botActive)) err('conv_id y bot_active requeridos');
+
+    $fields = ['bot_active = ?'];
+    $vals   = [(int)(bool)$botActive];
+
+    // Si humano toma: asignar a quien hizo la acción
+    if (!$botActive) {
+        $fields[] = 'assigned_to = ?';
+        $vals[]   = $user['id'];
+    }
+
+    $vals[] = $convId;
+    db()->prepare("UPDATE wa_cloud_conversations SET " . implode(', ', $fields) . " WHERE id = ?")
+        ->execute($vals);
+
+    ok(['bot_active' => (bool)$botActive, 'assigned_to' => !$botActive ? $user['id'] : null]);
+}
+
 // ── Not found ─────────────────────────────────────────────────────────────────
 err("Acción '$action' no encontrada", 404);

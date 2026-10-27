@@ -22,6 +22,7 @@ const navItems = [
   { href: '/cotizaciones', label: 'Negocios',     icon: FileText },
   { href: '/agenda',       label: 'Agenda',       icon: CalendarDays },
   { href: '/llamadas',     label: 'Llamadas',     icon: Phone },
+  { href: '/bandeja',     label: 'Bandeja WA',   icon: MessageCircle },
   { href: '/whatsapp',    label: 'WhatsApp',     icon: MessageCircle },
   { href: '/contratos',    label: 'Contratos',    icon: FileCheck },
   { href: '/clientes',     label: 'Clientes',     icon: Users },
