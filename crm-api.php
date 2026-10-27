@@ -2531,7 +2531,50 @@ if ($action === 'diag_recent_calls') {
     ok($rows);
 }
 
+// ── Diagnóstico: contactos de campaña sin teléfono ─────────────────────────────
+if ($action === 'diag_campaign_contacts') {
+    $secret = $_GET['_secret'] ?? '';
+    $expected = getenv('INTERNAL_PDF_SECRET') ?: JWT_SECRET;
+    if (!hash_equals($expected, $secret)) { http_response_code(403); exit; }
+    $campaign_id = $_GET['campaign_id'] ?? null;
+    if (!$campaign_id) { http_response_code(400); echo '{}'; exit; }
+    $rows = db()->prepare("
+        SELECT pr.id, pr.name, pr.commune, pr.status,
+               c.id as contact_id, c.name as contact_name, c.role as contact_role,
+               c.phone, c.mobile, c.email
+        FROM prospects pr
+        LEFT JOIN prospect_contacts c ON c.prospect_id = pr.id
+        WHERE pr.campaign_id = ?
+        ORDER BY pr.commune, pr.name, c.is_primary DESC
+    ");
+    $rows->execute([$campaign_id]);
+    ok($rows->fetchAll());
+}
+
 // ── BACKFILL duration en outbound_calls desde prospect_activities (admin one-time) ─
+if ($action === 'patch_contact_phones') {
+    $secret = $_GET['_secret'] ?? '';
+    $expected = getenv('INTERNAL_PDF_SECRET') ?: JWT_SECRET;
+    if (!hash_equals($expected, $secret)) { http_response_code(403); echo json_encode(['error'=>'forbidden']); exit; }
+    $b = body();
+    $updates = $b['updates'] ?? [];
+    $updated = 0; $skipped = 0;
+    foreach ($updates as $u) {
+        $contact_id = $u['contact_id'] ?? null;
+        $phone      = $u['phone']      ?? null;
+        if (!$contact_id || !$phone) { $skipped++; continue; }
+        // Only overwrite if currently empty
+        $s = db()->prepare("SELECT phone, mobile FROM prospect_contacts WHERE id = ? LIMIT 1");
+        $s->execute([$contact_id]);
+        $row = $s->fetch();
+        if (!$row || $row['phone'] || $row['mobile']) { $skipped++; continue; }
+        db()->prepare("UPDATE prospect_contacts SET phone=? WHERE id=?")->execute([$phone, $contact_id]);
+        $updated++;
+    }
+    echo json_encode(['ok'=>true, 'updated'=>$updated, 'skipped'=>$skipped]);
+    exit;
+}
+
 if ($action === 'repair_call_durations') {
     $secret = $_GET['_secret'] ?? '';
     $expected = getenv('INTERNAL_PDF_SECRET') ?: JWT_SECRET;
@@ -2795,8 +2838,8 @@ if ($action === 'call_dashboard') {
 
 if ($action === 'log_outbound_call') {
     $secret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
-    $jwtSecret = getenv('CRM_JWT_SECRET') ?: JWT_SECRET;
-    if (!hash_equals($jwtSecret, $secret)) { http_response_code(403); echo '{}'; exit; }
+    $expected = getenv('INTERNAL_PDF_SECRET') ?: JWT_SECRET;
+    if (!hash_equals($expected, $secret)) { http_response_code(403); echo '{}'; exit; }
     $b = body();
     $userId   = $b['user_id']   ?? null;
     $toNumber = $b['to_number'] ?? null;
@@ -2809,11 +2852,38 @@ if ($action === 'log_outbound_call') {
     exit;
 }
 
+if ($action === 'backfill_calls') {
+    $secret = $_GET['_secret'] ?? '';
+    $expected = getenv('INTERNAL_PDF_SECRET') ?: JWT_SECRET;
+    if (!hash_equals($expected, $secret)) { http_response_code(403); echo json_encode(['error'=>'forbidden']); exit; }
+    $b = body();
+    $calls = $b['calls'] ?? [];
+    $inserted = 0; $skipped = 0;
+    foreach ($calls as $c) {
+        $userId   = $c['user_id']   ?? null;
+        $toNumber = $c['to_number'] ?? null;
+        $callSid  = $c['call_sid']  ?? null;
+        $calledAt = $c['called_at'] ?? null;
+        if (!$userId || !$toNumber) { $skipped++; continue; }
+        $normalized = preg_replace('/[^0-9+]/', '', $toNumber);
+        // Avoid duplicates
+        $exists = db()->prepare("SELECT id FROM outbound_calls WHERE call_sid = ? LIMIT 1");
+        $exists->execute([$callSid]);
+        if ($exists->fetch()) { $skipped++; continue; }
+        $durationSec = isset($c['duration_sec']) ? (int)$c['duration_sec'] : null;
+        db()->prepare("INSERT INTO outbound_calls (user_id, to_number, call_sid, direction, called_at, duration_sec) VALUES (?, ?, ?, 'outbound', ?, ?)")
+            ->execute([$userId, $normalized, $callSid, $calledAt, $durationSec]);
+        $inserted++;
+    }
+    echo json_encode(['ok' => true, 'inserted' => $inserted, 'skipped' => $skipped]);
+    exit;
+}
+
 if ($action === 'log_inbound_call') {
     // Llamado desde incoming_call_route al recibir llamada entrante
     $secret = $_SERVER['HTTP_X_INTERNAL_SECRET'] ?? '';
-    $jwtSecret = getenv('CRM_JWT_SECRET') ?: JWT_SECRET;
-    if (!hash_equals($jwtSecret, $secret)) { http_response_code(403); echo '{}'; exit; }
+    $expected = getenv('INTERNAL_PDF_SECRET') ?: JWT_SECRET;
+    if (!hash_equals($expected, $secret)) { http_response_code(403); echo '{}'; exit; }
     $b = body();
     $userId   = $b['user_id']   ?? null;
     $fromNum  = $b['from_number'] ?? null;
@@ -2920,7 +2990,7 @@ if ($action === 'incoming_call_route') {
 
 // ── COMMUNE ASSIGNMENTS ───────────────────────────────────────────────────────
 if ($action === 'commune_assignments_list') {
-    requireAdmin();
+    requireAuth();
     $campaign_id = $_GET['campaign_id'] ?? null;
     if (!$campaign_id) err('campaign_id requerido');
     $stmt = db()->prepare("
