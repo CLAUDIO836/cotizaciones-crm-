@@ -3015,6 +3015,32 @@ if ($action === 'call_recording_update') {
                 ->execute([$duration, $sid]);
         }
     }
+    // Auto-crear prospect_activity si no existe aún para esta llamada
+    $primarySid = $parentCallSid ?? $callSid;
+    if ($primarySid) {
+        $existing = db()->prepare("SELECT id FROM prospect_activities WHERE call_sid = ? LIMIT 1");
+        $existing->execute([$primarySid]);
+        if (!$existing->fetch()) {
+            $oc = db()->prepare("SELECT user_id, to_number FROM outbound_calls WHERE call_sid = ? LIMIT 1");
+            $oc->execute([$primarySid]);
+            $ocRow = $oc->fetch();
+            if ($ocRow) {
+                $phone9 = substr(preg_replace('/[^0-9]/', '', $ocRow['to_number']), -9);
+                $contact = db()->prepare("SELECT c.id AS contact_id, c.prospect_id FROM prospect_contacts c WHERE RIGHT(REGEXP_REPLACE(c.mobile,'[^0-9]',''),9) = ? OR RIGHT(REGEXP_REPLACE(c.phone,'[^0-9]',''),9) = ? LIMIT 1");
+                $contact->execute([$phone9, $phone9]);
+                $cRow = $contact->fetch();
+                if ($cRow) {
+                    $dur = $duration ?? 0;
+                    $result = $dur >= 60 ? 'interested' : ($dur >= 15 ? 'contacted' : ($dur >= 5 ? 'cold' : 'no_answer'));
+                    db()->prepare("INSERT IGNORE INTO prospect_activities (id, prospect_id, contact_id, user_id, type, result, duration_sec, call_sid, recording_url, created_at) VALUES (UUID(), ?, ?, ?, 'call', ?, ?, ?, ?, NOW())")
+                        ->execute([$cRow['prospect_id'], $cRow['contact_id'], $ocRow['user_id'], $result, $dur, $primarySid, $recordingUrl]);
+                    // Actualizar estado del prospecto si estaba sin gestionar
+                    db()->prepare("UPDATE prospects SET status = 'contacted', updated_at = NOW() WHERE id = ? AND status = 'new'")
+                        ->execute([$cRow['prospect_id']]);
+                }
+            }
+        }
+    }
     ok(['updated' => true]);
 }
 
