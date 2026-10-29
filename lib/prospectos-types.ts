@@ -69,6 +69,7 @@ export type Prospect = {
   updated_at: string
   activity_count?: number
   last_activity_at?: string | null
+  last_call_at?: string | null
   best_call_duration?: number | null
   contacts?: ProspectContact[]
   activities?: ProspectActivity[]

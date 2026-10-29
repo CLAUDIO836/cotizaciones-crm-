@@ -2200,6 +2200,7 @@ if ($action === 'prospects_list') {
                pr.name AS assigned_name,
                (SELECT COUNT(*) FROM prospect_activities WHERE prospect_id = p.id) AS activity_count,
                (SELECT MAX(created_at) FROM prospect_activities WHERE prospect_id = p.id) AS last_activity_at,
+               (SELECT MAX(created_at) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = 'call') AS last_call_at,
                (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = 'call') AS best_call_duration
         FROM prospects p
         LEFT JOIN profiles pr ON pr.id = p.assigned_to

@@ -43,8 +43,8 @@ export default function ProspectosCola({
   const [, startTransition] = useTransition()
 
   const todayContacted = prospects.filter(p => {
-    if (!p.last_activity_at) return false
-    return new Date(p.last_activity_at).toDateString() === new Date().toDateString()
+    if (!p.last_call_at) return false
+    return new Date(p.last_call_at).toDateString() === new Date().toDateString()
   }).length
 
   const pct = Math.min(100, Math.round((todayContacted / DAILY_GOAL) * 100))
