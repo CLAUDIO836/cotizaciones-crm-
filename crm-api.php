@@ -2856,10 +2856,11 @@ if ($action === 'call_dashboard') {
             'fallida'              => $e['fallida'],
             'total_colegios'       => $e['total_colegios'],
             'days_active'          => $days,
-            'daily_avg_intencion'  => $days > 0 ? round($e['con_intencion'] / $days, 1) : 0,
+            'daily_avg_intencion'  => $days > 0 ? round($e['con_intencion']    / $days, 1) : 0,
+            'daily_avg_total'      => $days > 0 ? round($e['total_colegios']   / $days, 1) : 0,
         ];
     }
-    usort($execStats, fn($a,$b) => $b['con_intencion'] - $a['con_intencion']);
+    usort($execStats, fn($a,$b) => $b['total_colegios'] - $a['total_colegios']);
 
     // ── 3. Comunas ────────────────────────────────────────────────────────────
     $stmtCommTotals = db()->prepare("SELECT commune, COUNT(*) as t FROM prospects WHERE campaign_id = ? GROUP BY commune");

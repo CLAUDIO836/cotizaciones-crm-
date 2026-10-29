@@ -8,7 +8,7 @@ import {
 import { Campaign } from '@/lib/prospectos-types'
 import { UserSession } from '@/lib/api'
 
-const STORAGE_KEY = 'crm_daily_intencion_goal'
+const STORAGE_KEY = 'crm_daily_coverage_goal'
 const DEFAULT_GOAL = 36
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -34,6 +34,7 @@ interface ExecRow {
   total_colegios: number
   days_active: number
   daily_avg_intencion: number
+  daily_avg_total: number
 }
 
 interface CommuneRow {
@@ -124,16 +125,16 @@ function BigCard({ value, label, sub, dot }: {
 }
 
 function GoalBar({ exec, goal }: { exec: ExecRow; goal: number }) {
-  const pct   = Math.min(100, Math.round((exec.daily_avg_intencion / goal) * 100))
+  const pct   = Math.min(100, Math.round((exec.daily_avg_total / goal) * 100))
   const color = pct >= 100 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626'
   return (
     <div>
       <div className="flex justify-between items-center mb-1.5">
         <span className="text-sm font-semibold text-gray-800">{exec.executive_name}</span>
         <div className="text-xs text-gray-500 tabular-nums text-right">
-          <span className="font-bold" style={{ color }}>{exec.daily_avg_intencion.toFixed(1)}</span>
-          <span className="text-gray-400"> / {goal} colegios/día con intención</span>
-          <span className="ml-2 text-gray-400">· {exec.con_intencion} total</span>
+          <span className="font-bold" style={{ color }}>{exec.daily_avg_total.toFixed(1)}</span>
+          <span className="text-gray-400"> / {goal} colegios/día · </span>
+          <span className="font-medium text-green-600">{exec.con_intencion} con intención</span>
         </div>
       </div>
       <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
@@ -141,6 +142,7 @@ function GoalBar({ exec, goal }: { exec: ExecRow; goal: number }) {
           style={{ width: `${pct}%`, background: color }} />
       </div>
       <div className="flex gap-4 mt-1.5 text-xs text-gray-400 tabular-nums">
+        <span><span className="font-medium text-green-600">{exec.con_intencion}</span> con intención</span>
         <span><span className="font-medium text-yellow-600">{exec.contactado}</span> contactados</span>
         <span><span className="font-medium text-orange-500">{exec.fria}</span> frías</span>
         <span><span className="font-medium text-red-400">{exec.fallida}</span> fallidas</span>
@@ -260,7 +262,7 @@ export default function ProspectosDashboard({
           ) : (
             <>
               <span className="text-sm font-bold text-gray-900">{goal} colegios/día</span>
-              <span className="text-xs text-gray-400">con intención</span>
+              <span className="text-xs text-gray-400">llamados</span>
               <button onClick={() => { setEditGoal(true); setGoalInput(String(goal)) }} className="text-gray-400 hover:text-gray-600">
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -376,7 +378,7 @@ export default function ProspectosDashboard({
             <div className="bg-white rounded-xl border p-5 space-y-5">
               <h2 className="font-semibold text-gray-800 flex items-center gap-2">
                 <Target className="w-4 h-4 text-green-600" />
-                Progreso meta — colegios con intención por ejecutivo
+                Progreso meta — colegios llamados por ejecutivo
               </h2>
               {data.executive_stats.map(exec => (
                 <GoalBar key={exec.user_id} exec={exec} goal={goal} />
@@ -400,12 +402,12 @@ export default function ProspectosDashboard({
                     <th className="text-center px-3 py-3 text-red-400">Fallida</th>
                     <th className="text-center px-3 py-3">Total col.</th>
                     <th className="text-center px-3 py-3">Días</th>
-                    <th className="text-center px-3 py-3">Inten./día</th>
+                    <th className="text-center px-3 py-3">Col./día</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.executive_stats.map(exec => {
-                    const onGoal = exec.daily_avg_intencion >= goal
+                    const onGoal = exec.daily_avg_total >= goal
                     return (
                       <tr key={exec.user_id} className="border-b last:border-0 hover:bg-gray-50">
                         <td className="px-5 py-3 font-medium text-gray-800">{exec.executive_name}</td>
@@ -416,7 +418,7 @@ export default function ProspectosDashboard({
                         <td className="px-3 py-3 text-center tabular-nums">{exec.total_colegios}</td>
                         <td className="px-3 py-3 text-center tabular-nums text-gray-500">{exec.days_active}</td>
                         <td className={`px-3 py-3 text-center tabular-nums font-bold ${onGoal ? 'text-green-600' : 'text-red-500'}`}>
-                          {exec.daily_avg_intencion.toFixed(1)}
+                          {exec.daily_avg_total.toFixed(1)}
                         </td>
                       </tr>
                     )
