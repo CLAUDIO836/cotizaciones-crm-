@@ -37,9 +37,12 @@ export default function FloatingSoftphone() {
   }, [])
 
   function pressKey(k: string) {
+    if (state === 'in-call') {
+      callRef.current?.sendDigits(k)
+      return
+    }
     if (state !== 'idle') return
     setNumber(n => n + k)
-    callRef.current?.sendDigits(k)
   }
 
   function fmt(s: number) {
