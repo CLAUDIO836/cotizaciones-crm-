@@ -355,14 +355,26 @@ export default function ProspectosDashboard({
                   <div className="text-xs text-blue-400">Gestión / esfuerzo</div>
                 </div>
               </div>
-              <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3">
-                <div className="w-2.5 h-8 rounded-full bg-gray-500 flex-shrink-0" />
-                <div>
-                  <div className="text-2xl font-bold text-gray-900 tabular-nums leading-none">{s.total_colegios}</div>
-                  <div className="text-xs font-semibold text-gray-700 mt-0.5">Colegios únicos</div>
-                  <div className="text-xs text-gray-400">Cobertura · {s.coverage_pct}% del total</div>
-                </div>
-              </div>
+              {(() => {
+                const metaPct = Math.min(100, Math.round(s.total_colegios / goal * 100))
+                const metaColor = metaPct >= 100 ? '#16a34a' : metaPct >= 70 ? '#d97706' : '#dc2626'
+                return (
+                  <div className="border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3" style={{ background: '#f9fafb' }}>
+                    <div className="w-2.5 h-8 rounded-full flex-shrink-0" style={{ background: metaColor }} />
+                    <div className="flex-1">
+                      <div className="flex items-baseline gap-1.5 leading-none">
+                        <span className="text-2xl font-bold tabular-nums" style={{ color: metaColor }}>{s.total_colegios}</span>
+                        <span className="text-sm text-gray-400 font-medium">/ {goal}</span>
+                        <span className="ml-auto text-lg font-bold tabular-nums" style={{ color: metaColor }}>{metaPct}%</span>
+                      </div>
+                      <div className="text-xs font-semibold text-gray-700 mt-1">Colegios únicos · Meta diaria</div>
+                      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mt-1.5">
+                        <div className="h-full rounded-full transition-all" style={{ width: `${metaPct}%`, background: metaColor }} />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
               <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-3">
                 <div className="w-2.5 h-8 rounded-full bg-green-500 flex-shrink-0" />
                 <div>
