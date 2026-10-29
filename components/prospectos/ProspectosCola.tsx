@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Campaign, Prospect, CallCategory, classifyCall, CALL_LABELS, CALL_LABELS_SHORT, CALL_COLORS, daysSince, daysUntil } from '@/lib/prospectos-types'
 import { UserSession } from '@/lib/api'
 
-const DAILY_GOAL = 35
+const DAILY_GOAL = 36
 
 function DaysChip({ prospect }: { prospect: Prospect }) {
   const days = daysSince(prospect.last_activity_at ?? undefined)
