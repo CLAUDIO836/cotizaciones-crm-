@@ -10,6 +10,8 @@
 $_s = '/home/transccl/crm-secrets.php';
 if (file_exists($_s) && !defined('META_WA_TOKEN')) require_once $_s;
 
+date_default_timezone_set('America/Santiago');
+
 define('_DB_HOST',   'localhost');
 define('_DB_NAME',   'transccl_crm');
 define('_DB_USER',   'transccl_crm_user');
@@ -208,8 +210,8 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             if ($wamidOut) {
                 $outId = dbUuid();
                 $pdo->prepare("INSERT IGNORE INTO wa_cloud_messages
-                    (id, conversation_id, wamid, direction, content)
-                    VALUES (?,?,?,'out',?)")
+                    (id, conversation_id, wamid, direction, content, created_at)
+                    VALUES (?,?,?,'out',?,NOW())")
                     ->execute([$outId, $convId, $wamidOut, $botReply]);
             }
         }
