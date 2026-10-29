@@ -3105,7 +3105,7 @@ if ($action === 'incoming_call_route') {
 
         echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Dial callerId=\"+56229149664\" record=\"record-from-answer\" recordingStatusCallback=\"$appUrl/api/twilio/recording\" recordingStatusCallbackMethod=\"POST\"><Number>$celular</Number></Dial></Response>";
     } else {
-        echo '<?xml version="1.0" encoding="UTF-8"?><Response><Dial callerId="+56229149664"><Number>+56974270138</Number></Dial></Response>'; // TEMP: OTP Meta → Paola
+        echo '<?xml version="1.0" encoding="UTF-8"?><Response><Dial callerId="+56229149664"><Number>+56229455713</Number></Dial></Response>';
     }
     exit;
 }
