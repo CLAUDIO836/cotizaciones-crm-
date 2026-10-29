@@ -123,11 +123,19 @@ function ensureTables(): void {
         assigned_to  VARCHAR(36),
         bot_active   TINYINT(1)   NOT NULL DEFAULT 1,
         last_msg_at  DATETIME,
+        last_message TEXT,
         created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uq_phone (phone),
         INDEX idx_assigned (assigned_to),
         INDEX idx_last_msg (last_msg_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Migración: añadir last_message si la tabla ya existía sin ella
+    try {
+        $pdo->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN last_message TEXT AFTER last_msg_at");
+    } catch (PDOException $e) {
+        if ($e->getCode() !== '42S21') throw $e; // 42S21 = column already exists, ignorar
+    }
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS wa_cloud_messages (
         id              CHAR(36)     NOT NULL PRIMARY KEY,
@@ -158,13 +166,13 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         if ($conv) {
             $convId    = $conv['id'];
             $botActive = (bool)(int)$conv['bot_active'];
-            $pdo->prepare("UPDATE wa_cloud_conversations SET last_msg_at = NOW(), contact_name = COALESCE(?, contact_name) WHERE id = ?")
-                ->execute([$name ?: null, $convId]);
+            $pdo->prepare("UPDATE wa_cloud_conversations SET last_msg_at = NOW(), last_message = ?, contact_name = COALESCE(?, contact_name) WHERE id = ?")
+                ->execute([mb_substr($text, 0, 500), $name ?: null, $convId]);
         } else {
             $convId    = dbUuid();
             $botActive = true;
-            $pdo->prepare("INSERT INTO wa_cloud_conversations (id, phone, contact_name, bot_active, last_msg_at) VALUES (?,?,?,1,NOW())")
-                ->execute([$convId, $phone, $name ?: null]);
+            $pdo->prepare("INSERT INTO wa_cloud_conversations (id, phone, contact_name, bot_active, last_msg_at, last_message) VALUES (?,?,?,1,NOW(),?)")
+                ->execute([$convId, $phone, $name ?: null, mb_substr($text, 0, 500)]);
         }
 
         // Guardar mensaje entrante (INSERT IGNORE deduplica)
