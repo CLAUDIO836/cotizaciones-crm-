@@ -19,6 +19,7 @@ interface Summary {
   fria: number
   fallida: number
   total_colegios: number
+  total_calls: number
   total_campaign: number
   coverage_pct: number
   intencion_pct: number
@@ -32,9 +33,11 @@ interface ExecRow {
   fria: number
   fallida: number
   total_colegios: number
+  total_calls: number
   days_active: number
   daily_avg_intencion: number
   daily_avg_total: number
+  intencion_rate: number
 }
 
 interface CommuneRow {
@@ -125,27 +128,41 @@ function BigCard({ value, label, sub, dot }: {
 }
 
 function GoalBar({ exec, goal }: { exec: ExecRow; goal: number }) {
-  const avg   = exec.daily_avg_total ?? exec.daily_avg_intencion ?? 0
-  const pct   = Math.min(100, Math.round((avg / goal) * 100))
-  const color = pct >= 100 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626'
+  const avg          = exec.daily_avg_total ?? exec.daily_avg_intencion ?? 0
+  const pct          = Math.min(100, Math.round((avg / goal) * 100))
+  const color        = pct >= 100 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626'
+  const intentionPct = exec.intencion_rate ?? (
+    exec.total_colegios > 0 ? Math.round(exec.con_intencion / exec.total_colegios * 100) : 0
+  )
+  const intentionColor = intentionPct >= 30 ? '#16a34a' : intentionPct >= 15 ? '#d97706' : '#6b7280'
   return (
     <div>
       <div className="flex justify-between items-center mb-1.5">
         <span className="text-sm font-semibold text-gray-800">{exec.executive_name}</span>
-        <div className="text-xs text-gray-500 tabular-nums text-right">
+        <div className="text-xs text-gray-500 tabular-nums text-right flex items-center gap-2">
+          <span className="text-gray-400">{exec.total_calls ?? exec.total_colegios} llamadas</span>
+          <span className="text-gray-300">·</span>
           <span className="font-bold" style={{ color }}>{avg.toFixed(1)}</span>
-          <span className="text-gray-400"> / {goal} colegios/día · </span>
-          <span className="font-medium text-green-600">{exec.con_intencion} con intención</span>
+          <span className="text-gray-400">/ {goal} colegios/día</span>
+          <span className="text-gray-300">·</span>
+          <span className="font-bold" style={{ color: intentionColor }}>{intentionPct}% intención</span>
         </div>
       </div>
+      {/* Capa 1: cobertura (barra principal) */}
       <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
         <div className="h-full rounded-full transition-all duration-500"
           style={{ width: `${pct}%`, background: color }} />
       </div>
+      {/* Capa 2: tasa de intención (barra delgada superpuesta) */}
+      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-1">
+        <div className="h-full rounded-full transition-all duration-500 bg-green-500"
+          style={{ width: `${Math.min(100, intentionPct)}%` }} />
+      </div>
       <div className="flex gap-4 mt-1.5 text-xs text-gray-400 tabular-nums">
+        <span><span className="font-medium text-blue-500">{exec.total_calls ?? exec.total_colegios}</span> llamadas</span>
+        <span><span className="font-medium text-gray-700">{exec.total_colegios}</span> colegios</span>
         <span><span className="font-medium text-green-600">{exec.con_intencion}</span> con intención</span>
         <span><span className="font-medium text-yellow-600">{exec.contactado}</span> contactados</span>
-        <span><span className="font-medium text-orange-500">{exec.fria}</span> frías</span>
         <span><span className="font-medium text-red-400">{exec.fallida}</span> fallidas</span>
       </div>
     </div>
@@ -327,6 +344,38 @@ export default function ProspectosDashboard({
 
       {!loading && data && (
         <>
+          {/* ── Tres capas — resumen rápido ── */}
+          {s && (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <div className="w-2.5 h-8 rounded-full bg-blue-400 flex-shrink-0" />
+                <div>
+                  <div className="text-2xl font-bold text-blue-700 tabular-nums leading-none">{s.total_calls ?? s.total_colegios}</div>
+                  <div className="text-xs font-semibold text-blue-600 mt-0.5">Llamadas totales</div>
+                  <div className="text-xs text-blue-400">Gestión / esfuerzo</div>
+                </div>
+              </div>
+              <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <div className="w-2.5 h-8 rounded-full bg-gray-500 flex-shrink-0" />
+                <div>
+                  <div className="text-2xl font-bold text-gray-900 tabular-nums leading-none">{s.total_colegios}</div>
+                  <div className="text-xs font-semibold text-gray-700 mt-0.5">Colegios únicos</div>
+                  <div className="text-xs text-gray-400">Cobertura · {s.coverage_pct}% del total</div>
+                </div>
+              </div>
+              <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <div className="w-2.5 h-8 rounded-full bg-green-500 flex-shrink-0" />
+                <div>
+                  <div className="text-2xl font-bold text-green-700 tabular-nums leading-none">
+                    {s.total_colegios > 0 ? Math.round(s.con_intencion / s.total_colegios * 100) : 0}%
+                  </div>
+                  <div className="text-xs font-semibold text-green-700 mt-0.5">Tasa de intención</div>
+                  <div className="text-xs text-green-500">{s.con_intencion} colegios ≥1 min</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── Summary cards ── */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <BigCard value={s?.con_intencion ?? 0}
@@ -397,13 +446,14 @@ export default function ProspectosDashboard({
                 <thead className="bg-gray-50 border-b text-xs text-gray-500 font-medium">
                   <tr>
                     <th className="text-left px-5 py-3">Ejecutivo</th>
-                    <th className="text-center px-3 py-3 text-green-600">Con intención</th>
+                    <th className="text-center px-3 py-3 text-blue-500">Llamadas</th>
+                    <th className="text-center px-3 py-3">Colegios</th>
+                    <th className="text-center px-3 py-3 text-green-600">Intención</th>
                     <th className="text-center px-3 py-3 text-yellow-600">Contactado</th>
-                    <th className="text-center px-3 py-3 text-orange-500">Fría</th>
                     <th className="text-center px-3 py-3 text-red-400">Fallida</th>
-                    <th className="text-center px-3 py-3">Total col.</th>
                     <th className="text-center px-3 py-3">Días</th>
                     <th className="text-center px-3 py-3">Col./día</th>
+                    <th className="text-center px-3 py-3">Tasa</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -412,14 +462,19 @@ export default function ProspectosDashboard({
                     return (
                       <tr key={exec.user_id} className="border-b last:border-0 hover:bg-gray-50">
                         <td className="px-5 py-3 font-medium text-gray-800">{exec.executive_name}</td>
+                        <td className="px-3 py-3 text-center tabular-nums text-blue-500">{exec.total_calls ?? exec.total_colegios}</td>
+                        <td className="px-3 py-3 text-center tabular-nums font-medium">{exec.total_colegios}</td>
                         <td className="px-3 py-3 text-center tabular-nums font-bold text-green-600">{exec.con_intencion}</td>
                         <td className="px-3 py-3 text-center tabular-nums text-yellow-600">{exec.contactado}</td>
-                        <td className="px-3 py-3 text-center tabular-nums text-orange-500">{exec.fria}</td>
                         <td className="px-3 py-3 text-center tabular-nums text-red-400">{exec.fallida}</td>
-                        <td className="px-3 py-3 text-center tabular-nums">{exec.total_colegios}</td>
                         <td className="px-3 py-3 text-center tabular-nums text-gray-500">{exec.days_active}</td>
                         <td className={`px-3 py-3 text-center tabular-nums font-bold ${onGoal ? 'text-green-600' : 'text-red-500'}`}>
                           {(exec.daily_avg_total ?? exec.daily_avg_intencion ?? 0).toFixed(1)}
+                        </td>
+                        <td className="px-3 py-3 text-center tabular-nums text-sm font-semibold" style={{
+                          color: (exec.intencion_rate ?? 0) >= 30 ? '#16a34a' : (exec.intencion_rate ?? 0) >= 15 ? '#d97706' : '#6b7280'
+                        }}>
+                          {exec.intencion_rate ?? 0}%
                         </td>
                       </tr>
                     )

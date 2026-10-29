@@ -2789,13 +2789,14 @@ if ($action === 'call_dashboard') {
         return 'fallida';
     }
 
-    $summary = ['con_intencion' => 0, 'contactado' => 0, 'fria' => 0, 'fallida' => 0, 'total_colegios' => 0];
+    $summary = ['con_intencion' => 0, 'contactado' => 0, 'fria' => 0, 'fallida' => 0, 'total_colegios' => 0, 'total_calls' => 0];
     foreach ($prospectRows as &$p) {
         $p['best_duration'] = (int)$p['best_duration'];
         $p['call_count']    = (int)$p['call_count'];
         $p['category']      = classifyDuration($p['best_duration']);
         $summary[$p['category']]++;
         $summary['total_colegios']++;
+        $summary['total_calls'] += $p['call_count'];
     }
     unset($p);
 
@@ -2814,7 +2815,8 @@ if ($action === 'call_dashboard') {
         SELECT o.user_id, pf.name as executive_name,
                DATE(DATE_SUB(o.called_at, INTERVAL 3 HOUR)) as date,
                pr.id as prospect_id,
-               MAX(COALESCE(o.duration_sec, 0)) as best_duration
+               MAX(COALESCE(o.duration_sec, 0)) as best_duration,
+               COUNT(*) as call_count
         FROM outbound_calls o
         JOIN profiles pf ON pf.id = o.user_id
         $phoneJoin
@@ -2834,11 +2836,12 @@ if ($action === 'call_dashboard') {
             $execMap[$uid] = [
                 'user_id' => $uid, 'executive_name' => $r['executive_name'],
                 'con_intencion' => 0, 'contactado' => 0, 'fria' => 0, 'fallida' => 0,
-                'total_colegios' => 0, 'days' => [], 'daily_intencion' => [],
+                'total_colegios' => 0, 'total_calls' => 0, 'days' => [], 'daily_intencion' => [],
             ];
         }
         $execMap[$uid][$cat]++;
         $execMap[$uid]['total_colegios']++;
+        $execMap[$uid]['total_calls'] += (int)$r['call_count'];
         $execMap[$uid]['days'][$date] = true;
         if ($cat === 'con_intencion')
             $execMap[$uid]['daily_intencion'][$date] = ($execMap[$uid]['daily_intencion'][$date] ?? 0) + 1;
@@ -2856,8 +2859,10 @@ if ($action === 'call_dashboard') {
             'fallida'              => $e['fallida'],
             'total_colegios'       => $e['total_colegios'],
             'days_active'          => $days,
+            'total_calls'          => $e['total_calls'],
             'daily_avg_intencion'  => $days > 0 ? round($e['con_intencion']    / $days, 1) : 0,
             'daily_avg_total'      => $days > 0 ? round($e['total_colegios']   / $days, 1) : 0,
+            'intencion_rate'       => $e['total_colegios'] > 0 ? round($e['con_intencion'] / $e['total_colegios'] * 100) : 0,
         ];
     }
     usort($execStats, fn($a,$b) => $b['total_colegios'] - $a['total_colegios']);
