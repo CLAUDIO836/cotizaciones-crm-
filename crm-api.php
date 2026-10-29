@@ -3574,9 +3574,9 @@ if ($action === 'wa_cloud_send') {
     if (!$phone) err('phone requerido');
     if (!$text && !$template) err('text o template requerido');
 
-    $waToken  = getenv('WHATSAPP_TOKEN')           ?: '';
-    $phoneId  = getenv('WHATSAPP_PHONE_NUMBER_ID') ?: '';
-    if (!$waToken || !$phoneId) err('WHATSAPP_TOKEN y WHATSAPP_PHONE_NUMBER_ID no configurados', 503);
+    $waToken  = defined('META_WA_TOKEN')           ? META_WA_TOKEN           : (getenv('WHATSAPP_TOKEN') ?: '');
+    $phoneId  = defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : (getenv('WHATSAPP_PHONE_NUMBER_ID') ?: '');
+    if (!$waToken || !$phoneId) err('META_WA_TOKEN / META_WA_PHONE_NUMBER_ID no configurados', 503);
 
     if ($text) {
         $payload = ['messaging_product' => 'whatsapp', 'to' => $phone, 'type' => 'text', 'text' => ['body' => $text]];
@@ -3756,9 +3756,9 @@ if ($action === 'wa_cloud_bot_send') {
     $text  = $b['text']  ?? null;
     if (!$phone || !$text) err('phone y text requeridos');
 
-    $waToken = getenv('WHATSAPP_TOKEN')           ?: '';
-    $phoneId = getenv('WHATSAPP_PHONE_NUMBER_ID') ?: '';
-    if (!$waToken || !$phoneId) err('WHATSAPP_TOKEN y WHATSAPP_PHONE_NUMBER_ID no configurados', 503);
+    $waToken = defined('META_WA_TOKEN')           ? META_WA_TOKEN           : (getenv('WHATSAPP_TOKEN') ?: '');
+    $phoneId = defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : (getenv('WHATSAPP_PHONE_NUMBER_ID') ?: '');
+    if (!$waToken || !$phoneId) err('META_WA_TOKEN / META_WA_PHONE_NUMBER_ID no configurados', 503);
 
     $payload = ['messaging_product' => 'whatsapp', 'to' => $phone, 'type' => 'text', 'text' => ['body' => $text]];
     $ch = curl_init("https://graph.facebook.com/v21.0/{$phoneId}/messages");
