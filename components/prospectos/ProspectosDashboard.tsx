@@ -125,14 +125,15 @@ function BigCard({ value, label, sub, dot }: {
 }
 
 function GoalBar({ exec, goal }: { exec: ExecRow; goal: number }) {
-  const pct   = Math.min(100, Math.round((exec.daily_avg_total / goal) * 100))
+  const avg   = exec.daily_avg_total ?? exec.daily_avg_intencion ?? 0
+  const pct   = Math.min(100, Math.round((avg / goal) * 100))
   const color = pct >= 100 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626'
   return (
     <div>
       <div className="flex justify-between items-center mb-1.5">
         <span className="text-sm font-semibold text-gray-800">{exec.executive_name}</span>
         <div className="text-xs text-gray-500 tabular-nums text-right">
-          <span className="font-bold" style={{ color }}>{exec.daily_avg_total.toFixed(1)}</span>
+          <span className="font-bold" style={{ color }}>{avg.toFixed(1)}</span>
           <span className="text-gray-400"> / {goal} colegios/día · </span>
           <span className="font-medium text-green-600">{exec.con_intencion} con intención</span>
         </div>
@@ -407,7 +408,7 @@ export default function ProspectosDashboard({
                 </thead>
                 <tbody>
                   {data.executive_stats.map(exec => {
-                    const onGoal = exec.daily_avg_total >= goal
+                    const onGoal = (exec.daily_avg_total ?? exec.daily_avg_intencion ?? 0) >= goal
                     return (
                       <tr key={exec.user_id} className="border-b last:border-0 hover:bg-gray-50">
                         <td className="px-5 py-3 font-medium text-gray-800">{exec.executive_name}</td>
@@ -418,7 +419,7 @@ export default function ProspectosDashboard({
                         <td className="px-3 py-3 text-center tabular-nums">{exec.total_colegios}</td>
                         <td className="px-3 py-3 text-center tabular-nums text-gray-500">{exec.days_active}</td>
                         <td className={`px-3 py-3 text-center tabular-nums font-bold ${onGoal ? 'text-green-600' : 'text-red-500'}`}>
-                          {exec.daily_avg_total.toFixed(1)}
+                          {(exec.daily_avg_total ?? exec.daily_avg_intencion ?? 0).toFixed(1)}
                         </td>
                       </tr>
                     )
