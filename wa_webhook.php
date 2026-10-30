@@ -68,6 +68,7 @@ foreach ($body['entry'] ?? [] as $entry) {
             $ts    = (int)($msg['timestamp'] ?? time());
 
             if (!$wamid || !$phone) continue;
+            if ($type === 'reaction') continue; // ignorar reacciones emoji
 
             // Extraer texto según tipo
             if ($type === 'text') {
@@ -249,10 +250,15 @@ function sendWA(string $phone, string $text): ?string {
         CURLOPT_POSTFIELDS => json_encode($payload),
         CURLOPT_TIMEOUT    => 15,
     ]);
-    $resp   = curl_exec($ch);
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $resp      = curl_exec($ch);
+    $curlErr   = curl_error($ch);
+    $status    = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
+    if ($resp === false || $curlErr) {
+        error_log('[wa_webhook] sendWA curl error ' . $status . ': ' . $curlErr . ' phone=' . $phone);
+        return null;
+    }
     if ($status >= 400) {
         error_log('[wa_webhook] Meta API error ' . $status . ': ' . $resp);
         return null;
@@ -305,10 +311,15 @@ function runBot(string $phone, string $latestMsg, array $history, ?string $name)
         CURLOPT_POSTFIELDS => json_encode($payload),
         CURLOPT_TIMEOUT    => 30,
     ]);
-    $resp   = curl_exec($ch);
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $resp    = curl_exec($ch);
+    $curlErr = curl_error($ch);
+    $status  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
+    if ($resp === false || $curlErr) {
+        error_log('[wa_webhook] runBot curl error ' . $status . ': ' . $curlErr . ' phone=' . $phone);
+        return null;
+    }
     if ($status !== 200) {
         error_log('[wa_webhook] Claude API error ' . $status . ': ' . $resp);
         return null;
