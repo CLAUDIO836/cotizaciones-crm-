@@ -133,11 +133,14 @@ function ensureTables(): void {
         INDEX idx_last_msg (last_msg_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    // Migración: añadir last_message si la tabla ya existía sin ella
-    try {
-        $pdo->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN last_message TEXT AFTER last_msg_at");
-    } catch (PDOException $e) {
-        if ($e->getCode() !== '42S21') throw $e; // 42S21 = column already exists, ignorar
+    // Migraciones: añadir columnas si la tabla ya existía sin ellas
+    foreach ([
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN last_message TEXT AFTER last_msg_at",
+        "ALTER TABLE profiles ADD COLUMN wa_last_assigned_at DATETIME NULL",
+    ] as $sql) {
+        try { $pdo->exec($sql); } catch (PDOException $e) {
+            if ($e->getCode() !== '42S21') throw $e;
+        }
     }
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS wa_cloud_messages (
@@ -221,11 +224,45 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         if ($shouldEscalate) {
             $pdo->prepare("UPDATE wa_cloud_conversations SET bot_active = 0 WHERE id = ?")
                 ->execute([$convId]);
+            assignRoundRobin($pdo, $convId, $phone, $name);
         }
 
     } catch (Throwable $e) {
         // Silenciar errores para no romper la respuesta a Meta
         error_log('[wa_webhook] ERROR: ' . $e->getMessage());
+    }
+}
+
+function assignRoundRobin(PDO $pdo, string $convId, string $clientPhone, ?string $clientName): void {
+    // Ejecutiva con wa_last_assigned_at más antigua (NULL primero = nunca asignada)
+    $stmt = $pdo->query("
+        SELECT id, name, celular
+        FROM profiles
+        WHERE active = 1
+          AND role NOT IN ('admin', 'superadmin')
+          AND (suspended = 0 OR suspended IS NULL)
+        ORDER BY wa_last_assigned_at IS NOT NULL ASC,
+                 wa_last_assigned_at ASC
+        LIMIT 1
+    ");
+    $exec = $stmt->fetch();
+    if (!$exec) return;
+
+    $pdo->prepare("UPDATE wa_cloud_conversations SET assigned_to = ? WHERE id = ?")
+        ->execute([$exec['id'], $convId]);
+
+    $pdo->prepare("UPDATE profiles SET wa_last_assigned_at = NOW() WHERE id = ?")
+        ->execute([$exec['id']]);
+
+    // Notificar a la ejecutiva por WhatsApp si tiene celular registrado
+    if ($exec['celular'] && _WA_TOKEN && _WA_PHONE) {
+        $cel = preg_replace('/\D/', '', $exec['celular']); // solo dígitos
+        if (strlen($cel) >= 8) {
+            $display = $clientName ? "{$clientName} (+{$clientPhone})" : "+{$clientPhone}";
+            $msg = "🔔 Nueva consulta WA asignada a ti: {$display}\n" .
+                   "Revisa la bandeja en crm.transccl.cl/bandeja";
+            sendWA($cel, $msg);
+        }
     }
 }
 
