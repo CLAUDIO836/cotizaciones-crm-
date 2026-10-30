@@ -190,7 +190,10 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         $stmt->execute([$msgId, $convId, $wamid, $text, $created_at]);
         $isNew = $stmt->rowCount() > 0;
 
-        if (!$isNew || !$botActive) return;
+        if (!$isNew) { error_log("[wa_webhook] SKIP dup wamid={$wamid} phone={$phone}"); return; }
+        if (!$botActive) { error_log("[wa_webhook] SKIP bot_inactive phone={$phone}"); return; }
+
+        error_log("[wa_webhook] PROC phone={$phone} wamid={$wamid} ai=" . (bool)_AI_KEY . " wa=" . (bool)_WA_TOKEN);
 
         // Historial (últimos 20 mensajes, orden ascendente)
         $hStmt = $pdo->prepare("SELECT direction, content FROM wa_cloud_messages
@@ -200,7 +203,7 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
 
         // Llamar a Claude
         $botReply = runBot($phone, $text, $history, $name);
-        if (!$botReply) return;
+        if (!$botReply) { error_log("[wa_webhook] EMPTY_REPLY phone={$phone}"); return; }
 
         // Detectar y extraer etiqueta de escalado
         $shouldEscalate = str_contains($botReply, '[ESCALAR_A_HUMANO]');
@@ -208,9 +211,11 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
 
         // Enviar respuesta por WhatsApp
         if ($botReply) {
+            error_log("[wa_webhook] SEND phone={$phone} len=" . strlen($botReply));
             $wamidOut = sendWA($phone, $botReply);
 
             // Guardar mensaje saliente
+            error_log("[wa_webhook] SENT phone={$phone} wamid=" . ($wamidOut ?? 'NULL'));
             if ($wamidOut) {
                 $outId = dbUuid();
                 $pdo->prepare("INSERT IGNORE INTO wa_cloud_messages

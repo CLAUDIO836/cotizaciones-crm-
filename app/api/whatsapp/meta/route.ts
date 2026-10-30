@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { after } from 'next/server'
 import crypto from 'crypto'
 import Anthropic from '@anthropic-ai/sdk'
 
@@ -10,28 +9,91 @@ const PDF_SECRET = process.env.INTERNAL_PDF_SECRET ?? ''
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-const BOT_SYSTEM = `Eres el asistente de WhatsApp de TransCCL, empresa chilena de transporte de personas en buses.
+function buildBotSystem(phone: string, name: string): string {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' }))
+  const days = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado']
+  const dow = days[now.getDay()]
+  const h = now.getHours(), m = now.getMinutes(), wd = now.getDay()
+  const biz = wd >= 1 && wd <= 5 && (h > 8 || (h === 8 && m >= 30)) && h < 18
+  const horario = biz ? 'dentro del horario hábil' : 'fuera del horario hábil'
+  const dd = String(now.getDate()).padStart(2,'0')
+  const mm = String(now.getMonth()+1).padStart(2,'0')
+  const nameStr = name ? `\nNOMBRE WA: ${name}` : ''
 
-Servicios que ofrecemos:
-- Transporte escolar (rutas ida y vuelta para colegios)
-- Transporte de personal para empresas
-- Traslados de grupos y excursiones
-- Transporte turístico
+  return `Eres el asistente virtual de TransCCL, empresa chilena de transporte de pasajeros. Atiendes consultas de ventas por WhatsApp.
 
-Tu tarea:
-- Responder consultas sobre servicios, disponibilidad y precios de forma breve y amable.
-- Para cotizaciones: solicitar número de alumnos/personas, origen, destino y frecuencia.
-- Para precios exactos: indicar que un ejecutivo los contactará con la cotización formal.
-- Usar español informal chileno (sin exceso de slang).
-- Respuestas cortas: máximo 3-4 oraciones.
+HOY: ${dow} ${dd}/${mm}/${now.getFullYear()} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')} (${horario}, L–V 8:30–18:00 hora Chile)
+CLIENTE: ${phone}${nameStr}
 
-Cuándo escalar a un ejecutivo humano (responde SOLO con la palabra ESCALAR):
-- El cliente pide hablar con una persona
-- Hay quejas o reclamos
-- La consulta es muy específica y no puedes resolverla
-- Llevas más de 3 intercambios sin resolver la duda
+## TU ROL
+- Responder al instante, amable, español de Chile, tratar de tú.
+- Armar la ficha de solicitud conversando, sin formularios rígidos.
+- NUNCA volver a preguntar datos que el cliente ya dio.
+- Mensajes cortos, máximo 2 preguntas por mensaje. Emojis con moderación: 🚌 👋 ✅ 📅.
+- Montos con punto de miles: $157.500.
 
-No inventes precios ni fechas. Si no sabes algo, dilo y ofrece que un ejecutivo los contacte.`
+## OFERTA SALIDAS EDUCATIVAS (hasta 15-nov-2026)
+- $157.500 por bus: colegio y destino dentro del anillo Américo Vespucio.
+- $187.500 por bus: destino Buin Zoo (dentro del anillo).
+- Bus hasta 45 pax, cinturón + climatización. DEJA Y RETIRA (el bus no queda esperando).
+- Salida del colegio DESDE las 09:00. Regreso del destino ANTES de las 15:00, mismo día.
+- Máx. 8 buses diarios para la oferta. Valores EXENTOS de IVA.
+- Colegios o destinos hasta 2 km fuera del anillo: 'posible excepción, la ejecutiva lo confirma' — NUNCA prometer.
+- Colegios con otros destinos (playa, campo, fuera de Santiago, etc.) o que necesitan espera: 'como colegio también tienen precios especiales, una ejecutiva te cotiza'. NO DAR PRECIO.
+
+## CALIFICA PARA LA OFERTA (todos deben cumplirse)
+1. Salida educativa (colegio, jardín, establecimiento educacional).
+2. Colegio dentro del anillo Américo Vespucio.
+3. Destino dentro del anillo (→ $157.500) o Buin Zoo (→ $187.500).
+4. Salida ≥ 09:00 y regreso del destino < 15:00, mismo día.
+5. Fecha ≤ 15-nov-2026.
+6. Acepta modalidad deja y retira.
+
+## FICHA A RECOLECTAR (conversando, en este orden)
+1. Tipo de servicio.
+2. N° de pasajeros.
+3. Dirección exacta origen (calle, número, comuna).
+4. Dirección exacta destino.
+5. Fecha y hora de salida; hora de retorno.
+6. ¿Espera o deja y retira? ¿Paradas?
+7. Nombre, correo, razón social.
+8. RUT (AL FINAL: 'para emitir la cotización formal').
+
+Antes de preguntar, revisar TODO lo que el cliente ya escribió.
+
+## URGENCIA (SOLO LO VERDADERO)
+Siempre: 'Solo tenemos 8 buses diarios para esta oferta, conviene reservar pronto.' NUNCA inventar cupos específicos restantes.
+
+## DERIVACIÓN
+- Salida educativa / paseo / viaje especial / evento → ejecutiva (el CRM asigna por rotación).
+- Empresa o traslado de personal recurrente → Paola Briceño directo.
+- Postulante a conductor → info@transccl.cl asunto 'Postulantes'. No tomar datos.
+- Choque/accidente → pedir nombre, teléfono, lugar, hora, patente. NO admitir responsabilidad.
+
+## HORARIO
+Dentro del horario: 'una ejecutiva te contactará a la brevedad.'
+Fuera del horario: 'nuestro horario es L–V 8:30–18:00; tu solicitud quedó registrada y una ejecutiva te contactará el próximo día hábil desde las 8:30.'
+
+## CUÁNDO ESCALAR A HUMANO
+Incluye la etiqueta [ESCALAR_A_HUMANO] al final de tu respuesta si:
+- La ficha está completa y el cliente confirmó el resumen.
+- El cliente pide hablar con una persona.
+- El cliente está molesto o reclama.
+- Es un choque o accidente.
+- Es traslado de personal recurrente (empresa).
+- Llevas 8+ turnos sin ficha completa.
+
+## REGLAS ABSOLUTAS
+1. NUNCA dar precio fuera de la oferta ni rangos para viajes que no califican.
+2. NUNCA confirmar reservas ni disponibilidad.
+3. NUNCA inventar cupos específicos restantes.
+4. NUNCA volver a pedir datos ya dados por el cliente.
+5. NUNCA prometer que el bus espera dentro del precio de la oferta.
+6. NUNCA decir 'SD' al cliente; decir 'traslado de personal'.
+
+## FORMATO
+Responde SOLO el texto del mensaje WhatsApp. Sin markdown (sin **, sin #). Sin prefijos ni etiquetas adicionales. Si debes escalar, añade [ESCALAR_A_HUMANO] en una línea aparte al final.`
+}
 
 // ── GET: Meta webhook verification ───────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -68,11 +130,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  // 3. Respond 200 immediately — Meta requires <1s
-  //    Process in background with after() (runs after response is sent)
-  after(async () => {
-    await processIncoming(body).catch(e => console.error('[wa-meta] process error:', e))
-  })
+  // 3. Process synchronously (Meta waits up to 20s; Claude takes ~3-5s)
+  await processIncoming(body).catch(e => console.error('[wa-meta] process error:', e))
 
   return NextResponse.json({ ok: true })
 }
@@ -110,7 +169,7 @@ async function processIncoming(body: MetaPayload) {
         if (storeRes?.ok) {
           const storeData = await storeRes.json().catch(() => null)
           if (storeData?.bot_active && storeData?.new && msg.type === 'text') {
-            await runBot(storeData.conversation_id, from).catch(e =>
+            await runBot(storeData.conversation_id, from, name).catch(e =>
               console.error('[wa-meta] bot error:', e)
             )
           }
@@ -121,7 +180,7 @@ async function processIncoming(body: MetaPayload) {
 }
 
 // ── Bot logic ─────────────────────────────────────────────────────────────────
-async function runBot(conversationId: string, phone: string) {
+async function runBot(conversationId: string, phone: string, name: string) {
   // 1. Fetch last 20 messages
   const histRes = await fetch(`${CRM_API}?action=wa_cloud_history`, {
     method: 'POST',
@@ -132,48 +191,53 @@ async function runBot(conversationId: string, phone: string) {
   const histData = await histRes.json()
   const history: Array<{ direction: string; content: string }> = histData?.data ?? []
 
-  // 2. Build messages array for Claude
-  const messages: Anthropic.MessageParam[] = history.map(m => ({
-    role: m.direction === 'in' ? 'user' : 'assistant',
-    content: m.content,
-  }))
+  // 2. Build messages array for Claude (consolidate consecutive same-role messages)
+  const messages: Anthropic.MessageParam[] = []
+  for (const m of history) {
+    const role = m.direction === 'in' ? 'user' : 'assistant'
+    if (messages.length > 0 && messages[messages.length - 1].role === role) {
+      messages[messages.length - 1].content += '\n' + m.content
+    } else {
+      messages.push({ role, content: m.content })
+    }
+  }
 
-  // Ensure last message is from user (required by Anthropic)
-  if (messages.length === 0 || messages[messages.length - 1].role !== 'user') return
+  // Ensure first message is user and last is user
+  if (messages.length === 0 || messages[0].role !== 'user') return
+  if (messages[messages.length - 1].role !== 'user') return
 
   // 3. Call Claude
   const claudeRes = await anthropic.messages.create({
     model: 'claude-sonnet-5-5',
-    max_tokens: 400,
-    system: BOT_SYSTEM,
+    max_tokens: 600,
+    system: buildBotSystem(phone, name),
     messages,
   })
 
-  const reply = claudeRes.content[0].type === 'text' ? claudeRes.content[0].text.trim() : ''
+  let reply = claudeRes.content[0].type === 'text' ? claudeRes.content[0].text.trim() : ''
   if (!reply) return
 
-  // 4. Check if bot should escalate
-  if (reply === 'ESCALAR') {
+  // 4. Handle escalation tag
+  const shouldEscalate = reply.includes('[ESCALAR_A_HUMANO]')
+  reply = reply.replace('[ESCALAR_A_HUMANO]', '').trim()
+
+  // 5. Send reply to client
+  if (reply) {
+    await fetch(`${CRM_API}?action=wa_cloud_bot_send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Internal-Secret': PDF_SECRET },
+      body: JSON.stringify({ phone, text: reply }),
+    })
+  }
+
+  // 6. Escalate if needed
+  if (shouldEscalate) {
     await fetch(`${CRM_API}?action=wa_cloud_bot_escalate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Internal-Secret': PDF_SECRET },
       body: JSON.stringify({ conversation_id: conversationId }),
     })
-    // Send notification message to client
-    await fetch(`${CRM_API}?action=wa_cloud_bot_send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Internal-Secret': PDF_SECRET },
-      body: JSON.stringify({ phone, text: 'Un ejecutivo de TransCCL te contactará a la brevedad. ¡Gracias por comunicarte con nosotros! 🚌' }),
-    })
-    return
   }
-
-  // 5. Send bot reply
-  await fetch(`${CRM_API}?action=wa_cloud_bot_send`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Internal-Secret': PDF_SECRET },
-    body: JSON.stringify({ phone, text: reply }),
-  })
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
