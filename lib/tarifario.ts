@@ -17,7 +17,6 @@ export interface Formato {
     fijo: number          // precio lista = máx(minimo, fijo + valorKm × km de ida)
     valorKm: number       // $ por km de ida
     disposicion: number   // recargo si el vehículo queda a disposición del grupo
-    redondeo?: number     // por defecto TARIFARIO.salida.redondeo
   }
   contrato: {
     costoTramo: number    // costo del socio por tramo (AM o PM) hasta 20 km
@@ -35,7 +34,7 @@ export const TARIFARIO = {
   version: '2026-11-01',
   formatos: [
     { id: 'bus45', nombre: 'Bus 45', pasajeros: 45,
-      salida: { minimo: 184500, fijo: 118500, valorKm: 3560, disposicion: 100000, redondeo: 500 },
+      salida: { minimo: 184500, fijo: 118500, valorKm: 3560, disposicion: 100000 },
       contrato: { costoTramo: 64750, estimado: false } },
     { id: 'taxibus30', nombre: 'Taxibús 30', pasajeros: 30,
       salida: { ...escalera(175800), disposicion: 90000 },
@@ -62,7 +61,6 @@ export const TARIFARIO = {
     factorOtroDia: 1.5,     // el día completo + medio servicio
     kmRevisar: 150,         // sobre esto: revisar alojamiento / conductor de relevo
     kmPeajes: 50,           // sobre esto se avisa que hay peajes de ruta
-    redondeo: 100,          // la escalera mantiene montos exactos; el bus redondea a $500
   },
   contrato: {
     margenLista: 0.35,
@@ -73,7 +71,6 @@ export const TARIFARIO = {
       { hastaKm: 35, factor: 1.1 },
       { hastaKm: 50, factor: 1.2 },
     ],
-    redondeo: 500,
   },
   recargos: {
     nocturno: { pct: 0.20, desde: '22:00', hasta: '06:00' },
@@ -117,7 +114,9 @@ function enHorarioNocturno(hora?: string): boolean {
   return min >= 22 * 60 || min < 6 * 60
 }
 
-const redondear = (v: number, paso: number) => Math.round(v / paso) * paso
+// Nunca se redondea a $100 ni $500 (Claudio, 01-11-2026): solo a pesos enteros.
+// Si se quiere un monto redondo, lo ajusta la ejecutiva a mano.
+const pesos = (v: number) => Math.round(v)
 
 export function formatoPorPasajeros(pasajeros: number): Formato {
   const ordenados = [...TARIFARIO.formatos].sort((a, b) => a.pasajeros - b.pasajeros)
@@ -206,9 +205,9 @@ export function calcularTarifa(e: EntradaTarifa): ResultadoTarifa {
       resultado = { ...base, aMedida: true, precioLista: null, precioMinimo: null, precioPiso: null, costoEstimado: null, alertas, detalle }
     } else {
       const costo = formato.contrato.costoTramo * banda.factor
-      const lista = redondear(costo / (1 - C.margenLista), C.redondeo)
-      const minimo = redondear(costo / (1 - C.margenEjecutiva), C.redondeo)
-      const piso = redondear(costo / (1 - C.margenPiso), C.redondeo)
+      const lista = pesos(costo / (1 - C.margenLista))
+      const minimo = pesos(costo / (1 - C.margenEjecutiva))
+      const piso = pesos(costo / (1 - C.margenPiso))
       detalle.push(`Costo socio por tramo ${formato.nombre}: $${formato.contrato.costoTramo.toLocaleString('es-CL')}` +
         (banda.factor !== 1 ? ` × ${banda.factor} (banda ${desde}–${banda.hastaKm} km)` : ` (banda hasta ${banda.hastaKm} km)`))
       detalle.push(`Lista 35%: $${lista.toLocaleString('es-CL')} · Ejecutiva 30%: $${minimo.toLocaleString('es-CL')} · Piso 25% (con aprobación): $${piso.toLocaleString('es-CL')}`)
@@ -223,14 +222,13 @@ export function calcularTarifa(e: EntradaTarifa): ResultadoTarifa {
     const S = TARIFARIO.salida
     const modalidad: Modalidad = e.modalidad ?? 'mismo_dia'
     const f = formato.salida
-    const paso = f.redondeo ?? S.redondeo
-    const listaDia = redondear(Math.max(f.minimo, f.fijo + f.valorKm * km), paso)
+    const listaDia = pesos(Math.max(f.minimo, f.fijo + f.valorKm * km))
     const factorMin = (1 - S.margenLista) / (1 - S.margenMinimo)
-    const minimoDia = redondear(listaDia * factorMin, paso)
+    const minimoDia = pesos(listaDia * factorMin)
     let lista: number, minimo: number
     if (modalidad === 'otro_dia') {
-      lista = redondear(listaDia * S.factorOtroDia, paso)
-      minimo = redondear(lista * factorMin, paso)
+      lista = pesos(listaDia * S.factorOtroDia)
+      minimo = pesos(lista * factorMin)
     } else if (modalidad === 'solo_ida') {
       lista = minimoDia
       minimo = minimoDia

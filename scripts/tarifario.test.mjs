@@ -9,11 +9,11 @@ const contrato = (formato, km, extra = {}) => calcularTarifa({ servicio: 'contra
 
 test('bus 45 mismo día: mínimo y valor por km', () => {
   assert.equal(salida('bus45', 11).precioLista, 184500)
-  assert.equal(salida('bus45', 11).precioMinimo, 171500)
+  assert.equal(salida('bus45', 11).precioMinimo, 171321)
   assert.equal(salida('bus45', 15.3).precioLista, 184500)          // San Bernardo → Buin Zoo
-  assert.equal(salida('bus45', 41.7).precioLista, 267000)          // Ñuñoa → Buin Zoo
-  assert.equal(salida('bus45', 87.3).precioLista, 429500)          // Santiago → Rancagua
-  assert.ok(Math.abs(salida('bus45', 128.6).precioLista - 576500) <= 500) // Ñuñoa → Viña
+  assert.equal(salida('bus45', 41.7).precioLista, 266952)          // Ñuñoa → Buin Zoo
+  assert.equal(salida('bus45', 87.3).precioLista, 429288)          // Santiago → Rancagua
+  assert.equal(salida('bus45', 128.6).precioLista, 576316)          // Ñuñoa → Viña
 })
 
 test('escalera de formatos a $3.100 por km sobre 19 km', () => {
@@ -28,10 +28,14 @@ test('escalera de formatos a $3.100 por km sobre 19 km', () => {
   assert.equal(salida('van11', 42).precioLista, 205700)
 })
 
+test('nunca redondea a $100 ni $500', () => {
+  assert.equal(salida('bus45', 41.7).precioLista % 100 !== 0, true)
+})
+
 test('modalidades de salida', () => {
-  assert.equal(salida('bus45', 11, { modalidad: 'otro_dia' }).precioLista, 277000)   // 276.750 redondeado a $500
-  assert.equal(salida('bus45', 11, { modalidad: 'solo_ida' }).precioLista, 171500)
-  assert.equal(salida('bus45', 11, { modalidad: 'solo_ida' }).precioMinimo, 171500)
+  assert.equal(salida('bus45', 11, { modalidad: 'otro_dia' }).precioLista, 276750)
+  assert.equal(salida('bus45', 11, { modalidad: 'solo_ida' }).precioLista, 171321)
+  assert.equal(salida('bus45', 11, { modalidad: 'solo_ida' }).precioMinimo, 171321)
   assert.equal(salida('bus45', 11, { modalidad: 'a_disposicion' }).precioLista, 284500)
   assert.equal(salida('taxibus30', 11, { modalidad: 'a_disposicion' }).precioLista, 265800)
   assert.equal(salida('van11', 11, { modalidad: 'a_disposicion' }).precioLista, 214400)
@@ -39,13 +43,13 @@ test('modalidades de salida', () => {
 
 test('contratos mensuales: tramo por banda y márgenes 35/30/25', () => {
   const b = contrato('bus45', 15)
-  assert.deepEqual([b.precioLista, b.precioMinimo, b.precioPiso], [99500, 92500, 86500])
-  assert.equal(contrato('bus45', 22).precioLista, 109500)
-  assert.equal(contrato('bus45', 40).precioLista, 119500)
-  assert.equal(contrato('taxibus30', 10).precioLista, 92500)
-  assert.equal(contrato('minibus19', 10).precioLista, 65500)
-  assert.equal(contrato('minibus19', 25).precioLista, 72000)
-  assert.equal(contrato('minibus15', 10).precioLista, 53500)
+  assert.deepEqual([b.precioLista, b.precioMinimo, b.precioPiso], [99615, 92500, 86333])
+  assert.equal(contrato('bus45', 22).precioLista, 109577)
+  assert.equal(contrato('bus45', 40).precioLista, 119538)
+  assert.equal(contrato('taxibus30', 10).precioLista, 92308)
+  assert.equal(contrato('minibus19', 10).precioLista, 65385)
+  assert.equal(contrato('minibus19', 25).precioLista, 71923)
+  assert.equal(contrato('minibus15', 10).precioLista, 53462)
   assert.equal(contrato('van11', 10).precioLista, 50000)
   assert.equal(contrato('van11', 30).precioLista, 55000)
   assert.equal(contrato('van11', 45).precioLista, 60000)
