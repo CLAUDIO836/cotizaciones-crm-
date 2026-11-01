@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import AddressInput, { type PlaceSelection } from '@/components/maps/AddressInput'
+import ClientRutSearch from '@/components/clients/ClientRutSearch'
+import { CODIGO_FORMATO, guardarHandoff } from '@/lib/cotizador-handoff'
 import { formatCLP } from '@/lib/utils'
 import type { FormatoId, Modalidad, ResultadoTarifa, Servicio } from '@/lib/tarifario'
 import { Plus, Trash2, MapPin, AlertTriangle, CheckCircle2, XCircle, Copy, FilePlus2 } from 'lucide-react'
@@ -45,8 +47,20 @@ function formatoSugerido(pasajeros: number): FormatoId {
   return orden.find(f => CAPACIDAD[f] >= pasajeros) ?? 'bus45'
 }
 
-export default function Cotizador() {
+interface Seller { id: string; name: string }
+interface Company { id: string; name: string }
+
+export default function Cotizador({ companies, sellers, userId }: { companies: Company[]; sellers: Seller[]; userId: string }) {
   const router = useRouter()
+
+  // Datos de la cotización (los mismos que pide el formulario)
+  const [companyId, setCompanyId] = useState(() => companies.find(c => /transccl/i.test(c.name))?.id ?? (companies.length === 1 ? companies[0].id : ''))
+  const [sellerId, setSellerId] = useState(userId)
+  const [cliente, setCliente] = useState<{ id: string; contactId: string | null; name: string; rut?: string } | null>(null)
+  const [fechaRegreso, setFechaRegreso] = useState('')
+  const [diasMes, setDiasMes] = useState('21')
+  const [nombreRuta, setNombreRuta] = useState('')
+  const [observaciones, setObservaciones] = useState('')
 
   const [tipoCliente, setTipoCliente] = useState('12')
   const [servicio, setServicio] = useState<Servicio>('salida')
@@ -210,19 +224,74 @@ export default function Cotizador() {
     finally { setEnviandoSolicitud(false) }
   }
 
+  const corto = (p: PlaceSelection) => p.comuna ?? p.address.split(',')[0]
+
   function crearCotizacion() {
-    if (!resultado || resultado.aMedida) return
+    if (!resultado || resultado.aMedida || kmUsados === null) return
+    if (!cliente) { toast.error('Busca o crea el cliente por RUT'); return }
+    if (!sellerId) { toast.error('Selecciona el vendedor'); return }
+    if (necesitaAprobacion && solicitud?.status !== 'aprobada') {
+      toast.error(solicitud?.status === 'pendiente' ? 'La aprobación todavía está pendiente' : 'Primero solicita la aprobación')
+      return
+    }
+    const f = resultado.formato.id
+    const cod = CODIGO_FORMATO[f]
     const precio = resultado.propuesta?.precio ?? resultado.precioLista!
-    const params = new URLSearchParams({
-      pipeline: servicio === 'contrato' ? PIPELINE_CONTRATO : tipoCliente,
-      desde: origen.address, hasta: destino.address,
-      km: String(kmUsados), formato: resultado.formato.id, vehiculos: String(resultado.vehiculos),
-      precio: String(precio), precio_lista: String(resultado.precioLista),
-      ...(servicio === 'salida' ? { modalidad } : {}),
-      ...(pasajeros ? { pasajeros } : {}),
-      ...(fecha ? { fecha } : {}), ...(horaSalida ? { hora_salida: horaSalida } : {}), ...(horaRegreso ? { hora_regreso: horaRegreso } : {}),
+    const hora = (h: string, def: string) => h || def
+    const fechaSalida = fecha ? `${fecha}T${hora(horaSalida, '09:00')}` : ''
+    const diaRetorno = servicio === 'salida' && modalidad === 'otro_dia' ? fechaRegreso : fecha
+    const fechaRetorno = diaRetorno && modalidad !== 'solo_ida' ? `${diaRetorno}T${hora(horaRegreso, '15:00')}` : ''
+    const modalidadTxt = MODALIDADES.find(m => m.id === modalidad)?.label.toLowerCase()
+    const formatoTxt = FORMATOS.find(x => x.id === f)?.label ?? resultado.formato.nombre
+    const description = servicio === 'contrato'
+      ? `${formatoTxt} – ${corto(origen)} → ${corto(destino)}`
+      : `${formatoTxt} – ${corto(origen)} → ${corto(destino)}, ${modalidadTxt}${modalidad === 'mismo_dia' ? ' (deja y retira)' : ''}`
+    const nota = [
+      `Tarifario TransCCL ${resultado.version}: lista ${formatCLP(resultado.precioLista!)}, mínimo sin aprobación ${formatCLP(resultado.precioMinimo!)}` +
+        (resultado.precioPiso ? `, piso ${formatCLP(resultado.precioPiso)}` : '') + ` (${unidad}).`,
+      `${kmUsados} km${kmManual ? ' ajustados a mano' : ' por carretera'}` + (paradas.length ? `, paradas: ${paradas.map(p => p.address).join(' · ')}` : '') + '.',
+      ...(solicitud?.status === 'aprobada' ? [`Aprobado por ${solicitud.decidido_por}${solicitud.comentario ? `: "${solicitud.comentario}"` : ''} (autorización ${solicitud.id.slice(0, 8)}).`] : []),
+      ...recargosPedidos.map(r => `Recargo pedido: ${r.mensaje}${r.sugerido ? ` (sugerido ${r.sugerido})` : ''}`),
+    ].join('\n')
+
+    guardarHandoff({
+      version: 1,
+      companyId: companyId || undefined,
+      sellerId,
+      clientId: cliente.id,
+      contactId: cliente.contactId,
+      clientName: cliente.name,
+      clientRut: cliente.rut,
+      pipelineId: servicio === 'contrato' ? PIPELINE_CONTRATO : tipoCliente,
+      vehicleType: cod.vehicleType,
+      desde: origen.address,
+      hasta: destino.address,
+      destinoLat: destino.lat,
+      destinoLng: destino.lng,
+      km: kmUsados,
+      fechaSalida,
+      fechaRetorno,
+      observaciones: [observaciones.trim(), nota].filter(Boolean).join('\n\n'),
+      autorizacionId: solicitud?.status === 'aprobada' ? solicitud.id : undefined,
+      item: {
+        codigo: cod.codigo,
+        description,
+        pasajeros: Number(pasajeros) || resultado.formato.pasajeros,
+        quantity: servicio === 'contrato' ? (Number(diasMes) || 21) : resultado.vehiculos,
+        unit_price: precio,
+        ...(servicio === 'contrato' ? {
+          ruta_nombre: nombreRuta.trim() || `${corto(origen)} → ${corto(destino)}`,
+          desde_item: origen.address,
+          hasta_item: destino.address,
+          hora_salida_item: horaSalida,
+          hora_retorno_item: horaRegreso,
+          tiene_paradas: paradas.length > 0,
+          obs_paradas: paradas.map(p => p.address).join(' · '),
+        } : {}),
+      },
+      tarifa: { servicio, formato: f, km: kmUsados, modalidad: servicio === 'salida' ? modalidad : undefined },
     })
-    router.push(`/cotizaciones/nueva?${params}`)
+    router.push('/cotizaciones/nueva?desde_cotizador=1')
   }
 
   return (
@@ -230,7 +299,28 @@ export default function Cotizador() {
       {/* ── Datos del viaje ── */}
       <div className="space-y-5">
         <section className="bg-white rounded-xl border p-5 space-y-4">
-          <h2 className="font-semibold text-sm uppercase tracking-wide text-gray-500">Cliente y servicio</h2>
+          <h2 className="font-semibold text-sm uppercase tracking-wide text-gray-500">Empresa y vendedor</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="empresa">Empresa</Label>
+              <select id="empresa" className={SELECT_CLS} value={companyId} onChange={e => setCompanyId(e.target.value)}>
+                <option value="">Seleccionar empresa…</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="vendedor">Vendedor</Label>
+              <select id="vendedor" className={SELECT_CLS} value={sellerId} onChange={e => setSellerId(e.target.value)}>
+                <option value="">Seleccionar vendedor…</option>
+                {sellers.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-white rounded-xl border p-5 space-y-4">
+          <h2 className="font-semibold text-sm uppercase tracking-wide text-gray-500">Cliente</h2>
+          <ClientRutSearch onSelect={(id, contactId, info) => setCliente({ id, contactId, name: info?.name ?? '', rut: info?.rut })} />
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="tipo-cliente">Tipo de cliente</Label>
@@ -349,6 +439,33 @@ export default function Cotizador() {
               <Input id="hora-regreso" type="time" value={horaRegreso} onChange={e => setHoraRegreso(e.target.value)} />
             </div>
           </div>
+
+          {servicio === 'salida' && modalidad === 'otro_dia' && (
+            <div className="space-y-1.5 sm:max-w-xs">
+              <Label htmlFor="fecha-regreso">Fecha de regreso</Label>
+              <Input id="fecha-regreso" type="date" value={fechaRegreso} onChange={e => setFechaRegreso(e.target.value)} />
+            </div>
+          )}
+
+          {servicio === 'contrato' && (
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
+              <div className="space-y-1.5">
+                <Label htmlFor="nombre-ruta">Nombre de la ruta</Label>
+                <Input id="nombre-ruta" value={nombreRuta} onChange={e => setNombreRuta(e.target.value)} placeholder="Ej. Metro Pajaritos → CD Salcobrand (AM)" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="dias-mes">Días al mes</Label>
+                <Input id="dias-mes" inputMode="numeric" value={diasMes} onChange={e => setDiasMes(e.target.value.replace(/\D/g, ''))} />
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="bg-white rounded-xl border p-5 space-y-2">
+          <Label htmlFor="observaciones">Observaciones para la cotización</Label>
+          <textarea id="observaciones" rows={3} value={observaciones} onChange={e => setObservaciones(e.target.value)}
+            className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600/30"
+            placeholder="Condiciones especiales, paradas, horarios, etc. Se agrega una nota con el cálculo del tarifario." />
         </section>
       </div>
 

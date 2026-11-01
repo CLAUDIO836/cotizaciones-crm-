@@ -9,8 +9,10 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCLP } from '@/lib/utils'
-import { Plus, Trash2, Calculator } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import ClientRutSearch from '@/components/clients/ClientRutSearch'
+import TarifaPanel from '@/components/quotations/TarifaPanel'
+import { tomarHandoff, formatoPorCodigo, CODIGO_FORMATO, type TarifaRef } from '@/lib/cotizador-handoff'
 
 // ── Google Places autocomplete (via server proxy) ────────────────────────────
 interface PlacePrediction { description: string; place_id: string }
@@ -107,6 +109,8 @@ interface Item {
   hora_retorno_item?: string
   tiene_paradas?: boolean
   obs_paradas?: string
+  // cálculo del tarifario que respalda el precio (UI-only, no se envía al servidor)
+  tarifa?: TarifaRef
 }
 
 // Parsear description si viene serializada como JSON para modo Diario
@@ -203,12 +207,16 @@ const VEHICLES_TKS = [
 // Códigos de vehículo para Traslado Diario (selector por ítem)
 const VEHICLE_CODES = [
   { code: 'B45', label: 'Bus 45 pax' },
+  { code: 'T30', label: 'Taxibús 30 pax' },
+  { code: 'T25', label: 'Taxibús 25 pax' },
   { code: 'B40', label: 'Bus 40 pax' },
   { code: 'B33', label: 'Bus 33 pax' },
   { code: 'B25', label: 'Bus 25 pax' },
   { code: 'M19', label: 'Minibús 19 pax' },
+  { code: 'M17', label: 'Minibús 17 pax' },
   { code: 'M15', label: 'Minibús 15 pax' },
   { code: 'M10', label: 'Minibús 10 pax' },
+  { code: 'V11', label: 'Van 11 pax' },
   { code: 'V10', label: 'Van 10 pax' },
   { code: 'V9',  label: 'Van 9 pax' },
   { code: 'V7',  label: 'Van 7 pax' },
@@ -221,13 +229,6 @@ const ETAPAS = [
   { key: 'negociacion', label: 'Negociación' },
   { key: 'cierre',      label: 'Cierre' },
 ]
-
-const VEHICLE_RATES: Record<string, { base: number; km: number }> = {
-  bus:     { base: 60000, km: 2500 },
-  taxibus: { base: 50000, km: 2300 },
-  minibus: { base: 45000, km: 2200 },
-  minivan: { base: 40000, km: 2000 },
-}
 
 const DEFAULT_ITEM: Item = { codigo: '', description: '', pasajeros: 0, quantity: 1, unit_price: 0 }
 const DEFAULT_DIARIO_ITEM: Item = {
@@ -325,10 +326,9 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   }, [pipelineId, issueDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [selectedUserId, setSelectedUserId] = useState(quotation?.vendedor_id ?? '')
-  const [tarNocturno, setTarNocturno] = useState(false)
-  const [tarFueraStgo, setTarFueraStgo] = useState(false)
-  const [tarPeajes, setTarPeajes] = useState(0)
-  const [tarKmManual, setTarKmManual] = useState<number | ''>('')
+  // Datos que vienen del Cotizador
+  const [autorizacionId, setAutorizacionId] = useState<string | undefined>()
+  const [clienteCotizador, setClienteCotizador] = useState<{ id: string; name: string; rut?: string; contactId: string | null } | null>(null)
 
   // Nuevo cliente inline
   const [newClientName, setNewClientName] = useState('')
@@ -338,6 +338,36 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   const [newClientCelular, setNewClientCelular] = useState('')
   const [newClientEmail, setNewClientEmail] = useState('')
   const [showNewClient, setShowNewClient] = useState(false)
+
+  // Prellenado desde el Cotizador: todos los datos pasan tal cual a la cotización.
+  // sessionStorage solo existe en el navegador, por eso se lee al montar.
+  useEffect(() => {
+    if (quotation) return
+    const h = tomarHandoff()
+    if (!h) return
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (h.companyId) setCompanyId(h.companyId)
+    if (h.sellerId) setSelectedUserId(h.sellerId)
+    setClientId(h.clientId)
+    setContactId(h.contactId)
+    setClienteCotizador({ id: h.clientId, name: h.clientName, rut: h.clientRut, contactId: h.contactId })
+    setPipelineId(h.pipelineId)
+    if (h.tarifa.servicio === 'salida') setVehicleType(h.vehicleType)
+    setDesde(h.desde)
+    setHasta(h.hasta)
+    if (h.destinoLat !== undefined) setHastaLat(h.destinoLat)
+    if (h.destinoLng !== undefined) setHastaLng(h.destinoLng)
+    setDistanciaKm(h.km)
+    setFechaSalida(h.fechaSalida)
+    setFechaDestino(h.fechaRetorno)
+    setTaxPct(0)
+    setDescuentoPct(0)
+    setObservaciones(h.observaciones)
+    setItems([{ ...h.item, tarifa: h.tarifa }])
+    setAutorizacionId(h.autorizacionId)
+    /* eslint-enable react-hooks/set-state-in-effect */
+    toast.success('Datos traídos desde el Cotizador')
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ¿Es embudo Traslado Diario?
   const isDiario = pipelines.find(p => p.id === pipelineId)?.name?.toLowerCase().includes('diario') ?? false
@@ -349,13 +379,10 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   const total = baseConDescuento + taxAmount
   const totalAnual = baseConDescuento * 12
 
-  const vRate = vehicleType ? VEHICLE_RATES[vehicleType] : null
-  const tarKmEfectivo = tarKmManual !== '' ? tarKmManual : (distanciaKm ?? 0)
-  const tarBase = vRate?.base ?? 0
-  const tarKmCost = vRate ? tarKmEfectivo * vRate.km : 0
-  const tarSubtotal = tarBase + tarKmCost
-  const tarConRecargos = tarSubtotal * (tarFueraStgo ? 1.3 : 1) * (tarNocturno ? 1.1 : 1)
-  const tarTotal = Math.round(tarConRecargos + tarPeajes)
+  // Formato del tarifario para el panel: el del último ítem o el de la tarjeta de vehículo
+  const ultimoItem = items[items.length - 1]
+  const formatoPanel = ultimoItem?.tarifa?.formato ?? formatoPorCodigo(ultimoItem?.codigo)
+    ?? ({ bus: 'bus45', taxibus: 'taxibus30', minibus: 'minibus19', minivan: 'van11' } as const)[vehicleType as 'bus'] ?? 'bus45'
 
   function updateItem(idx: number, field: keyof Item, value: string | number) {
     setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item))
@@ -385,6 +412,39 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     return json.data?.id ?? null
   }
 
+  // Los precios calculados con el tarifario no pueden quedar bajo el mínimo sin aprobación
+  async function revisarPrecios(): Promise<string | null> {
+    let autz: { status: string; precio_solicitado: number | null } | null | undefined
+    for (const [idx, item] of items.entries()) {
+      if (!item.tarifa) continue
+      let r
+      try {
+        const res = await fetch('/api/tarifa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...item.tarifa, precioPropuesto: item.unit_price }),
+        })
+        r = (await res.json()).data
+      } catch { return 'No se pudo revisar el precio con el tarifario. Intenta de nuevo.' }
+      const p = r?.propuesta
+      if (!p || !p.requiereAprobacion) continue
+      const nombre = `Ítem ${idx + 1}`
+      if (!p.permitido) return `${nombre}: el precio queda bajo el piso del tarifario y no se puede ofrecer.`
+      if (autz === undefined) {
+        autz = null
+        if (autorizacionId) {
+          try {
+            const res = await fetch(`/api/autorizaciones?id=${autorizacionId}`, { cache: 'no-store' })
+            if (res.ok) autz = (await res.json()).data
+          } catch { /* sin autorización verificable */ }
+        }
+      }
+      const cubre = autz?.status === 'aprobada' && (autz.precio_solicitado === null || item.unit_price >= autz.precio_solicitado)
+      if (!cubre) return `${nombre}: el precio queda bajo el mínimo del tarifario. Solicita la aprobación desde el Cotizador.`
+    }
+    return null
+  }
+
   const isEditing = !!quotation?.id
   const [loadingPdf, setLoadingPdf] = useState(false)
   const [motivo, setMotivo] = useState('')
@@ -394,6 +454,9 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     if (!selectedUserId) { toast.error('Selecciona un vendedor'); return }
     if (items.some(i => i.ruta_nombre !== undefined ? !i.ruta_nombre?.trim() : !i.description.trim())) { toast.error('Completa la descripción de todos los ítems'); return }
     if (!isDiario && items.some(i => !i.pasajeros || i.pasajeros <= 0)) { toast.error('Indica la cantidad de pasajeros en cada ítem'); return }
+
+    const problemaPrecio = await revisarPrecios()
+    if (problemaPrecio) { toast.error(problemaPrecio, { duration: 8000 }); return }
 
     withPdf ? setLoadingPdf(true) : setLoading(true)
     try {
@@ -545,11 +608,12 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <h2 className="font-semibold text-gray-900 text-sm uppercase tracking-wide text-gray-500">Cliente</h2>
         <ClientRutSearch
+          key={clienteCotizador?.id ?? 'cliente'}
           onSelect={(cId, ctId) => { setClientId(cId); setContactId(ctId) }}
-          defaultClientId={quotation?.client_id}
-          defaultClientName={quotation?.client_name}
-          defaultClientRut={quotation?.client_rut}
-          defaultContactId={quotation?.contact_id}
+          defaultClientId={quotation?.client_id ?? clienteCotizador?.id}
+          defaultClientName={quotation?.client_name ?? clienteCotizador?.name}
+          defaultClientRut={quotation?.client_rut ?? clienteCotizador?.rut}
+          defaultContactId={quotation?.contact_id ?? clienteCotizador?.contactId}
         />
 
         {/* Pipeline + Etapa */}
@@ -707,80 +771,17 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
         </div>
       )}
 
-      {/* ── CALCULADORA DE TARIFA ── */}
-      {!isDiario && vehicleType && (
-        <div className="rounded-xl border border-amber-200 p-5 space-y-3" style={{ background: '#fffbeb' }}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Calculator className="w-4 h-4 text-amber-600" />
-              <h2 className="font-semibold text-sm uppercase tracking-wide" style={{ color: '#92400e' }}>Tarifa sugerida</h2>
-            </div>
-            <button
-              type="button"
-              onClick={() => setItems(prev => prev.map((it, idx) => idx === prev.length - 1 ? { ...it, unit_price: tarTotal } : it))}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white transition-all hover:opacity-90"
-              style={{ background: '#1B8A4B' }}
-            >
-              ✓ Aplicar precio al ítem
-            </button>
-          </div>
-          <div className="flex gap-4 flex-wrap items-center">
-            {/* Km — auto desde Google Maps o manual */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 font-medium whitespace-nowrap">Kilómetros</span>
-              <Input
-                type="number" min={0} step={1}
-                value={tarKmManual !== '' ? tarKmManual : (distanciaKm ?? '')}
-                onChange={e => setTarKmManual(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                className="w-24 text-right text-sm"
-                placeholder="0"
-              />
-              {distanciaKm !== null && tarKmManual === '' && (
-                <span className="text-xs text-green-700 font-medium">↑ Google Maps</span>
-              )}
-            </div>
-            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
-              <input type="checkbox" checked={tarNocturno} onChange={e => setTarNocturno(e.target.checked)} className="w-4 h-4" style={{ accentColor: '#d97706' }} />
-              <span className="font-medium text-gray-700">Nocturno</span>
-              <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#92400e' }}>+10%</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
-              <input type="checkbox" checked={tarFueraStgo} onChange={e => setTarFueraStgo(e.target.checked)} className="w-4 h-4" style={{ accentColor: '#d97706' }} />
-              <span className="font-medium text-gray-700">Fuera de Santiago</span>
-              <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#92400e' }}>+30%</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 font-medium whitespace-nowrap">Peajes ($)</span>
-              <Input
-                type="number" min={0} step={500}
-                value={tarPeajes || ''}
-                onChange={e => setTarPeajes(parseFloat(e.target.value) || 0)}
-                className="w-28 text-right text-sm"
-                placeholder="0"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
-            <div className="rounded-lg p-2.5 bg-white border border-amber-100">
-              <div className="text-xs text-gray-400 font-semibold uppercase mb-0.5">Tarifa base</div>
-              <div className="font-bold text-gray-800">{formatCLP(tarBase)}</div>
-            </div>
-            <div className="rounded-lg p-2.5 bg-white border border-amber-100">
-              <div className="text-xs text-gray-400 font-semibold uppercase mb-0.5">{tarKmEfectivo} km × tarifa/km</div>
-              <div className="font-bold text-gray-800">{formatCLP(tarKmCost)}</div>
-            </div>
-            <div className="rounded-lg p-2.5 bg-white border border-amber-100">
-              <div className="text-xs text-gray-400 font-semibold uppercase mb-0.5">Recargos</div>
-              <div className="font-bold" style={{ color: tarFueraStgo || tarNocturno ? '#d97706' : '#9ca3af' }}>
-                {tarFueraStgo && tarNocturno ? '+43%' : tarFueraStgo ? '+30%' : tarNocturno ? '+10%' : '—'}
-              </div>
-            </div>
-            <div className="rounded-lg p-2.5 border-2 border-green-300" style={{ background: '#f0fdf4' }}>
-              <div className="text-xs font-semibold uppercase mb-0.5" style={{ color: '#1B8A4B' }}>Total sugerido</div>
-              <div className="font-bold text-lg" style={{ color: '#1B8A4B' }}>{formatCLP(tarTotal)}</div>
-            </div>
-          </div>
-        </div>
+      {/* ── TARIFA TRANSCCL (mismo motor que el Cotizador) ── */}
+      {!isDiario && (
+        <TarifaPanel
+          kmMaps={distanciaKm}
+          formatoInicial={formatoPanel}
+          fechaSalida={fechaSalida}
+          fechaRetorno={fechaDestino}
+          onAplicar={(precio, tarifa) => setItems(prev => prev.map((it, idx) => idx === prev.length - 1
+            ? { ...it, unit_price: precio, tarifa, codigo: CODIGO_FORMATO[tarifa.formato].codigo }
+            : it))}
+        />
       )}
 
       {/* ── ÍTEMS: modo Traslado Diario ── */}

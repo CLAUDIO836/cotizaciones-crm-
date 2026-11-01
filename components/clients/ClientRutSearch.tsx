@@ -25,7 +25,8 @@ interface Client {
 }
 
 interface Props {
-  onSelect: (clientId: string, contactId: string | null) => void
+  // info: nombre y RUT del cliente elegido (opcional para quien lo necesite)
+  onSelect: (clientId: string, contactId: string | null, info?: { name: string; rut?: string }) => void
   defaultClientId?: string
   defaultClientName?: string
   defaultClientRut?: string
@@ -96,10 +97,10 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
         setShowNewClient(false)
         if (contacts.length === 1) {
           setSelectedContactId(contacts[0].id)
-          onSelect(data.id, contacts[0].id)
+          onSelect(data.id, contacts[0].id, { name: data.name, rut: data.rut })
         } else {
           setSelectedContactId(null)
-          onSelect(data.id, null)
+          onSelect(data.id, null, { name: data.name, rut: data.rut })
         }
       } else {
         setClient(null)
@@ -133,7 +134,7 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
 
   function selectContact(contact: Contact) {
     setSelectedContactId(contact.id)
-    onSelect(client!.id, contact.id)
+    onSelect(client!.id, contact.id, { name: client!.name, rut: client!.rut })
     setShowNewContact(false)
   }
 
@@ -193,10 +194,10 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
     setShowNewClient(false)
     if (contactData) {
       setSelectedContactId(contactData.id)
-      onSelect(data.id, contactData.id)
+      onSelect(data.id, contactData.id, { name: data.name, rut: data.rut ?? rut })
     } else {
       setShowNewContact(true)
-      onSelect(data.id, null)
+      onSelect(data.id, null, { name: data.name, rut: data.rut ?? rut })
     }
   }
 
@@ -222,7 +223,7 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
     const updated = { ...client, contacts: [...client.contacts, data] }
     setClient(updated)
     setSelectedContactId(data.id)
-    onSelect(client.id, data.id)
+    onSelect(client.id, data.id, { name: client.name, rut: client.rut })
     setShowNewContact(false)
     setNewContactName(''); setNewContactEmail(''); setNewContactMobile('')
     setNewContactLandline(''); setNewContactCargo('')

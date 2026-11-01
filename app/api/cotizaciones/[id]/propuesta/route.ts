@@ -21,8 +21,9 @@ const LIGHT  = '#86efac'
 
 const VEHICLE_LABEL: Record<string, string> = {
   'B45': 'Bus 45 pax', 'B40': 'Bus 40 pax', 'B33': 'Bus 33 pax', 'B25': 'Bus 25 pax',
-  'M19': 'Minibús 19 pax', 'M15': 'Minibús 15 pax', 'M10': 'Minibús 10 pax',
-  'V10': 'Van 10 pax', 'V7': 'Van 7 pax', 'V9': 'Van 9 pax',
+  'T30': 'Taxibús 30 pax', 'T25': 'Taxibús 25 pax',
+  'M19': 'Minibús 19 pax', 'M17': 'Minibús 17 pax', 'M15': 'Minibús 15 pax', 'M10': 'Minibús 10 pax',
+  'V11': 'Van 11 pax', 'V10': 'Van 10 pax', 'V7': 'Van 7 pax', 'V9': 'Van 9 pax',
 }
 
 function fmtDate(val: string | null | undefined) {
