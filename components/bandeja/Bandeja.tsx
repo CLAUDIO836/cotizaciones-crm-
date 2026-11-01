@@ -4,7 +4,8 @@ import { useRouter } from 'next/navigation'
 import { UserSession } from '@/lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Stage = 'nuevo' | 'cotizando' | 'ganado' | 'perdido'
+type Stage  = 'nuevo' | 'cotizando' | 'ganado' | 'perdido'
+type Source = 'whatsapp' | 'facebook' | 'instagram' | 'google' | 'referido' | 'otro'
 
 interface Conversation {
   id: string
@@ -14,9 +15,20 @@ interface Conversation {
   assigned_name: string | null
   bot_active: boolean
   stage: Stage
+  source: Source
   last_msg_at: string | null
   last_message: string | null
 }
+
+const SOURCES: { id: Source; label: string; icon: string }[] = [
+  { id: 'whatsapp',  label: 'WhatsApp',  icon: '💬' },
+  { id: 'facebook',  label: 'Facebook',  icon: '📘' },
+  { id: 'instagram', label: 'Instagram', icon: '📸' },
+  { id: 'google',    label: 'Google',    icon: '🔍' },
+  { id: 'referido',  label: 'Referido',  icon: '🤝' },
+  { id: 'otro',      label: 'Otro',      icon: '📌' },
+]
+const sourceMap = Object.fromEntries(SOURCES.map(s => [s.id, s]))
 
 interface Message {
   id: string
@@ -192,6 +204,16 @@ export default function Bandeja({ user }: { user: UserSession }) {
     await loadConversations()
   }
 
+  async function changeSource(source: Source) {
+    if (!activeId) return
+    await fetch('/api/whatsapp/cloud/source', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conv_id: activeId, source }),
+    })
+    setActiveConv(prev => prev ? { ...prev, source } : prev)
+    await loadConversations()
+  }
+
   async function assignConv(assignedTo: string | null) {
     if (!activeId) return
     await fetch('/api/whatsapp/cloud/assign', {
@@ -306,6 +328,15 @@ export default function Bandeja({ user }: { user: UserSession }) {
                     <span style={{ fontWeight: 700, color: '#111' }}>{activeConv.contact_name || activeConv.phone}</span>
                     <span style={{ color: '#6b7280', fontSize: 12 }}>+{activeConv.phone}</span>
                     <StagePill stage={activeConv.stage} />
+                    {/* Canal de origen */}
+                    {(() => {
+                      const src = sourceMap[activeConv.source ?? 'whatsapp'] ?? sourceMap['whatsapp']
+                      return (
+                        <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: '#f3f4f6', color: '#374151', fontWeight: 600 }}>
+                          {src.icon} {src.label}
+                        </span>
+                      )
+                    })()}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 12, color: '#9ca3af' }}>Ejecutivo:</span>
@@ -323,6 +354,15 @@ export default function Bandeja({ user }: { user: UserSession }) {
                 </div>
 
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {/* Selector de canal */}
+                  <select
+                    value={activeConv.source ?? 'whatsapp'}
+                    onChange={e => changeSource(e.target.value as Source)}
+                    style={{ ...selectStyle, width: 'auto', fontSize: 12, padding: '5px 8px' }}
+                  >
+                    {SOURCES.map(s => <option key={s.id} value={s.id}>{s.icon} {s.label}</option>)}
+                  </select>
+
                   {/* Selector de etapa */}
                   <select
                     value={activeConv.stage ?? 'nuevo'}
