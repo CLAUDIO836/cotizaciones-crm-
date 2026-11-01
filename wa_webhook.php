@@ -336,10 +336,21 @@ function runBot(string $phone, string $latestMsg, array $history, ?string $name)
 
     $payload = [
         'model'      => 'claude-sonnet-5-5',
-        'max_tokens' => 600,
+        'max_tokens' => 4096,
         'system'     => buildSystemPrompt($phone, $name),
         'messages'   => $messages,
     ];
+
+    $jsonPayload = json_encode($payload);
+    if ($jsonPayload === false) {
+        error_log('[wa_webhook] runBot json_encode FAILED: ' . json_last_error_msg() . ' phone=' . $phone);
+        // Intentar limpiar UTF-8 y reintentar
+        array_walk_recursive($payload['messages'], function(&$v) {
+            if (is_string($v)) $v = mb_convert_encoding($v, 'UTF-8', 'UTF-8');
+        });
+        $jsonPayload = json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE);
+        if ($jsonPayload === false) return null;
+    }
 
     $ch = curl_init('https://api.anthropic.com/v1/messages');
     curl_setopt_array($ch, [
@@ -350,7 +361,7 @@ function runBot(string $phone, string $latestMsg, array $history, ?string $name)
             'anthropic-version: 2023-06-01',
             'Content-Type: application/json',
         ],
-        CURLOPT_POSTFIELDS => json_encode($payload),
+        CURLOPT_POSTFIELDS => $jsonPayload,
         CURLOPT_TIMEOUT    => 30,
     ]);
     $resp    = curl_exec($ch);
@@ -363,11 +374,22 @@ function runBot(string $phone, string $latestMsg, array $history, ?string $name)
         return null;
     }
     if ($status !== 200) {
-        error_log('[wa_webhook] Claude API error ' . $status . ': ' . $resp);
+        error_log('[wa_webhook] Claude API error ' . $status . ': ' . substr($resp, 0, 500) . ' phone=' . $phone);
         return null;
     }
     $data = json_decode($resp, true) ?? [];
-    return $data['content'][0]['text'] ?? null;
+    // Buscar el primer bloque de tipo "text" (puede haber bloque "thinking" antes)
+    $text = null;
+    foreach ($data['content'] ?? [] as $block) {
+        if (($block['type'] ?? '') === 'text' && !empty($block['text'])) {
+            $text = $block['text'];
+            break;
+        }
+    }
+    if (!$text) {
+        error_log('[wa_webhook] runBot NULL_TEXT status=' . $status . ' stop=' . ($data['stop_reason'] ?? '?') . ' blocks=' . count($data['content'] ?? []) . ' types=' . implode(',', array_column($data['content'] ?? [], 'type')) . ' phone=' . $phone);
+    }
+    return $text;
 }
 
 function buildSystemPrompt(string $phone, ?string $name): string {
