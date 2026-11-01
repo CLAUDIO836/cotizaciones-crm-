@@ -91,6 +91,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [filterStage, setFilterStage] = useState('')
   const [agents, setAgents]       = useState<{ id: string; name: string }[]>([])
 
+  const [allAgents, setAllAgents]  = useState<{ id: string; name: string }[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId]   = useState<string | null>(null)
   const [messages, setMessages]   = useState<Message[]>([])
@@ -99,6 +100,15 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [sending, setSending]     = useState(false)
   const [loadingMsgs, setLoadingMsgs] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetch('/api/admin/usuarios')
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: { id: string; name: string; active: number }[]) =>
+        setAllAgents(rows.filter(r => r.active).map(r => ({ id: r.id, name: r.name })))
+      )
+      .catch(() => {})
+  }, [])
 
   // ── Load conversations ────────────────────────────────────────────────────
   const loadConversations = useCallback(async () => {
@@ -179,6 +189,21 @@ export default function Bandeja({ user }: { user: UserSession }) {
       body: JSON.stringify({ conv_id: activeId, stage }),
     })
     setActiveConv(prev => prev ? { ...prev, stage } : prev)
+    await loadConversations()
+  }
+
+  async function assignConv(assignedTo: string | null) {
+    if (!activeId) return
+    await fetch('/api/whatsapp/cloud/assign', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conv_id: activeId, assigned_to: assignedTo }),
+    })
+    const agent = allAgents.find(a => a.id === assignedTo)
+    setActiveConv(prev => prev ? {
+      ...prev,
+      assigned_to: assignedTo,
+      assigned_name: agent?.name ?? null,
+    } : prev)
     await loadConversations()
   }
 
@@ -282,12 +307,18 @@ export default function Bandeja({ user }: { user: UserSession }) {
                     <span style={{ color: '#6b7280', fontSize: 12 }}>+{activeConv.phone}</span>
                     <StagePill stage={activeConv.stage} />
                   </div>
-                  <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 3 }}>
-                    {activeConv.assigned_to
-                      ? <>Asignado: <strong style={{ color: '#374151' }}>{activeConv.assigned_name ?? activeConv.assigned_to}</strong></>
-                      : 'Sin asignar'}
-                    {' · '}
-                    {activeConv.bot_active ? '🤖 Bot activo' : '👤 Humano'}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, color: '#9ca3af' }}>Ejecutivo:</span>
+                    <select
+                      value={activeConv.assigned_to ?? ''}
+                      onChange={e => assignConv(e.target.value || null)}
+                      style={{ fontSize: 12, padding: '2px 6px', border: '1px solid #e5e7eb', borderRadius: 4, background: '#fff', color: '#374151', cursor: 'pointer' }}
+                    >
+                      <option value="">Sin asignar</option>
+                      {allAgents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    <span style={{ fontSize: 12, color: '#9ca3af' }}>·</span>
+                    <span style={{ fontSize: 12, color: '#9ca3af' }}>{activeConv.bot_active ? '🤖 Bot activo' : '👤 Humano'}</span>
                   </div>
                 </div>
 
