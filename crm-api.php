@@ -3805,5 +3805,145 @@ if ($action === 'wa_cloud_bot_escalate') {
     ok(['escalated' => true]);
 }
 
+// ── Autorizaciones internas de precio (Cotizador) ────────────────────────────
+// Descuentos bajo el mínimo y recargos los aprueba Claudio, Claudia o Paola
+// (acordado con Claudio el 01-11-2026). Basta con que uno de los tres decida.
+const AUTZ_APROBADORES = ['claudio@transccl.cl', 'contabilidad@transccl.cl', 'ecomercial2@transccl.cl'];
+const AUTZ_TIPOS = ['descuento', 'recargo', 'descuento_recargo', 'a_medida'];
+
+function autzEnsureTable(): void {
+    static $listo = false;
+    if ($listo) return;
+    db()->exec("CREATE TABLE IF NOT EXISTS price_authorizations (
+        id CHAR(36) NOT NULL PRIMARY KEY,
+        status VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+        tipo VARCHAR(30) NOT NULL,
+        referencia VARCHAR(255) NULL,
+        detalle TEXT NULL,
+        quotation_id CHAR(36) NULL,
+        precio_lista INT NULL,
+        precio_minimo INT NULL,
+        precio_solicitado INT NULL,
+        recargos TEXT NULL,
+        payload MEDIUMTEXT NULL,
+        requested_by CHAR(36) NOT NULL,
+        requested_by_name VARCHAR(150) NULL,
+        decided_by CHAR(36) NULL,
+        decided_by_name VARCHAR(150) NULL,
+        decided_at DATETIME NULL,
+        comentario TEXT NULL,
+        created_at DATETIME NOT NULL,
+        INDEX idx_autz_status (status),
+        INDEX idx_autz_quotation (quotation_id),
+        INDEX idx_autz_requested (requested_by)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $listo = true;
+}
+
+function autzEsAprobador(array $u): bool {
+    return in_array(strtolower((string)($u['email'] ?? '')), AUTZ_APROBADORES, true);
+}
+
+// Hora de Chile explícita para no depender de la zona del servidor
+function autzAhora(): string {
+    return (new DateTime('now', new DateTimeZone('America/Santiago')))->format('Y-m-d H:i:s');
+}
+
+function autzFila(array $r): array {
+    $r['recargos'] = $r['recargos'] ? json_decode($r['recargos'], true) : [];
+    $r['payload']  = $r['payload'] ? json_decode($r['payload'], true) : null;
+    foreach (['precio_lista', 'precio_minimo', 'precio_solicitado'] as $k) {
+        $r[$k] = $r[$k] === null ? null : (int)$r[$k];
+    }
+    return $r;
+}
+
+if ($action === 'autz_create') {
+    $u = requireAuth();
+    autzEnsureTable();
+    $b = body();
+    $tipo = (string)($b['tipo'] ?? '');
+    if (!in_array($tipo, AUTZ_TIPOS, true)) err('tipo inválido');
+    $ref = trim((string)($b['referencia'] ?? ''));
+    if ($ref === '') err('Indica el cliente o una referencia');
+    $int = fn($k) => isset($b[$k]) && $b[$k] !== '' ? (int)$b[$k] : null;
+    $id = uuid();
+    db()->prepare('INSERT INTO price_authorizations
+        (id, status, tipo, referencia, detalle, quotation_id, precio_lista, precio_minimo, precio_solicitado,
+         recargos, payload, requested_by, requested_by_name, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        ->execute([
+            $id, 'pendiente', $tipo, substr($ref, 0, 255), $b['detalle'] ?? null, $b['quotation_id'] ?? null,
+            $int('precio_lista'), $int('precio_minimo'), $int('precio_solicitado'),
+            isset($b['recargos']) ? json_encode($b['recargos'], JSON_UNESCAPED_UNICODE) : null,
+            isset($b['payload']) ? json_encode($b['payload'], JSON_UNESCAPED_UNICODE) : null,
+            $u['id'], $u['name'] ?? $u['email'], autzAhora(),
+        ]);
+    ok(['id' => $id, 'status' => 'pendiente']);
+}
+
+if ($action === 'autz_list') {
+    $u = requireAuth();
+    autzEnsureTable();
+    $esAprobador = autzEsAprobador($u);
+    $estado = $_GET['estado'] ?? 'pendiente';
+    $where = [];
+    $params = [];
+    if ($estado === 'pendiente') $where[] = "status = 'pendiente'";
+    elseif ($estado === 'resuelta') $where[] = "status IN ('aprobada','rechazada','anulada')";
+    if (!$esAprobador || ($_GET['mias'] ?? '') === '1') { $where[] = 'requested_by = ?'; $params[] = $u['id']; }
+    $sql = 'SELECT * FROM price_authorizations' . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
+         . ' ORDER BY created_at DESC LIMIT 200';
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    ok(['es_aprobador' => $esAprobador, 'items' => array_map('autzFila', $stmt->fetchAll())]);
+}
+
+if ($action === 'autz_get') {
+    $u = requireAuth();
+    autzEnsureTable();
+    $stmt = db()->prepare('SELECT * FROM price_authorizations WHERE id = ?');
+    $stmt->execute([$_GET['id'] ?? '']);
+    $row = $stmt->fetch();
+    if (!$row) err('No encontrada', 404);
+    if ($row['requested_by'] !== $u['id'] && !autzEsAprobador($u)) err('Forbidden', 403);
+    ok(autzFila($row));
+}
+
+if ($action === 'autz_decide') {
+    $u = requireAuth();
+    autzEnsureTable();
+    if (!autzEsAprobador($u)) err('Solo Claudio, Claudia o Paola pueden aprobar', 403);
+    $b = body();
+    $decision = (string)($b['decision'] ?? '');
+    if (!in_array($decision, ['aprobada', 'rechazada'], true)) err('decisión inválida');
+    $stmt = db()->prepare("UPDATE price_authorizations
+        SET status = ?, decided_by = ?, decided_by_name = ?, decided_at = ?, comentario = ?
+        WHERE id = ? AND status = 'pendiente'");
+    $stmt->execute([$decision, $u['id'], $u['name'] ?? $u['email'], autzAhora(), $b['comentario'] ?? null, $b['id'] ?? '']);
+    if ($stmt->rowCount() === 0) err('La solicitud ya fue resuelta o no existe', 409);
+    ok(['id' => $b['id'], 'status' => $decision]);
+}
+
+if ($action === 'autz_cancel') {
+    $u = requireAuth();
+    autzEnsureTable();
+    $b = body();
+    $stmt = db()->prepare("UPDATE price_authorizations
+        SET status = 'anulada', decided_by = ?, decided_by_name = ?, decided_at = ?
+        WHERE id = ? AND status = 'pendiente' AND (requested_by = ? OR ?)");
+    $stmt->execute([$u['id'], $u['name'] ?? $u['email'], autzAhora(), $b['id'] ?? '', $u['id'], autzEsAprobador($u) ? 1 : 0]);
+    if ($stmt->rowCount() === 0) err('No se puede anular: ya fue resuelta o no es tuya', 409);
+    ok(['id' => $b['id'], 'status' => 'anulada']);
+}
+
+if ($action === 'autz_pending_count') {
+    $u = requireAuth();
+    autzEnsureTable();
+    $esAprobador = autzEsAprobador($u);
+    $n = $esAprobador ? (int)db()->query("SELECT COUNT(*) FROM price_authorizations WHERE status = 'pendiente'")->fetchColumn() : 0;
+    ok(['count' => $n, 'es_aprobador' => $esAprobador]);
+}
+
 // ── Not found ─────────────────────────────────────────────────────────────────
 err("Acción '$action' no encontrada", 404);

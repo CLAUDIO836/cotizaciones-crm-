@@ -11,12 +11,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!session) redirect('/login')
 
   const token = await getToken()
-  const [leadsRes, aiStats] = await Promise.all([
+  const [leadsRes, aiStats, autzRes] = await Promise.all([
     crmGet('leads_pending_count', {}, token),
     fetchAiLandingStats(),
+    // si la acción no existe todavía en el servidor, el menú sigue funcionando
+    crmGet('autz_pending_count', {}, token).catch(() => null),
   ])
   const pendingLeads = (leadsRes?.data as { count: number } | null)?.count ?? 0
   const agentAttention = aiStats.attention > 0 ? aiStats.attention : undefined
+  const autzPending = (autzRes?.data as { count: number } | null)?.count || undefined
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#f4f5f7' }}>
@@ -27,6 +30,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         role: session.role,
         pending_leads: pendingLeads,
         agent_attention: agentAttention,
+        autz_pending: autzPending,
       }} />
       <main className="flex-1 overflow-y-auto">
         {children}

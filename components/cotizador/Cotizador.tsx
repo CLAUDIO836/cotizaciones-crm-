@@ -67,6 +67,9 @@ export default function Cotizador() {
 
   const [calculo, setCalculo] = useState<{ resultado: ResultadoTarifa | null; error: string }>({ resultado: null, error: '' })
   const [recargosMarcados, setRecargosMarcados] = useState<Record<string, boolean>>({})
+  const [referencia, setReferencia] = useState('')
+  const [solicitudGuardada, setSolicitud] = useState<{ id: string; clave: string; status: string; decidido_por?: string; comentario?: string } | null>(null)
+  const [enviandoSolicitud, setEnviandoSolicitud] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Pasajeros → formato sugerido, salvo que la ejecutiva lo haya elegido a mano
@@ -150,6 +153,61 @@ export default function Cotizador() {
   async function copiar() {
     try { await navigator.clipboard.writeText(resumen()); toast.success('Resumen copiado') }
     catch { toast.error('No se pudo copiar') }
+  }
+
+  // ── Solicitud de aprobación ──
+  const recargosPedidos = recargosPorAprobar.filter(a => recargosMarcados[a.tipo])
+  const pideDescuento = !!resultado?.propuesta?.requiereAprobacion && !!resultado.propuesta.permitido
+  const necesitaAprobacion = !!resultado && (pideDescuento || recargosPedidos.length > 0 || resultado.aMedida)
+  // La solicitud vale solo para el viaje y el precio con que se pidió
+  const claveSolicitud = JSON.stringify([servicio, kmUsados, formato, modalidad, resultado?.propuesta?.precio ?? null, recargosPedidos.map(r => r.tipo)])
+  const solicitud = solicitudGuardada && solicitudGuardada.clave === claveSolicitud ? solicitudGuardada : null
+  const tipoSolicitud = resultado?.aMedida ? 'a_medida' : pideDescuento && recargosPedidos.length ? 'descuento_recargo' : pideDescuento ? 'descuento' : 'recargo'
+
+  useEffect(() => {
+    if (!solicitud || solicitud.status !== 'pendiente') return
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/autorizaciones?id=${solicitud.id}`, { cache: 'no-store' })
+        const json = await res.json()
+        if (res.ok && json.data?.status && json.data.status !== 'pendiente') {
+          setSolicitud({ ...solicitud, status: json.data.status, decidido_por: json.data.decided_by_name, comentario: json.data.comentario })
+        }
+      } catch { /* se reintenta en el próximo ciclo */ }
+    }, 20000)
+    return () => clearInterval(id)
+  }, [solicitud])
+
+  async function solicitarAprobacion() {
+    if (!resultado) return
+    if (!referencia.trim()) { toast.error('Indica el cliente o una referencia'); return }
+    setEnviandoSolicitud(true)
+    try {
+      const res = await fetch('/api/autorizaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          _action: 'create',
+          tipo: tipoSolicitud,
+          referencia: referencia.trim(),
+          detalle: resumen(),
+          precio_lista: resultado.precioLista,
+          precio_minimo: resultado.precioMinimo,
+          precio_solicitado: pideDescuento ? resultado.propuesta!.precio : null,
+          recargos: recargosPedidos,
+          payload: {
+            entrada: { servicio, tipoCliente, km: kmUsados, kmManual: kmManual !== '', formato, pasajeros, modalidad, fecha, horaSalida, horaRegreso,
+              origen: origen.address, destino: destino.address, paradas: paradas.map(p => p.address) },
+            resultado,
+          },
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) { toast.error(json.error ?? 'No se pudo enviar la solicitud'); return }
+      setSolicitud({ id: json.data.id, clave: claveSolicitud, status: 'pendiente' })
+      toast.success('Solicitud enviada a Claudio, Claudia y Paola')
+    } catch { toast.error('No se pudo enviar la solicitud') }
+    finally { setEnviandoSolicitud(false) }
   }
 
   function crearCotizacion() {
@@ -373,6 +431,41 @@ export default function Cotizador() {
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />{a.mensaje}
               </p>
             ))}
+          </section>
+        )}
+
+        {resultado && (necesitaAprobacion || solicitud) && (
+          <section className="bg-white rounded-xl border p-5 space-y-3">
+            <h2 className="font-semibold text-sm uppercase tracking-wide text-gray-500">Aprobación</h2>
+            {!solicitud && (
+              <>
+                <p className="text-sm text-gray-600">
+                  {resultado.aMedida ? 'Este viaje se cotiza a medida.'
+                    : pideDescuento && recargosPedidos.length ? 'El precio queda bajo el mínimo y marcaste recargos.'
+                      : pideDescuento ? 'El precio que quieres ofrecer queda bajo el mínimo.'
+                        : 'Marcaste recargos para cobrar.'}
+                  {' '}Lo aprueba Claudio, Claudia o Paola.
+                </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="referencia">Cliente o referencia</Label>
+                  <Input id="referencia" value={referencia} onChange={e => setReferencia(e.target.value)} placeholder="Ej. Colegio Santa Victoria, salida 12-11" />
+                </div>
+                <Button type="button" className="w-full" disabled={enviandoSolicitud} onClick={solicitarAprobacion}>
+                  {enviandoSolicitud ? 'Enviando…' : 'Solicitar aprobación'}
+                </Button>
+              </>
+            )}
+            {solicitud?.status === 'pendiente' && (
+              <p className="text-sm text-amber-800 bg-amber-50 rounded-md p-2">
+                Solicitud enviada. Esperando aprobación; puedes seguirla en <a href="/autorizaciones" className="underline">Por aprobar</a>.
+              </p>
+            )}
+            {solicitud && solicitud.status !== 'pendiente' && (
+              <p className={`text-sm rounded-md p-2 ${solicitud.status === 'aprobada' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                {solicitud.status === 'aprobada' ? 'Aprobada' : solicitud.status === 'rechazada' ? 'Rechazada' : 'Anulada'}
+                {solicitud.decidido_por && ` por ${solicitud.decidido_por}`}{solicitud.comentario && `: “${solicitud.comentario}”`}
+              </p>
+            )}
           </section>
         )}
 

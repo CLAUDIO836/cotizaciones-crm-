@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  LayoutDashboard, FileText, FileCheck, Users, UserCog, LogOut, Filter, BarChart3, CalendarDays, Inbox, Bot, PhoneCall, Phone, MessageCircle, Calculator
+  LayoutDashboard, FileText, FileCheck, Users, UserCog, LogOut, Filter, BarChart3, CalendarDays, Inbox, Bot, PhoneCall, Phone, MessageCircle, Calculator, ShieldCheck
 } from 'lucide-react'
 
 interface Profile {
@@ -12,6 +12,7 @@ interface Profile {
   role: string
   pending_leads?: number
   agent_attention?: number
+  autz_pending?: number
 }
 
 const navItems = [
@@ -21,6 +22,7 @@ const navItems = [
   { href: '/agente',       label: 'Agente IA',    icon: Bot,   agentBadge: true },
   { href: '/cotizaciones', label: 'Negocios',     icon: FileText },
   { href: '/cotizador',    label: 'Cotizador',    icon: Calculator },
+  { href: '/autorizaciones', label: 'Por aprobar', icon: ShieldCheck, autzBadge: true },
   { href: '/agenda',       label: 'Agenda',       icon: CalendarDays },
   { href: '/llamadas',     label: 'Llamadas',     icon: Phone },
   { href: '/bandeja',     label: 'Bandeja WA',   icon: MessageCircle },
@@ -62,8 +64,8 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
         </div>
 
         {/* Nav icons */}
-        {navItems.map(({ href, label, icon: Icon, badge, agentBadge }) => {
-          const badgeCount = badge ? profile?.pending_leads : agentBadge ? profile?.agent_attention : 0
+        {navItems.map(({ href, label, icon: Icon, badge, agentBadge, autzBadge }) => {
+          const badgeCount = badge ? profile?.pending_leads : agentBadge ? profile?.agent_attention : autzBadge ? profile?.autz_pending : 0
           return (
             <Link key={href} href={href} title={label}>
               <div className="relative w-9 h-9 rounded-lg flex items-center justify-center transition-all"
@@ -133,8 +135,8 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
         </div>
 
         <div className="flex flex-col gap-0.5 px-2">
-          {navItems.map(({ href, label, icon: Icon, badge, agentBadge }) => {
-            const badgeCount = badge ? profile?.pending_leads : agentBadge ? profile?.agent_attention : 0
+          {navItems.map(({ href, label, icon: Icon, badge, agentBadge, autzBadge }) => {
+            const badgeCount = badge ? profile?.pending_leads : agentBadge ? profile?.agent_attention : autzBadge ? profile?.autz_pending : 0
             return (
               <Link key={href} href={href}
                 className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all"
