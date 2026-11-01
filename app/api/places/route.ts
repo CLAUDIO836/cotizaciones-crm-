@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
 
   // Detalle de un lugar (lat/lng)
   if (placeId) {
-    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=geometry,formatted_address&key=${KEY}&language=es`
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=geometry,formatted_address,address_components&key=${KEY}&language=es`
     const res = await fetch(url)
     const data = await res.json()
     return NextResponse.json(data)
