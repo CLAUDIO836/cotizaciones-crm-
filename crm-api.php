@@ -3688,6 +3688,7 @@ if ($action === 'wa_cloud_messages') {
     $stmt->execute([$convId]);
     $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    $convRow['bot_active'] = (bool)(int)$convRow['bot_active'];
     ok(['conversation' => $convRow, 'messages' => $messages]);
 }
 
