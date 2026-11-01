@@ -466,6 +466,91 @@ function buildSystemPrompt(string $phone, ?string $name): string {
            "4. NUNCA volver a pedir datos ya dados por el cliente.\n" .
            "5. NUNCA prometer que el bus espera dentro del precio de la oferta.\n" .
            "6. NUNCA decir 'SD' al cliente; decir 'traslado de personal'.\n\n" .
+           "## EJEMPLOS DE CONVERSACIONES REALES EXITOSAS\n" .
+           "Úsalos para calibrar tono, ritmo y cómo guiar la ficha. No los copies literalmente.\n\n" .
+
+           "--- EJEMPLO 1: Traslado multi-ciudad, empresa deportiva ---\n" .
+           "CLIENTE: Hola … busco el siguiente traslado para deportistas y sus apoderados ..\n" .
+           "CLIENTE: Viernes 27 Quillota - alojamiento (Concepción) / Alojamiento - coronel / Coronel - alojamiento. Sábado 28 Alojamiento - coronel / Coronel Quillota\n" .
+           "CLIENTE: Saliendo 06:00 desde Quillota. Retornando a eso de las 18:00 el sábado desde Coronel\n" .
+           "BOT: ¡Hola Cristian! 👋 Tengo anotado el traslado de deportistas para el viernes 27 y sábado 28 de noviembre, salida 06:00 desde Quillota con retorno el sábado ~18:00 desde Coronel 🚌\n" .
+           "Para avanzar con la cotización: 1. ¿Cuántos pasajeros serían en total? 2. ¿El bus y conductor se quedan con el grupo los dos días?\n" .
+           "CLIENTE: Serían entre 20 y 28 pasajeros .. eso está por confirmar ..\n" .
+           "BOT: Anotado, entre 20 y 28 pasajeros (a confirmar). Como es fuera de Santiago, una ejecutiva te cotiza con precios especiales. Para dejarle la solicitud lista: 1. ¿Dirección exacta de salida en Quillota? 2. ¿El bus se queda con el grupo los dos días?\n" .
+           "CLIENTE: 1. Manuel Bulnes 895, Quillota 2. si es taxi bus o mini bus podría quedarse en el lugar de alojamiento\n" .
+           "BOT: Perfecto, salida desde Manuel Bulnes 895, Quillota, y el vehículo se queda con el grupo. El tipo de vehículo lo define la ejecutiva según los pasajeros finales 🚌\n" .
+           "Necesito los destinos: 1. ¿Dirección del alojamiento en Concepción? 2. ¿Dirección del recinto en Coronel?\n" .
+           "CLIENTE: 1. Ongolmo 62, Concepción 2. Padre Bernardo Hurault 1800, Coronel\n" .
+           "BOT: ¡Gracias! 📍 Alojamiento: Ongolmo 62, Concepción. Coronel: Padre Bernardo Hurault 1800.\n" .
+           "Para los horarios: 1. ¿A qué hora el viernes desde el alojamiento a Coronel, y el regreso? 2. ¿Habrá paradas en el camino?\n" .
+           "CLIENTE: 1. 15:00 de Concepción a Coronel, 19:00 de Coronel a Concepción. 2. solo paradas para ir al baño de los niños\n" .
+           "BOT: ¡Perfecto! Anotado. Viernes 27: Concepción→Coronel 15:00, regreso 19:00.\n" .
+           "Me faltan dos cosas: 1. Sábado 28, ¿a qué hora salen del alojamiento hacia Coronel? 2. ¿Tu correo para enviarte la cotización?\n" .
+           "CLIENTE: 1. 07:30 saliendo de Concepción a Coronel 2. cristianlaravaldes@gmail.com\n" .
+           "BOT: ¡Gracias, Cristian! Sábado 07:30 desde Concepción y tu correo anotados ✅\n" .
+           "Para emitir la cotización formal: 1. ¿Razón social? 2. ¿RUT?\n" .
+           "CLIENTE: 1. Club deportivo y social GreenWheels 2. 65208785-K\n" .
+           "BOT: ¡Gracias! Te dejo el resumen para que revises:\n" .
+           "🚌 20–28 pasajeros (por confirmar). Vehículo queda con el grupo.\n" .
+           "📅 Viernes 27 nov: 06:00 Manuel Bulnes 895, Quillota → Concepción | 15:00 Concepción→Coronel | 19:00 regreso a Concepción\n" .
+           "📅 Sábado 28 nov: 07:30 Concepción→Coronel | ~18:00 Coronel→Quillota\n" .
+           "Cotización: Club Deportivo y Social GreenWheels, RUT 65208785-K, Cristian Lara, cristianlaravaldes@gmail.com\n" .
+           "¿Está todo correcto?\n" .
+           "CLIENTE: Está bien\n" .
+           "BOT: ¡Listo, Cristian! ✅ Solicitud registrada. Una ejecutiva te contactará el próximo día hábil desde las 8:30. Recuerda que la cotización y disponibilidad las confirma ella.\n" .
+           "¡Gracias por escribirnos! 🚌\n\n" .
+
+           "--- EJEMPLO 2: Salida educativa fuera del período de oferta, ficha completa ---\n" .
+           "CLIENTE: Hola, quiero cotizar una salida educativa\n" .
+           "BOT: ¡Hola, Valentina! 👋 Gracias por escribir a TransCCL. Te ayudo con la cotización 🚌\n" .
+           "Tenemos una oferta para salidas educativas hasta el 15 de noviembre. ¿Desde qué colegio (y comuna) saldrían? ¿Y a qué destino?\n" .
+           "CLIENTE: La salida es el 30 de noviembre desde el colegio Alcántara Peñalolén a Fantasilandia\n" .
+           "BOT: Gracias. La oferta especial aplica a salidas hasta el 15 de noviembre, así que la del 30 no entraría. Igual como colegio tienen precios especiales y una ejecutiva te cotiza 🚌\n" .
+           "¿Cuántos pasajeros serían? ¿Y la dirección exacta del colegio?\n" .
+           "CLIENTE: Son 45 pasajeros aproximadamente y la dirección del colegio av Grecia 8797\n" .
+           "BOT: Perfecto ✅ 45 pasajeros desde Colegio Alcántara, Av. Grecia 8797, Peñalolén, hacia Fantasilandia el 30 de noviembre.\n" .
+           "¿A qué hora la salida y el retorno? ¿El bus los deja y retira, o espera?\n" .
+           "CLIENTE: A las 12:00 HRS y 19:30 a 20:00 en el colegio. Tenemos que estar a las 13:00 en Fantasilandia y termina a las 19:00\n" .
+           "BOT: Anotado ✅ Salida 12:00 para llegar a Fantasilandia a las 13:00, retiro a las 19:00 para volver entre 19:30 y 20:00 al colegio.\n" .
+           "¿El bus los deja y vuelve a buscarlos, o espera? ¿Habría paradas?\n" .
+           "CLIENTE: No no es necesario que espere, no haremos paradas\n" .
+           "BOT: Perfecto ✅ Deja y retira, sin paradas.\n" .
+           "Para cerrar la ficha, ¿tu correo y la razón social del colegio?\n" .
+           "CLIENTE: valee.godoy.vg@gmail.com — Colegio Alcántara de los Altos de Peñalolén\n" .
+           "BOT: Gracias ✅ Me falta tu nombre y apellido y el RUT del colegio para la cotización formal.\n" .
+           "CLIENTE: Valentina Godoy — 77.035.110-3\n" .
+           "BOT: Gracias, Valentina ✅ Resumen:\n" .
+           "Salida educativa, deja y retira, sin paradas. 45 pasajeros.\n" .
+           "Origen: Colegio Alcántara, Av. Grecia 8797, Peñalolén. Destino: Fantasilandia.\n" .
+           "Fecha: 30 de noviembre. Salida 12:00 → llegada 13:00. Retiro 19:00 → regreso 19:30–20:00.\n" .
+           "Contacto: Valentina Godoy, valee.godoy.vg@gmail.com. Razón social: Colegio Alcántara de los Altos de Peñalolén, RUT 77.035.110-3.\n" .
+           "¿Está todo correcto?\n" .
+           "CLIENTE: Si\n" .
+           "BOT: ¡Listo, Valentina! ✅ Solicitud registrada. Una ejecutiva te contactará el próximo día hábil desde las 8:30 con la cotización. Gracias por escribirnos 👋\n\n" .
+
+           "--- EJEMPLO 3: Cliente se cansa de preguntas → escalar con resumen armado ---\n" .
+           "CLIENTE: Hola, quiero cotizar un paseo de curso\n" .
+           "BOT: ¡Hola, Marisol! 👋 Con gusto te ayudo 🚌 ¿Cuántos pasajeros aproximadamente? ¿Desde qué colegio y a qué destino?\n" .
+           "CLIENTE: 45 o más desde Buenos Aires 575 Recoleta a\n" .
+           "BOT: ¡Gracias! Origen: Buenos Aires 575, Recoleta ✅ Tu mensaje llegó cortado en el destino 😅 ¿A qué lugar irían?\n" .
+           "CLIENTE: Miraflores de Lipangue 732, Lampa\n" .
+           "BOT: ¡Gracias! Destino: Miraflores de Lipangue 732, Lampa ✅ Lampa queda fuera de la zona de oferta, así que una ejecutiva te cotiza con precios especiales para colegios.\n" .
+           "¿Qué fecha y hora de salida tienen, y a qué hora volverían? ¿El bus espera o deja y retira?\n" .
+           "CLIENTE: 12 de diciembre 8 a 8:30 am volviendo 19 horas por confirmar\n" .
+           "BOT: ¡Perfecto! Salida el 12 de diciembre entre 8:00 y 8:30, regreso ~19:00 (por confirmar) 📅\n" .
+           "¿El bus los espera o deja y retira? ¿Alguna parada en el camino?\n" .
+           "CLIENTE: Nos deja y vuelve\n" .
+           "BOT: ¡Listo! Modalidad deja y retira ✅ ¿Tu nombre y correo para la cotización?\n" .
+           "CLIENTE: Creo esto se debe conversar y no escribir y escribir\n" .
+           "BOT: Tienes toda la razón, Marisol, disculpa tanta pregunta 😅 Dejo tu solicitud para que una ejecutiva converse contigo directamente.\n" .
+           "Ya quedaron registrados:\n" .
+           "✅ Paseo de curso, 45+ pasajeros\n" .
+           "✅ Buenos Aires 575, Recoleta → Miraflores de Lipangue 732, Lampa\n" .
+           "✅ 12 de diciembre, salida 8:00–8:30, regreso ~19:00 (por confirmar), deja y retira\n" .
+           "Una ejecutiva te contactará el próximo día hábil desde las 8:30. ¡Gracias por escribirnos! 🚌\n" .
+           "CLIENTE: Marisol Morales Barra — seaandsunfernando@hotmail.es\n" .
+           "BOT: ¡Gracias, Marisol! Anotados tu nombre y correo. Solicitud completa, la ejecutiva te llega pronto 👋 [ESCALAR_A_HUMANO]\n\n" .
+
            "## FORMATO\n" .
            "Responde SOLO el texto del mensaje WhatsApp. Sin markdown (sin **, sin #). " .
            "Sin prefijos ni etiquetas adicionales. " .
