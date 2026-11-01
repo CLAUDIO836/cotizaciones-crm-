@@ -111,7 +111,18 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [text, setText]           = useState('')
   const [sending, setSending]     = useState(false)
   const [loadingMsgs, setLoadingMsgs] = useState(false)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const bottomRef  = useRef<HTMLDivElement>(null)
+  const lastSeenAt = useRef<Record<string, string>>({})  // convId → last_msg_at
+  const notifPerm  = useRef<NotificationPermission>('default')
+
+  // Pedir permiso de notificaciones al montar
+  useEffect(() => {
+    if (typeof Notification === 'undefined') return
+    notifPerm.current = Notification.permission
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().then(p => { notifPerm.current = p })
+    }
+  }, [])
 
   useEffect(() => {
     fetch('/api/admin/usuarios')
@@ -131,6 +142,29 @@ export default function Bandeja({ user }: { user: UserSession }) {
       const res = await fetch(`/api/whatsapp/cloud/list?${params}`)
       if (!res.ok) return
       const data: Conversation[] = await res.json()
+
+      // Detectar mensajes nuevos y notificar
+      if (notifPerm.current === 'granted' && Object.keys(lastSeenAt.current).length > 0) {
+        for (const conv of data) {
+          const prev = lastSeenAt.current[conv.id]
+          const isNew = !prev                                          // conversación nueva
+          const hasNewMsg = prev && conv.last_msg_at && conv.last_msg_at > prev  // mensaje nuevo
+          if ((isNew || hasNewMsg) && conv.id !== activeId) {
+            const name = conv.contact_name || `+${conv.phone}`
+            const notif = new Notification(`💬 ${name}`, {
+              body: conv.last_message || 'Nuevo mensaje',
+              icon: '/favicon.ico',
+              tag:  conv.id,
+            })
+            notif.onclick = () => { window.focus(); notif.close() }
+          }
+        }
+      }
+      // Actualizar registro de timestamps
+      for (const conv of data) {
+        if (conv.last_msg_at) lastSeenAt.current[conv.id] = conv.last_msg_at
+      }
+
       setConversations(data)
       if (activeId) {
         const updated = data.find(c => c.id === activeId)
