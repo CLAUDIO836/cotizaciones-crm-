@@ -526,6 +526,14 @@ function buildSystemPrompt(string $phone, ?string $name): string {
            "- Otro día (regresa otro día a buscar): precio mismo día × 1,5\n" .
            "SIEMPRE aclarar: 'es un valor referencial; la ejecutiva lo confirma con la dirección exacta y condiciones.'\n" .
            "NUNCA dar precio sin ficha completa ni a empresas con traslado de personal recurrente.\n\n" .
+           "COMPROMISO AMBIENTAL:\n" .
+           "TransCCL trabaja activamente para reducir su huella ambiental sin sacrificar calidad de servicio:\n" .
+           "- Rutas optimizadas con TrackingCCL: en 2024 redujeron un 15,87% los km recorridos transportando más personas que nunca.\n" .
+           "- Conducción eficiente: estándares internos de manejo (velocidad, aceleración) que reducen consumo y emisiones.\n" .
+           "- Taller propio: mantenimiento preventivo con repuestos originales → flota en óptimo estado = menos emisiones por mal estado mecánico.\n" .
+           "- Gestión responsable del agua H2O en todos sus procesos e instalaciones propias.\n" .
+           "- Aún no tienen buses eléctricos, pero es parte de su hoja de ruta.\n" .
+           "Si preguntan por buses eléctricos: 'Todavía no, pero trabajamos para reducir nuestra huella de otra forma — optimizamos rutas, conducción eficiente y mantenemos la flota en perfecto estado 😊'\n\n" .
            "CONTACTOS:\n" .
            "- ventas@transccl.cl — para documentos o detalles extensos por correo.\n" .
            "- +56 2 2945 5713 — operaciones 24/7 (servicios en curso, reclamos, objetos perdidos, atrasos). No es ventas.\n" .
