@@ -3615,52 +3615,71 @@ if ($action === 'wa_cloud_send') {
 
 // ── Bandeja WhatsApp: listar conversaciones ───────────────────────────────────
 if ($action === 'wa_cloud_list') {
-    $user = requireAuth();
+    $user    = requireAuth();
     $isAdmin = isAdmin($user);
 
-    // Sin asignar: todos ven; asignadas: solo la propia o admin
-    if ($isAdmin) {
-        $stmt = db()->prepare("
-            SELECT c.id, c.phone, c.contact_name, c.assigned_to, c.bot_active, c.last_msg_at,
-                   p.name AS assigned_name,
-                   m.content AS last_message
-            FROM wa_cloud_conversations c
-            LEFT JOIN profiles p ON p.id = c.assigned_to
-            LEFT JOIN wa_cloud_messages m ON m.id = (
-                SELECT id FROM wa_cloud_messages
-                WHERE conversation_id = c.id
-                ORDER BY created_at DESC LIMIT 1
-            )
-            ORDER BY c.last_msg_at DESC
-            LIMIT 100
-        ");
-        $stmt->execute();
-    } else {
-        // Vendedor: ve las sin asignar + las propias
-        $stmt = db()->prepare("
-            SELECT c.id, c.phone, c.contact_name, c.assigned_to, c.bot_active, c.last_msg_at,
-                   p.name AS assigned_name,
-                   m.content AS last_message
-            FROM wa_cloud_conversations c
-            LEFT JOIN profiles p ON p.id = c.assigned_to
-            LEFT JOIN wa_cloud_messages m ON m.id = (
-                SELECT id FROM wa_cloud_messages
-                WHERE conversation_id = c.id
-                ORDER BY created_at DESC LIMIT 1
-            )
-            WHERE c.assigned_to IS NULL OR c.assigned_to = ?
-            ORDER BY c.last_msg_at DESC
-            LIMIT 100
-        ");
-        $stmt->execute([$user['id']]);
+    // Migración stage si no existe
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN stage VARCHAR(20) NOT NULL DEFAULT 'nuevo' AFTER bot_active"); } catch (PDOException $e) {}
+
+    $filterAgent = $_GET['assigned_to'] ?? null;  // UUID o 'none'
+    $filterStage = $_GET['stage']       ?? null;
+
+    $where  = [];
+    $params = [];
+
+    if (!$isAdmin) {
+        $where[]  = '(c.assigned_to IS NULL OR c.assigned_to = ?)';
+        $params[] = $user['id'];
+    }
+    if ($filterAgent === 'none') {
+        $where[] = 'c.assigned_to IS NULL';
+    } elseif ($filterAgent) {
+        $where[]  = 'c.assigned_to = ?';
+        $params[] = $filterAgent;
+    }
+    if ($filterStage) {
+        $where[]  = 'c.stage = ?';
+        $params[] = $filterStage;
     }
 
+    $sql = "
+        SELECT c.id, c.phone, c.contact_name, c.assigned_to, c.bot_active,
+               c.stage, c.last_msg_at,
+               p.name AS assigned_name,
+               m.content AS last_message
+        FROM wa_cloud_conversations c
+        LEFT JOIN profiles p ON p.id = c.assigned_to
+        LEFT JOIN wa_cloud_messages m ON m.id = (
+            SELECT id FROM wa_cloud_messages
+            WHERE conversation_id = c.id
+            ORDER BY created_at DESC LIMIT 1
+        )
+        " . ($where ? 'WHERE ' . implode(' AND ', $where) : '') . "
+        ORDER BY c.last_msg_at DESC
+        LIMIT 200
+    ";
+
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    // Convertir last_msg_at a timestamp UTC
     foreach ($rows as &$r) {
         $r['bot_active'] = (bool)(int)$r['bot_active'];
+        $r['stage'] = $r['stage'] ?? 'nuevo';
     }
     ok($rows);
+}
+
+// ── Bandeja WhatsApp: cambiar etapa ──────────────────────────────────────────
+if ($action === 'wa_cloud_stage') {
+    requireAuth();
+    $b     = body();
+    $convId = $b['conv_id'] ?? null;
+    $stage  = $b['stage']   ?? null;
+    $valid  = ['nuevo', 'cotizando', 'ganado', 'perdido'];
+    if (!$convId || !in_array($stage, $valid)) err('conv_id y stage válido requeridos');
+    db()->prepare("UPDATE wa_cloud_conversations SET stage = ? WHERE id = ?")
+        ->execute([$stage, $convId]);
+    ok(['stage' => $stage]);
 }
 
 // ── Bandeja WhatsApp: mensajes de una conversación ───────────────────────────

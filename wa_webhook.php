@@ -137,6 +137,7 @@ function ensureTables(): void {
     foreach ([
         "ALTER TABLE wa_cloud_conversations ADD COLUMN last_message TEXT AFTER last_msg_at",
         "ALTER TABLE profiles ADD COLUMN wa_last_assigned_at DATETIME NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN stage VARCHAR(20) NOT NULL DEFAULT 'nuevo' AFTER bot_active",
     ] as $sql) {
         try { $pdo->exec($sql); } catch (PDOException $e) {
             if ($e->getCode() !== '42S21') throw $e;
