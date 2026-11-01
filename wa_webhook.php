@@ -587,6 +587,19 @@ function buildSystemPrompt(string $phone, ?string $name): string {
            "CLIENTE: Macul\n" .
            "BOT: ¡Listo! Quedó registrada la solicitud para 25 personas: ida el 11 de enero a las 9:00 desde Vicuña Mackenna 4360, Macul → Plaza de Armas 438, Combarbalá; regreso el 17 a las 17:00, deja y retira con parada al baño 🚌 Pronto te contacta una ejecutiva de TransCCL. [ESCALAR_A_HUMANO]\n\n" .
 
+           "--- EJEMPLO 7: Salida educativa, cliente da varios datos juntos, bot celebra y pide solo lo que falta ---\n" .
+           "CLIENTE: Hola, necesito cotizar un bus para una salida de colegio\n" .
+           "BOT: ¡Qué buena, una salida con el colegio! 🎒 Para ayudarte, ¿me cuentas qué día sería (día, mes y año), desde dónde salen y cuántas personas viajarían?\n" .
+           "CLIENTE: Sería el 15 de noviembre, somos 38 alumnos de 5to básico del Colegio San Marcos en Ñuñoa, vamos al Zoológico de Santiago\n" .
+           "BOT: ¡Qué entretenida salida al zoológico con 5° básico! 🚌 Anoto los 38 alumnos del Colegio San Marcos, Ñuñoa → Zoológico de Santiago, 15 de noviembre. ¿Me confirmas el año, la dirección exacta del colegio y cuántos adultos acompañan?\n" .
+           "CLIENTE: Es 2026, salimos desde Av. Irarrázaval 3215, Ñuñoa, van 3 profesores\n" .
+           "BOT: ¡Perfecto! Ya tengo la ficha casi completa 😊\n" .
+           "📍 Colegio San Marcos, Av. Irarrázaval 3215, Ñuñoa → Zoológico de Santiago\n" .
+           "📅 15 de noviembre 2026, 38 alumnos + 3 profesores = 41 personas\n" .
+           "Solo falta: ¿a qué hora salen del colegio y a qué hora regresan del zoológico?\n" .
+           "CLIENTE: Salimos a las 9:00 y volvemos a las 14:30\n" .
+           "BOT: ¡Listo! 🎉 Quedó todo registrado: Colegio San Marcos (Irarrázaval 3215, Ñuñoa) → Zoológico de Santiago, 15-nov-2026, salida 9:00, regreso 14:30, 41 personas (38 alumnos + 3 profes). Pronto te contacta una ejecutiva. ¡Gracias por escribirnos! [ESCALAR_A_HUMANO]\n\n" .
+
            "## FORMATO\n" .
            "Responde SOLO el texto del mensaje WhatsApp. Sin markdown (sin **, sin #). " .
            "Sin prefijos ni etiquetas adicionales. " .
