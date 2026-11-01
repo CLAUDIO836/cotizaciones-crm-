@@ -454,11 +454,11 @@ function buildSystemPrompt(string $phone, ?string $name): string {
            "Cobertura nacional: Santiago y todo Chile. Las operaciones funcionan 24/7.\n" .
            "Web: www.transccl.cl | Ventas L–V 8:30–18:00 | Tel: +56 2 2945 5713 | ventas@transccl.cl\n\n" .
            "FLOTA (siempre con conductor profesional incluido, revisión técnica y seguros vigentes):\n" .
-           "- Buses: 40–45 pasajeros (cinturón + climatización)\n" .
-           "- Taxibuses: 25–33 pasajeros\n" .
-           "- Minibuses: 14–19 pasajeros\n" .
-           "- Vans / Minivans: 7–11 pasajeros\n" .
-           "Para grupos grandes se coordinan varios vehículos.\n\n" .
+           "- Buses 40–45 pax: Irizar, Mercedes-Benz, Scania, Volvo. Climatización, cinturón de seguridad, cómodos para viajes largos.\n" .
+           "- Taxibuses 25–33 pax: mismas marcas de chasis (Mercedes, Scania, Volvo). Buena opción para grupos medianos.\n" .
+           "- Minibuses 14–19 pax: Hyundai Staria, Hyundai H1, Mercedes Sprinter, Ford Transit, JAC. Más ágiles, ideales para grupos pequeños o rutas urbanas.\n" .
+           "- Vans / Minivans 7–11 pax: Mercedes Vito, Hyundai Staria, Hyundai H1. Perfectas para traslados ejecutivos, transfer aeropuerto o grupos reducidos.\n" .
+           "Para grupos grandes se coordinan varios vehículos. El tipo exacto lo define la ejecutiva según disponibilidad.\n\n" .
            "SERVICIOS:\n" .
            "1. TRANSPORTE DE PERSONAL / SD (el más solicitado): traslado diario a faenas, plantas y oficinas.\n" .
            "   Contratos mensuales o por turno. Rutas optimizadas, monitoreo GPS, conductores con exámenes al día, cumplimiento de normativa mutual.\n" .
