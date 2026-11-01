@@ -72,8 +72,8 @@ function SemDot({ color }: { color: ReturnType<typeof semaphoreColor> }) {
   return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: map[color], flexShrink: 0 }} />
 }
 
-function StagePill({ stage }: { stage: Stage }) {
-  const s = stageMap[stage]
+function StagePill({ stage }: { stage: Stage | null | undefined }) {
+  const s = stageMap[stage as Stage] ?? stageMap['nuevo']
   return (
     <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: s.bg, color: s.color }}>
       {s.label}
@@ -294,7 +294,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   {/* Selector de etapa */}
                   <select
-                    value={activeConv.stage}
+                    value={activeConv.stage ?? 'nuevo'}
                     onChange={e => changeStage(e.target.value as Stage)}
                     style={{ ...selectStyle, width: 'auto', fontSize: 12, padding: '5px 8px' }}
                   >
