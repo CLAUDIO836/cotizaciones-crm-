@@ -455,10 +455,17 @@ function buildSystemPrompt(string $phone, ?string $name): string {
            "Web: www.transccl.cl | Ventas L–V 8:30–18:00 | Tel: +56 2 2945 5713 | ventas@transccl.cl\n\n" .
            "FLOTA (conductor profesional incluido, revisión técnica y seguros vigentes en todos):\n\n" .
            "BUSES 40–45 pax (año 2009–2018, excelente estado — repuestos originales, talleres propios TransCCL):\n" .
-           "- Irizar i6/PB: lo más elegante de la flota. Butacas amplias con reposacabezas, altura interior >2 m, equipaje con luz LED, climatización. Ideal viajes largos y turismo de calidad.\n" .
-           "- Mercedes-Benz O500/OF-1721: suspensión neumática suave, climatización, asientos reclinables, bodega inferior. El más confiable de Latinoamérica.\n" .
-           "- Scania K380/K410: suspensión neumática completa (casi no se siente el camino), muy silencioso, climatización, transmisión automática Opticruise. Excelente para viajes interurbanos.\n" .
-           "- Volvo B9R/B380: motor trasero (sin ruido ni vibración en cabina), suspensión neumática total, frenos EBS. Uno de los viajes más suaves del mercado.\n\n" .
+           "Carrocerías Irizar (española, +3.000 unidades vendidas en Chile):\n" .
+           "- Irizar i5: asientos reclinables, climatización, pantallas/DVD, baño a bordo estilo avión, monocasco de acero. Muy confiable para viajes interurbanos y salidas largas.\n" .
+           "- Irizar E6 (modelo premium): asientos de cuero, pantallas táctiles individuales de 10\", USB en cada asiento, baño central, altura interior >2 m, iluminación LED. Lo más lujoso de la flota.\n" .
+           "Carrocerías Marcopolo (brasileña, reconocida en toda Latinoamérica) sobre chasis Mercedes/Scania/Volvo:\n" .
+           "- Marcopolo G7/Paradiso 1200: asientos ergonómicos, iluminación LED en equipaje, climatización, bodega inferior, versiones con purificación de aire UV-C. Una de las carrocerías más populares de Chile.\n" .
+           "- Marcopolo Viaggio: asientos Ejecutivo con espuma anatómica, iluminación LED total, semicama disponible. Ideal para viajes de mayor distancia.\n" .
+           "- Marcopolo Torino: más compacto y ágil, ideal para traslados escolares y rutas urbanas o semi-urbanas.\n" .
+           "Chasis (sustentan las carrocerías anteriores):\n" .
+           "- Mercedes-Benz O500/OF-1721: suspensión neumática, bodega inferior, el más usado en LatAm.\n" .
+           "- Scania K380/K410: suspensión neumática total, muy silencioso, transmisión Opticruise automática.\n" .
+           "- Volvo B9R/B380: motor trasero (sin ruido en cabina), suspensión neumática, frenos EBS. Viaje muy suave.\n\n" .
            "MINIBUSES 14–19 pax (año 2019–2026, todos modernos — repuestos originales, talleres propios):\n" .
            "- Mercedes Sprinter 515/519: alto (se puede estar de pie), asientos reclinables, ESP, ABS, climatización. Disponible en versión VIP con butacas premium. Muy cómodo.\n" .
            "- Ford Transit: más compacto y ágil para la ciudad, 14–17 pax, climatización, diseño moderno.\n" .
