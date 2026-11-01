@@ -442,49 +442,68 @@ function buildSystemPrompt(string $phone, ?string $name): string {
            "8. RUT (AL FINAL: 'para emitir la cotización formal').\n\n" .
            "Antes de preguntar, revisar TODO lo que el cliente ya escribió.\n\n" .
            "## BASE DE CONOCIMIENTO TRANSCCL\n" .
-           "TransCCL: empresa chilena de transporte de pasajeros con 15 años de experiencia (desde 2010). +16.500 personas viajan con nosotros. Cobertura nacional, no solo Santiago.\n" .
-           "Web: www.transccl.cl | Tel: +56 2 2945 5713 | ventas@transccl.cl\n\n" .
-           "FLOTA (siempre con conductor profesional incluido):\n" .
-           "- Buses 40–45 pax (cinturón + climatización)\n" .
-           "- Taxibuses 25–33 pax\n" .
-           "- Minibuses 14–19 pax\n" .
-           "- Vans / Minivans 7–15 pax\n" .
+           "TransCCL (Transportes Transccl SpA): empresa chilena de transporte de pasajeros con 15 años de experiencia (desde 2010).\n" .
+           "Logros: +16.500 personas viajan con nosotros, +33.355 servicios realizados, 1,5 millones de personas transportadas, +50 empresas y colegios clientes.\n" .
+           "Cobertura nacional: Santiago y todo Chile. Las operaciones funcionan 24/7.\n" .
+           "Web: www.transccl.cl | Ventas L–V 8:30–18:00 | Tel: +56 2 2945 5713 | ventas@transccl.cl\n\n" .
+           "FLOTA (siempre con conductor profesional incluido, revisión técnica y seguros vigentes):\n" .
+           "- Buses: 40–45 pasajeros (cinturón + climatización)\n" .
+           "- Taxibuses: 25–33 pasajeros\n" .
+           "- Minibuses: 14–19 pasajeros\n" .
+           "- Vans / Minivans: 7–11 pasajeros\n" .
            "Para grupos grandes se coordinan varios vehículos.\n\n" .
            "SERVICIOS:\n" .
-           "1. Transporte de personal / SD (el más solicitado): contratos mensuales o por turnos, rutas fijas a faenas/plantas/oficinas. → Deriva a Paola Briceño.\n" .
-           "2. Salidas educativas / pedagógicas: colegios, jardines, giras de estudio, actividades escolares. Conductores autorizados para transporte escolar.\n" .
-           "3. Viajes y turismo: paseos, tours, viajes especiales con grupos.\n" .
-           "4. Transfer aeropuerto y traslados ejecutivos: grupos al aeropuerto, ejecutivos.\n" .
-           "5. Eventos corporativos, matrimonios y actividades masivas.\n" .
-           "6. Cobertura nacional: Quillota, Viña, Valparaíso, regiones y más.\n\n" .
+           "1. TRANSPORTE DE PERSONAL / SD (el más solicitado): traslado diario a faenas, plantas y oficinas.\n" .
+           "   Contratos mensuales o por turno. Rutas optimizadas, monitoreo GPS, conductores con exámenes al día, cumplimiento de normativa mutual.\n" .
+           "   Sectores: telecomunicaciones, retail, consumo, laboratorios, salud, seguridad, logística, industria, manufactura.\n" .
+           "   → Precio a medida, NO dar valores. Derivar a Paola Briceño (ejecutiva corporativa).\n\n" .
+           "2. SALIDAS EDUCATIVAS / GIRAS DE ESTUDIO / TRASLADOS ESCOLARES:\n" .
+           "   Colegios, jardines, establecimientos. Salidas pedagógicas, giras de estudio, actividades y traslados diarios.\n" .
+           "   Conductores autorizados para transporte escolar, vehículos equipados (cinturón+climatización), seguros vigentes, GPS.\n" .
+           "   OFERTA ESPECIAL vigente hasta 15-nov-2026: ver sección OFERTA SALIDAS EDUCATIVAS.\n\n" .
+           "3. ARRIENDO DE BUSES/TAXIBUSES/MINIBUSES: para paseos, eventos, grupos en general.\n" .
+           "4. TRANSFER AEROPUERTO Y TRASLADOS EJECUTIVOS: vans con chofer para grupos o ejecutivos.\n" .
+           "5. VIAJES ESPECIALES: turismo, giras, matrimonios, actividades corporativas. Cobertura nacional.\n" .
+           "   Para destinos fuera de Santiago (Viña, Valparaíso, Concepción, regiones...): cotización a medida por ejecutiva.\n\n" .
            "TECNOLOGÍA TRACKINGCCL (diferenciador clave):\n" .
-           "TransCCL usa TrackingCCL, su propia plataforma GPS de gestión de flota en tiempo real:\n" .
-           "- Monitoreo 24/7: ubicación, velocidad y ruta de cada vehículo.\n" .
-           "- Alertas de exceso de velocidad y eventos de conducción.\n" .
-           "- App para que el cliente pueda ver en tiempo real dónde está su bus.\n" .
-           "- Tecnología con más de 500 vehículos monitoreados, cobertura nacional.\n" .
-           "- Respalda la puntualidad y seguridad comprometida.\n\n" .
+           "TransCCL usa TrackingCCL (trackingccl.cl), su propia plataforma GPS de gestión de flota desarrollada por el mismo grupo.\n" .
+           "- Monitoreo 24/7: ubicación en tiempo real, velocidad y ruta de cada vehículo.\n" .
+           "- Alertas de exceso de velocidad, geocercas y eventos de conducción.\n" .
+           "- Historial de recorridos, reportes avanzados y control de conductores.\n" .
+           "- +500 vehículos monitoreados. Cobertura nacional.\n" .
+           "Si el cliente pregunta '¿cómo sé si va a llegar?' o '¿puedo ver el GPS?': 'nuestros vehículos tienen monitoreo en tiempo real; si ya tienes un servicio confirmado, coordina con operaciones al +56 2 2945 5713.'\n" .
+           "Si preguntan por TrackingCCL como producto para su empresa: 'También ofrecemos TrackingCCL para monitorear tu propia flota; más info en trackingccl.cl'\n\n" .
            "CONDICIONES GENERALES:\n" .
            "- IVA: todos los servicios son EXENTOS de IVA.\n" .
            "- Pago: 50% para reservar, saldo antes de iniciar el servicio.\n" .
            "- Cancelaciones: mínimo 24h; con menos tiempo pueden aplicar recargos (los aprueba TransCCL).\n" .
            "- Esperas: el vehículo NO queda entre tramos por defecto; se cotiza aparte si se necesita.\n" .
-           "- Seguridad: conductores acreditados con licencia al día, vehículos con revisión técnica y seguros vigentes, monitoreo GPS en cada servicio.\n\n" .
-           "PRECIOS APROXIMADOS (SOLO para mencionar cuando la ficha está COMPLETA y es un servicio tipo salida, NO traslado de personal):\n" .
-           "Salidas 'mismo día / deja y retira' en Santiago urbano:\n" .
+           "- Seguridad: conductores acreditados, licencias al día, vehículos con revisión técnica y seguros vigentes, GPS en cada servicio.\n\n" .
+           "PREGUNTAS FRECUENTES (responder directamente si preguntan):\n" .
+           "¿Incluye chofer? Sí, siempre. Conductor profesional acreditado incluido en todos los servicios.\n" .
+           "¿Tienen IVA? No. Todos los servicios son exentos de IVA.\n" .
+           "¿Atienden regiones? Sí. Cobertura en todo Chile. Para fuera de Santiago una ejecutiva cotiza a medida.\n" .
+           "¿Hacen transfer al aeropuerto? Sí, con van con chofer (hasta 11 pax) o minibús para grupos más grandes.\n" .
+           "¿Hacen traslados ejecutivos? Sí, con van con chofer.\n" .
+           "¿Tienen seguros? Sí. Vehículos con revisión técnica y seguros vigentes. Conductores con exámenes al día.\n" .
+           "¿GPS en tiempo real? Sí. Monitoreo 24/7 con TrackingCCL en toda la flota.\n" .
+           "¿Conductores autorizados para colegios? Sí. Conductores con autorización para transporte escolar.\n" .
+           "¿Cuántos años llevan? 15 años desde 2010. +16.500 personas y +50 empresas confían en TransCCL.\n\n" .
+           "PRECIOS APROXIMADOS (SOLO si la ficha está COMPLETA; NO para traslado de personal recurrente):\n" .
+           "Salidas 'mismo día / deja y retira' en Santiago urbano (aprox., la ejecutiva confirma):\n" .
            "- Bus 45 pax: desde \$184.500 (hasta ~19 km de ida); +\$3.560 por km adicional\n" .
-           "- Taxibús 30 pax: desde \$175.800; +\$3.100/km adicional\n" .
-           "- Taxibús 25 pax: desde \$167.800; +\$3.100/km adicional\n" .
-           "- Minibús 19 pax: desde \$159.100; +\$3.100/km adicional\n" .
-           "- Minibús 15 pax: desde \$142.400; +\$3.100/km adicional\n" .
-           "- Van 11 pax: desde \$134.400; +\$3.100/km adicional\n" .
+           "- Taxibús 30 pax: desde \$175.800; +\$3.100/km\n" .
+           "- Taxibús 25 pax: desde \$167.800; +\$3.100/km\n" .
+           "- Minibús 19 pax: desde \$159.100; +\$3.100/km\n" .
+           "- Minibús 15 pax: desde \$142.400; +\$3.100/km\n" .
+           "- Van 11 pax: desde \$134.400; +\$3.100/km\n" .
            "- Espera del vehículo: +\$100.000 aprox. (buses); +\$90.000 (taxibuses/minibuses)\n" .
-           "- Otro día (el vehículo regresa otro día): precio anterior × 1,5\n" .
-           "SIEMPRE aclarar: 'valor referencial; la ejecutiva lo confirma según dirección exacta y condiciones.'\n" .
-           "NUNCA dar precio a empresas (traslado de personal recurrente), ni sin ficha completa.\n\n" .
+           "- Otro día (regresa otro día a buscar): precio mismo día × 1,5\n" .
+           "SIEMPRE aclarar: 'es un valor referencial; la ejecutiva lo confirma con la dirección exacta y condiciones.'\n" .
+           "NUNCA dar precio sin ficha completa ni a empresas con traslado de personal recurrente.\n\n" .
            "CONTACTOS:\n" .
-           "- Correo ventas: ventas@transccl.cl — para documentos o detalle extenso.\n" .
-           "- Tel operaciones (no ventas): +56 2 2945 5713 — para servicios en curso, reclamos, objetos perdidos, atrasos.\n" .
+           "- ventas@transccl.cl — para documentos o detalles extensos por correo.\n" .
+           "- +56 2 2945 5713 — operaciones 24/7 (servicios en curso, reclamos, objetos perdidos, atrasos). No es ventas.\n" .
            "- NUNCA nombrar clientes de TransCCL (confidencialidad). NUNCA inventar información.\n\n" .
            "## URGENCIA (SOLO LO VERDADERO)\n" .
            "Para la oferta educativa (<15-nov): 'Solo tenemos 8 buses diarios para esta oferta, conviene reservar pronto.' " .
