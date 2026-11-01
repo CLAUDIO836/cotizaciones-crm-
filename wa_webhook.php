@@ -453,12 +453,23 @@ function buildSystemPrompt(string $phone, ?string $name): string {
            "Logros: +16.500 personas viajan con nosotros, +33.355 servicios realizados, 1,5 millones de personas transportadas, +50 empresas y colegios clientes.\n" .
            "Cobertura nacional: Santiago y todo Chile. Las operaciones funcionan 24/7.\n" .
            "Web: www.transccl.cl | Ventas L–V 8:30–18:00 | Tel: +56 2 2945 5713 | ventas@transccl.cl\n\n" .
-           "FLOTA (siempre con conductor profesional incluido, revisión técnica y seguros vigentes):\n" .
-           "- Buses 40–45 pax: Irizar, Mercedes-Benz, Scania, Volvo. Climatización, cinturón de seguridad, cómodos para viajes largos.\n" .
-           "- Taxibuses 25–33 pax: mismas marcas de chasis (Mercedes, Scania, Volvo). Buena opción para grupos medianos.\n" .
-           "- Minibuses 14–19 pax: Hyundai Staria, Hyundai H1, Mercedes Sprinter, Ford Transit, JAC. Más ágiles, ideales para grupos pequeños o rutas urbanas.\n" .
-           "- Vans / Minivans 7–11 pax: Mercedes Vito, Hyundai Staria, Hyundai H1. Perfectas para traslados ejecutivos, transfer aeropuerto o grupos reducidos.\n" .
-           "Para grupos grandes se coordinan varios vehículos. El tipo exacto lo define la ejecutiva según disponibilidad.\n\n" .
+           "FLOTA (conductor profesional incluido, revisión técnica y seguros vigentes en todos):\n\n" .
+           "BUSES 40–45 pax (año 2009–2018, excelente estado — repuestos originales, talleres propios TransCCL):\n" .
+           "- Irizar i6/PB: lo más elegante de la flota. Butacas amplias con reposacabezas, altura interior >2 m, equipaje con luz LED, climatización. Ideal viajes largos y turismo de calidad.\n" .
+           "- Mercedes-Benz O500/OF-1721: suspensión neumática suave, climatización, asientos reclinables, bodega inferior. El más confiable de Latinoamérica.\n" .
+           "- Scania K380/K410: suspensión neumática completa (casi no se siente el camino), muy silencioso, climatización, transmisión automática Opticruise. Excelente para viajes interurbanos.\n" .
+           "- Volvo B9R/B380: motor trasero (sin ruido ni vibración en cabina), suspensión neumática total, frenos EBS. Uno de los viajes más suaves del mercado.\n\n" .
+           "MINIBUSES 14–19 pax (año 2019–2026, todos modernos — repuestos originales, talleres propios):\n" .
+           "- Mercedes Sprinter 515/519: alto (se puede estar de pie), asientos reclinables, ESP, ABS, climatización. Disponible en versión VIP con butacas premium. Muy cómodo.\n" .
+           "- Ford Transit: más compacto y ágil para la ciudad, 14–17 pax, climatización, diseño moderno.\n" .
+           "- JAC Sunray: uno de los más vendidos en Chile, 15–17 pax, climatización, confiable para ciudad y ruta.\n\n" .
+           "VANS 7–11 pax (año 2019–2026, todos modernos):\n" .
+           "- Hyundai Staria: el más moderno visualmente, diseño futurista, asientos rotativos, 6 airbags, cinturón 3 puntos, climatización, espacioso (hasta 11 pax). Ideal ejecutivos y grupos pequeños.\n" .
+           "- Hyundai H1: van confiable y popular en Chile, hasta 12 pax, AC, ABS, buena relación espacio/comodidad.\n" .
+           "- Mercedes Vito: van ejecutiva premium, elegante y discreta, hasta 9 pax. Ideal transfer aeropuerto y traslados corporativos.\n\n" .
+           "MANTENIMIENTO: todos los vehículos se reparan con repuestos originales en los talleres propios de TransCCL. Esto garantiza respuesta rápida, calidad controlada y excelente estado operativo.\n" .
+           "Si preguntan por el estado o antigüedad: 'nuestros buses son del 2009 al 2018 en excelente estado — los mantenemos con repuestos originales en nuestros propios talleres. Los minibuses y vans son del 2019 al 2026, todos modernos.'\n\n" .
+           "Para grupos grandes se coordinan varios vehículos. El tipo exacto lo define la ejecutiva según disponibilidad y el tamaño del grupo.\n\n" .
            "SERVICIOS:\n" .
            "1. TRANSPORTE DE PERSONAL / SD (el más solicitado): traslado diario a faenas, plantas y oficinas.\n" .
            "   Contratos mensuales o por turno. Rutas optimizadas, monitoreo GPS, conductores con exámenes al día, cumplimiento de normativa mutual.\n" .
