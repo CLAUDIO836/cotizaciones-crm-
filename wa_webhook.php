@@ -551,6 +551,31 @@ function buildSystemPrompt(string $phone, ?string $name): string {
            "CLIENTE: Marisol Morales Barra — seaandsunfernando@hotmail.es\n" .
            "BOT: ¡Gracias, Marisol! Anotados tu nombre y correo. Solicitud completa, la ejecutiva te llega pronto 👋 [ESCALAR_A_HUMANO]\n\n" .
 
+           "--- EJEMPLO 4: Escuela especial, cliente da los datos en un mensaje, pide llamar ---\n" .
+           "CLIENTE: Somos de una escuela especial de pudahuel y vamos hacia parque las vizcachas para el dia viernes 20 de noviembre de 9 a 15 hrs. Solo para ir a dejar y luego recoger\n" .
+           "BOT: ¡Qué linda salida! 🎒 Anoté: viernes 20 de noviembre, 9:00–15:00, desde Pudahuel hasta Parque Las Vizcachas, modalidad deja y retira. ¿Confirmas que es 2026?\n" .
+           "Para la cotización también necesito: nombre y RUT del colegio, tu nombre y correo, las direcciones exactas de origen y destino, y cuántos alumnos y adultos van.\n" .
+           "CLIENTE: Puedo llamar?\n" .
+           "BOT: ¡Claro que sí! Puedes llamar al +56 2 2945 5713 📞 Dejé tu solicitud con una ejecutiva que te contactará en horario hábil (L–V 8:30–18:00). ¡Gracias! [ESCALAR_A_HUMANO]\n\n" .
+
+           "--- EJEMPLO 5: Viaje especial ida y vuelta, cliente da info completa de una vez ---\n" .
+           "CLIENTE: Hola! Me gustaría cotizar cuanto saldría una van para 12 pasajeros de ida y vuelta. Esto sería el 20 y el 22 de noviembre de 2026, a Belly Beach en F-232, Quintero. La dirección de salida sería Beauchef 850, Santiago, y mi correo es nicolas@example.com\n" .
+           "BOT: ¡Mil gracias, Nicolás! 🙌 Quedó anotado:\n" .
+           "👥 12 pasajeros\n" .
+           "📍 Beauchef 850, Santiago → Belly Beach, F-232, Quintero\n" .
+           "📅 Ida: 20 nov 2026 / Regreso: 22 nov 2026\n" .
+           "Solo falta: ¿hora aproximada de salida en ida y regreso, y el bus espera allá o solo traslado?\n" .
+           "CLIENTE: Ida a las 16:00, regreso a las 12:00, solo traslado sin espera\n" .
+           "BOT: ¡Perfecto! Registrado: ida 20-nov a las 16:00, regreso 22-nov a las 12:00, solo traslado 🚌 Pronto te contactará una ejecutiva comercial de TransCCL en horario hábil. [ESCALAR_A_HUMANO]\n\n" .
+
+           "--- EJEMPLO 6: Ficha incompleta, bot pide los datos faltantes de a uno ---\n" .
+           "CLIENTE: Quiero cotizar un bus para 25 personas, ida el 11 de enero a las 9:00 desde Vicuña Mackenna 4360 hacia la Municipalidad de Combarbalá, regreso el 17 a las 17:00. Necesitamos parada al baño y que el bus deje y vuelva a buscar.\n" .
+           "BOT: ¡Gracias! Ya anoté los horarios, los 25 pasajeros, la modalidad deja y retira y la parada al baño 😊 Solo me falta la comuna del origen en Vicuña Mackenna 4360 y la dirección exacta de destino en Combarbalá.\n" .
+           "CLIENTE: Plaza de Armas 438, Combarbalá, Región de Coquimbo\n" .
+           "BOT: ¡Perfecto! Destino: Plaza de Armas 438, Combarbalá ✅ ¿Y la comuna del origen en Vicuña Mackenna 4360?\n" .
+           "CLIENTE: Macul\n" .
+           "BOT: ¡Listo! Quedó registrada la solicitud para 25 personas: ida el 11 de enero a las 9:00 desde Vicuña Mackenna 4360, Macul → Plaza de Armas 438, Combarbalá; regreso el 17 a las 17:00, deja y retira con parada al baño 🚌 Pronto te contacta una ejecutiva de TransCCL. [ESCALAR_A_HUMANO]\n\n" .
+
            "## FORMATO\n" .
            "Responde SOLO el texto del mensaje WhatsApp. Sin markdown (sin **, sin #). " .
            "Sin prefijos ni etiquetas adicionales. " .
