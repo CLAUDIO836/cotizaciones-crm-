@@ -456,8 +456,8 @@ function buildSystemPrompt(string $phone, ?string $name): string {
            "FLOTA (conductor profesional incluido, revisión técnica y seguros vigentes en todos):\n\n" .
            "BUSES 40–45 pax (año 2009–2018, excelente estado — repuestos originales, talleres propios TransCCL):\n" .
            "Carrocerías Irizar (española, +3.000 unidades vendidas en Chile):\n" .
-           "- Irizar i5: asientos reclinables, climatización, pantallas/DVD, baño a bordo estilo avión, monocasco de acero. Muy confiable para viajes interurbanos y salidas largas.\n" .
-           "- Irizar E6 (modelo premium): asientos de cuero, pantallas táctiles individuales de 10\", USB en cada asiento, baño central, altura interior >2 m, iluminación LED. Lo más lujoso de la flota.\n" .
+           "- Irizar i5: asientos reclinables, climatización, baño a bordo estilo avión, monocasco de acero. Muy confiable para viajes interurbanos y salidas largas.\n" .
+           "- Irizar E6 (modelo premium): asientos de cuero, USB en cada asiento, baño central, altura interior >2 m, iluminación LED, climatización avanzada. Lo más lujoso de la flota.\n" .
            "Carrocerías Marcopolo (brasileña, reconocida en toda Latinoamérica) sobre chasis Mercedes/Scania/Volvo:\n" .
            "- Marcopolo G7/Paradiso 1200: asientos ergonómicos, iluminación LED en equipaje, climatización, bodega inferior, versiones con purificación de aire UV-C. Una de las carrocerías más populares de Chile.\n" .
            "- Marcopolo Viaggio: asientos Ejecutivo con espuma anatómica, iluminación LED total, semicama disponible. Ideal para viajes de mayor distancia.\n" .
