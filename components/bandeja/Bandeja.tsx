@@ -28,6 +28,7 @@ interface Conversation {
   service_destination: string | null
   service_passengers: number | null
   service_type: string | null
+  service_vehicle: string | null
   created_at: string | null
 }
 
@@ -156,6 +157,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [rightDestino, setRightDestino]     = useState('')
   const [rightPax, setRightPax]             = useState('')
   const [rightTipo, setRightTipo]           = useState('')
+  const [rightVehiculo, setRightVehiculo]   = useState('')
   const [now, setNow] = useState(Date.now())
   const [backfilling, setBackfilling] = useState(false)
 
@@ -171,6 +173,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
     setRightDestino(activeConv.service_destination ?? '')
     setRightPax(activeConv.service_passengers?.toString() ?? '')
     setRightTipo(activeConv.service_type ?? '')
+    setRightVehiculo(activeConv.service_vehicle ?? '')
   }, [activeConv?.id]) // only when conversation changes, not on every update
 
   // Tick cada 30s para actualizar el cronómetro 24h en vivo
@@ -313,6 +316,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
     setRightDestino(conv.service_destination ?? '')
     setRightPax(conv.service_passengers?.toString() ?? '')
     setRightTipo(conv.service_type ?? '')
+    setRightVehiculo(conv.service_vehicle ?? '')
     // Mark as read
     if (conv.unread_count > 0) {
       fetch('/api/whatsapp/cloud/read', {
@@ -337,6 +341,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
         service_destination: rightDestino || null,
         service_passengers: rightPax ? parseInt(rightPax) : null,
         service_type: rightTipo || null,
+        service_vehicle: rightVehiculo || null,
       }),
     }).catch(() => {})
   }
@@ -772,6 +777,23 @@ export default function Bandeja({ user }: { user: UserSession }) {
                 placeholder="Ej: salida educativa"
                 style={rightInputStyle}
               />
+            </div>
+
+            {/* Vehículo */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 2 }}>Vehículo</div>
+              <select
+                value={rightVehiculo}
+                onChange={e => { setRightVehiculo(e.target.value); }}
+                onBlur={saveNote}
+                style={rightInputStyle}
+              >
+                <option value="">Sin especificar</option>
+                <option value="bus">🚌 Bus (hasta 45 pax)</option>
+                <option value="minibusd">🚐 Minibús (hasta 25 pax)</option>
+                <option value="taxibus">🚎 Taxi-bus (hasta 12 pax)</option>
+                <option value="notengo">🤷 Sin preferencia</option>
+              </select>
             </div>
 
             {/* Ventana 24h */}
