@@ -70,11 +70,13 @@ function isBusinessHours(): boolean {
   return day >= 1 && day <= 5 && mins >= 510 && mins < 1080
 }
 
-function semaphoreColor(lastMsgAt: string | null): 'green' | 'yellow' | 'red' | 'gray' {
-  if (!lastMsgAt || !isBusinessHours()) return 'gray'
-  const diff = (Date.now() - new Date(lastMsgAt).getTime()) / 60000
-  if (diff < 15) return 'green'
-  if (diff < 30) return 'yellow'
+function semaphoreColor(lastCustomerMsgAt: string | null): 'green' | 'yellow' | 'red' | 'gray' {
+  if (!lastCustomerMsgAt) return 'gray'
+  const diffMs = Date.now() - new Date(lastCustomerMsgAt).getTime()
+  if (diffMs > 24 * 3600000) return 'gray'   // ventana cerrada
+  const diffMin = diffMs / 60000
+  if (diffMin < 15) return 'green'
+  if (diffMin < 60) return 'yellow'
   return 'red'
 }
 
@@ -435,7 +437,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const mine       = tabFiltered.filter(c => c.assigned_to === user.id)
   const others     = isAdmin ? tabFiltered.filter(c => c.assigned_to && c.assigned_to !== user.id) : []
 
-  const sColor     = activeConv ? semaphoreColor(activeConv.last_msg_at) : 'gray'
+  const sColor     = activeConv ? semaphoreColor(activeConv.last_customer_msg_at) : 'gray'
   const timer24h   = get24hRemaining(activeConv?.last_customer_msg_at ?? null)
   // Compute diff directly for accurate color (avoid parseInt string-parse bug)
   const _timerDiffMs = activeConv?.last_customer_msg_at
@@ -507,7 +509,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
               )}
             </>
           ) : (
-            <KanbanPanel conversations={conversations} activeId={activeId} onSelect={selectConv} />
+            <KanbanPanel conversations={tabFiltered} activeId={activeId} onSelect={selectConv} />
           )}
         </div>
       </div>
@@ -819,7 +821,7 @@ function KanbanPanel({ conversations, activeId, onSelect }: {
               <div style={{ padding: '8px 16px', fontSize: 12, color: '#d1d5db', fontStyle: 'italic' }}>—</div>
             )}
             {items.map(c => {
-              const color  = semaphoreColor(c.last_msg_at)
+              const color  = semaphoreColor(c.last_customer_msg_at)
               const active = c.id === activeId
               return (
                 <div
@@ -870,7 +872,7 @@ function ConvSection({ title, items, activeId, onSelect, userId }: {
         {title} ({items.length})
       </div>
       {items.map(c => {
-        const color   = semaphoreColor(c.last_msg_at)
+        const color   = semaphoreColor(c.last_customer_msg_at)
         const active  = c.id === activeId
         const unread  = c.unread_count > 0
         return (
