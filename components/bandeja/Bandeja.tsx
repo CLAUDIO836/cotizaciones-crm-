@@ -177,7 +177,6 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
   }, [])
 
   // Scroll refs
-  const messagesEndRef       = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef        = useRef(true)
   const hasLoadedRef         = useRef(false)
@@ -191,10 +190,10 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
     isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
   }
 
-  // Scroll to bottom only if user was already at bottom
+  // Scroll to bottom only if user was already at bottom (scrollTop avoids scrolling the document)
   useEffect(() => {
-    if (isAtBottomRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (isAtBottomRef.current && messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
     }
   }, [messages])
 
@@ -602,7 +601,6 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
                   </div>
                 )
               })}
-              <div ref={messagesEndRef} />
             </div>
 
             {/* Input */}
