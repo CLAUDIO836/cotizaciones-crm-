@@ -21,7 +21,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/aprobar') ||
     pathname.startsWith('/firmar') ||
     pathname.startsWith('/auth') ||
-    pathname.startsWith('/update-password')
+    pathname.startsWith('/update-password') ||
+    pathname.startsWith('/form')
 
   const isLoginPage = pathname === '/login'
 
