@@ -129,6 +129,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [agents, setAgents]           = useState<{ id: string; name: string }[]>([])
   const [allAgents, setAllAgents]     = useState<{ id: string; name: string }[]>([])
 
+  const [tabExec, setTabExec]             = useState<string>('todos')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId]           = useState<string | null>(null)
   const [messages, setMessages]           = useState<Message[]>([])
@@ -360,10 +361,19 @@ export default function Bandeja({ user }: { user: UserSession }) {
     }
   }
 
+  // ── Tab-filtered list ─────────────────────────────────────────────────────
+  const tabFiltered = conversations.filter(c => {
+    if (tabExec === 'todos')      return true
+    if (tabExec === 'sinasignar') return !c.assigned_to
+    return c.assigned_to === tabExec
+  })
+  const unread = (id: string) =>
+    conversations.filter(c => c.assigned_to === id && (c.unread_count ?? 0) > 0).length
+
   // ── Groups for list view ──────────────────────────────────────────────────
-  const unassigned = conversations.filter(c => !c.assigned_to)
-  const mine       = conversations.filter(c => c.assigned_to === user.id)
-  const others     = isAdmin ? conversations.filter(c => c.assigned_to && c.assigned_to !== user.id) : []
+  const unassigned = tabFiltered.filter(c => !c.assigned_to)
+  const mine       = tabFiltered.filter(c => c.assigned_to === user.id)
+  const others     = isAdmin ? tabFiltered.filter(c => c.assigned_to && c.assigned_to !== user.id) : []
 
   const sColor     = activeConv ? semaphoreColor(activeConv.last_msg_at) : 'gray'
   const timer24h   = get24hRemaining(activeConv?.last_customer_msg_at ?? null)
@@ -384,23 +394,42 @@ export default function Bandeja({ user }: { user: UserSession }) {
 
         {/* Header */}
         <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid #e5e7eb' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111' }}>Bandeja WhatsApp</h2>
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={() => setView('list')}   style={viewBtn(view === 'list')}>☰</button>
               <button onClick={() => setView('kanban')} style={viewBtn(view === 'kanban')}>⊞</button>
             </div>
           </div>
-          <p style={{ margin: '0 0 8px', color: '#6b7280', fontSize: 12 }}>{conversations.length} conversaciones</p>
 
-          {isAdmin && (
-            <select value={filterAgent} onChange={e => setFilterAgent(e.target.value)} style={selectStyle}>
-              <option value="">Todos los agentes</option>
-              <option value="none">Sin asignar</option>
-              {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-          )}
-          <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={{ ...selectStyle, marginTop: 4 }}>
+          {/* Tabs por ejecutivo */}
+          <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 6, marginBottom: 6,
+            scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+            {[
+              { id: 'todos',      label: 'Todos',       badge: conversations.filter(c => (c.unread_count ?? 0) > 0).length },
+              { id: 'sinasignar', label: 'Sin asignar', badge: conversations.filter(c => !c.assigned_to && (c.unread_count ?? 0) > 0).length },
+              ...allAgents.map(a => ({ id: a.id, label: a.name.split(' ')[0], badge: unread(a.id) })),
+            ].map(tab => (
+              <button key={tab.id} onClick={() => setTabExec(tab.id)} style={{
+                flexShrink: 0, fontSize: 11, fontWeight: tabExec === tab.id ? 700 : 500,
+                padding: '4px 9px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                background: tabExec === tab.id ? '#2563eb' : '#f3f4f6',
+                color: tabExec === tab.id ? '#fff' : '#374151',
+                display: 'flex', alignItems: 'center', gap: 4,
+              }}>
+                {tab.label}
+                {tab.badge > 0 && (
+                  <span style={{
+                    background: tabExec === tab.id ? 'rgba(255,255,255,0.35)' : '#ef4444',
+                    color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700,
+                    padding: '0 5px', minWidth: 16, textAlign: 'center',
+                  }}>{tab.badge}</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={selectStyle}>
             <option value="">Todas las etapas</option>
             {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
@@ -410,9 +439,23 @@ export default function Bandeja({ user }: { user: UserSession }) {
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {view === 'list' ? (
             <>
-              <ConvSection title="Sin asignar" items={unassigned} activeId={activeId} onSelect={selectConv} userId={user.id} />
-              <ConvSection title="Mis chats"   items={mine}       activeId={activeId} onSelect={selectConv} userId={user.id} />
-              {isAdmin && <ConvSection title="Otros agentes" items={others} activeId={activeId} onSelect={selectConv} userId={user.id} />}
+              {tabExec === 'todos' ? (
+                <>
+                  <ConvSection title="Sin asignar" items={unassigned} activeId={activeId} onSelect={selectConv} userId={user.id} />
+                  <ConvSection title="Mis chats"   items={mine}       activeId={activeId} onSelect={selectConv} userId={user.id} />
+                  {isAdmin && <ConvSection title="Otros agentes" items={others} activeId={activeId} onSelect={selectConv} userId={user.id} />}
+                </>
+              ) : tabExec === 'sinasignar' ? (
+                <ConvSection title="Sin asignar" items={unassigned} activeId={activeId} onSelect={selectConv} userId={user.id} />
+              ) : (
+                <ConvSection
+                  title={allAgents.find(a => a.id === tabExec)?.name ?? 'Ejecutivo'}
+                  items={tabFiltered}
+                  activeId={activeId}
+                  onSelect={selectConv}
+                  userId={user.id}
+                />
+              )}
             </>
           ) : (
             <KanbanPanel conversations={conversations} activeId={activeId} onSelect={selectConv} />
