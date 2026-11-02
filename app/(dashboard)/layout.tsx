@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { Suspense } from 'react'
 import Sidebar from '@/components/Sidebar'
 import ChatBox from '@/components/ChatBox'
 import CelularModal from '@/components/CelularModal'
@@ -24,14 +25,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#f4f5f7' }}>
       {!session.celular && <CelularModal />}
-      <Sidebar profile={{
-        id: session.id,
-        name: session.name,
-        role: session.role,
-        pending_leads: pendingLeads,
-        agent_attention: agentAttention,
-        autz_pending: autzPending,
-      }} />
+      <Suspense fallback={null}>
+        <Sidebar profile={{
+          id: session.id,
+          name: session.name,
+          role: session.role,
+          pending_leads: pendingLeads,
+          agent_attention: agentAttention,
+          autz_pending: autzPending,
+        }} />
+      </Suspense>
       <main className="flex-1 overflow-y-auto">
         {children}
       </main>

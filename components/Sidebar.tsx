@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import {
-  LayoutDashboard, FileText, FileCheck, Users, UserCog, LogOut, Filter, BarChart3, CalendarDays, Inbox, Bot, PhoneCall, Phone, MessageCircle, Calculator, ShieldCheck
+  LayoutDashboard, FileText, FileCheck, Users, UserCog, LogOut, Filter, BarChart3, CalendarDays, Inbox, Bot, PhoneCall, Phone, MessageCircle, Calculator, ShieldCheck, ChevronDown
 } from 'lucide-react'
 
 interface Profile {
@@ -25,7 +26,6 @@ const navItems = [
   { href: '/autorizaciones', label: 'Por aprobar', icon: ShieldCheck, autzBadge: true },
   { href: '/agenda',       label: 'Agenda',       icon: CalendarDays },
   { href: '/llamadas',     label: 'Llamadas',     icon: Phone },
-  { href: '/bandeja',     label: 'Bandeja WA',   icon: MessageCircle },
   { href: '/whatsapp',    label: 'WhatsApp',     icon: MessageCircle },
   { href: '/contratos',    label: 'Contratos',    icon: FileCheck },
   { href: '/clientes',     label: 'Clientes',     icon: Users },
@@ -40,9 +40,29 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 export default function Sidebar({ profile }: { profile: Profile | null }) {
-  const pathname = usePathname()
-  const router = useRouter()
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin'
+  const pathname      = usePathname()
+  const searchParams  = useSearchParams()
+  const router        = useRouter()
+  const isAdmin       = profile?.role === 'admin' || profile?.role === 'superadmin'
+
+  const onBandeja     = pathname.startsWith('/bandeja')
+  const currentExec   = onBandeja ? (searchParams.get('exec') ?? 'todos') : ''
+
+  const [execOpen,   setExecOpen]   = useState(onBandeja)
+  const [execAgents, setExecAgents] = useState<{ id: string; name: string }[]>([])
+
+  // Auto-expand when navigating to bandeja
+  useEffect(() => { if (onBandeja) setExecOpen(true) }, [onBandeja])
+
+  // Load non-admin agents for submenu
+  useEffect(() => {
+    fetch('/api/admin/usuarios')
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: { id: string; name: string; active: number; role?: string }[]) =>
+        setExecAgents(rows.filter(r => r.active && r.role !== 'admin').map(r => ({ id: r.id, name: r.name })))
+      )
+      .catch(() => {})
+  }, [])
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -52,6 +72,12 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
 
   const isActive = (href: string) =>
     pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
+
+  const subItems = [
+    { id: 'todos',      label: 'Todos' },
+    { id: 'sinasignar', label: 'Sin asignar' },
+    ...execAgents.map(a => ({ id: a.id, label: a.name.split(' ')[0] })),
+  ]
 
   return (
     <aside className="flex" style={{ background: '#16192A' }}>
@@ -81,6 +107,15 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
             </Link>
           )
         })}
+
+        {/* Bandeja WA icon */}
+        <Link href="/bandeja" title="Bandeja WA">
+          <div className="relative w-9 h-9 rounded-lg flex items-center justify-center transition-all"
+            style={onBandeja ? { background: '#1B8A4B' } : {}}>
+            <MessageCircle className="w-4 h-4"
+              style={{ color: onBandeja ? 'white' : 'rgba(255,255,255,0.45)' }} />
+          </div>
+        </Link>
 
         {isAdmin && (
           <>
@@ -155,6 +190,48 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
               </Link>
             )
           })}
+
+          {/* Bandeja WA con submenú */}
+          <div>
+            <button
+              onClick={() => {
+                setExecOpen(o => !o)
+                if (!onBandeja) router.push('/bandeja')
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all"
+              style={onBandeja
+                ? { background: 'rgba(27,138,75,0.15)', color: '#1B8A4B' }
+                : { color: 'rgba(255,255,255,0.5)' }
+              }
+            >
+              <MessageCircle className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="flex-1 text-left">Bandeja WA</span>
+              <ChevronDown
+                className="w-3 h-3 transition-transform"
+                style={{ transform: execOpen ? 'rotate(180deg)' : 'none', opacity: 0.6 }}
+              />
+            </button>
+
+            {execOpen && (
+              <div className="ml-3 mt-0.5 flex flex-col gap-0.5 border-l pl-2"
+                style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                {subItems.map(item => (
+                  <Link key={item.id}
+                    href={`/bandeja?exec=${item.id}`}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-medium transition-all"
+                    style={currentExec === item.id
+                      ? { background: 'rgba(27,138,75,0.15)', color: '#1B8A4B' }
+                      : { color: 'rgba(255,255,255,0.4)' }
+                    }
+                  >
+                    <span className="w-1 h-1 rounded-full flex-shrink-0"
+                      style={{ background: currentExec === item.id ? '#1B8A4B' : 'rgba(255,255,255,0.25)' }} />
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
 
           {isAdmin && (
             <>

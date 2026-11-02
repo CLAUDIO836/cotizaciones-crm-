@@ -119,7 +119,7 @@ function StatusIcon({ status, direction }: { status: string; direction: 'in' | '
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function Bandeja({ user }: { user: UserSession }) {
+export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSession; initialExec?: string }) {
   const isAdmin = user.role === 'admin'
   const router  = useRouter()
 
@@ -129,7 +129,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [agents, setAgents]           = useState<{ id: string; name: string }[]>([])
   const [allAgents, setAllAgents]     = useState<{ id: string; name: string }[]>([])
 
-  const [tabExec, setTabExec]             = useState<string>('todos')
+  const [tabExec, setTabExec]             = useState<string>(initialExec)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId]           = useState<string | null>(null)
   const [messages, setMessages]           = useState<Message[]>([])
@@ -143,6 +143,9 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [rightRut, setRightRut]           = useState('')
   const [rightDate, setRightDate]         = useState('')
   const [now, setNow] = useState(Date.now())
+
+  // Sync tab when navigating from sidebar
+  useEffect(() => { setTabExec(initialExec) }, [initialExec])
 
   // Tick cada 30s para actualizar el cronómetro 24h en vivo
   useEffect(() => {
@@ -361,6 +364,11 @@ export default function Bandeja({ user }: { user: UserSession }) {
     }
   }
 
+  function selectTab(id: string) {
+    setTabExec(id)
+    router.replace(`/bandeja?exec=${id}`, { scroll: false })
+  }
+
   // ── Tab-filtered list ─────────────────────────────────────────────────────
   const tabFiltered = conversations.filter(c => {
     if (tabExec === 'todos')      return true
@@ -394,41 +402,20 @@ export default function Bandeja({ user }: { user: UserSession }) {
 
         {/* Header */}
         <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid #e5e7eb' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111' }}>Bandeja WhatsApp</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111' }}>
+                {tabExec === 'todos'      ? 'Todos'
+                 : tabExec === 'sinasignar' ? 'Sin asignar'
+                 : allAgents.find(a => a.id === tabExec)?.name.split(' ')[0] ?? 'Bandeja'}
+              </h2>
+              <p style={{ margin: 0, color: '#6b7280', fontSize: 12 }}>{tabFiltered.length} conversaciones</p>
+            </div>
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={() => setView('list')}   style={viewBtn(view === 'list')}>☰</button>
               <button onClick={() => setView('kanban')} style={viewBtn(view === 'kanban')}>⊞</button>
             </div>
           </div>
-
-          {/* Tabs por ejecutivo */}
-          <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 6, marginBottom: 6,
-            scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-            {[
-              { id: 'todos',      label: 'Todos',       badge: conversations.filter(c => (c.unread_count ?? 0) > 0).length },
-              { id: 'sinasignar', label: 'Sin asignar', badge: conversations.filter(c => !c.assigned_to && (c.unread_count ?? 0) > 0).length },
-              ...allAgents.map(a => ({ id: a.id, label: a.name.split(' ')[0], badge: unread(a.id) })),
-            ].map(tab => (
-              <button key={tab.id} onClick={() => setTabExec(tab.id)} style={{
-                flexShrink: 0, fontSize: 11, fontWeight: tabExec === tab.id ? 700 : 500,
-                padding: '4px 9px', borderRadius: 20, border: 'none', cursor: 'pointer',
-                background: tabExec === tab.id ? '#2563eb' : '#f3f4f6',
-                color: tabExec === tab.id ? '#fff' : '#374151',
-                display: 'flex', alignItems: 'center', gap: 4,
-              }}>
-                {tab.label}
-                {tab.badge > 0 && (
-                  <span style={{
-                    background: tabExec === tab.id ? 'rgba(255,255,255,0.35)' : '#ef4444',
-                    color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700,
-                    padding: '0 5px', minWidth: 16, textAlign: 'center',
-                  }}>{tab.badge}</span>
-                )}
-              </button>
-            ))}
-          </div>
-
           <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={selectStyle}>
             <option value="">Todas las etapas</option>
             {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
