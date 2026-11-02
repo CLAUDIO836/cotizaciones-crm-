@@ -3628,6 +3628,16 @@ if ($action === 'wa_cloud_list') {
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_date DATE NULL");                                           } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_messages ADD COLUMN sender_type VARCHAR(20) NULL");                                          } catch (PDOException $e) {}
 
+    // Backfill last_customer_msg_at para conversaciones que aún no lo tienen
+    try {
+        db()->exec("UPDATE wa_cloud_conversations c
+            SET c.last_customer_msg_at = (
+                SELECT MAX(m.created_at) FROM wa_cloud_messages m
+                WHERE m.conversation_id = c.id AND m.direction = 'in'
+            )
+            WHERE c.last_customer_msg_at IS NULL");
+    } catch (PDOException $e) {}
+
     $filterAgent = $_GET['assigned_to'] ?? null;  // UUID o 'none'
     $filterStage = $_GET['stage']       ?? null;
 

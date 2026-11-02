@@ -141,6 +141,13 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [rightNotes, setRightNotes]       = useState('')
   const [rightRut, setRightRut]           = useState('')
   const [rightDate, setRightDate]         = useState('')
+  const [now, setNow] = useState(Date.now())
+
+  // Tick cada 30s para actualizar el cronómetro 24h en vivo
+  useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 30000)
+    return () => clearInterval(iv)
+  }, [])
 
   // Scroll refs
   const messagesEndRef       = useRef<HTMLDivElement>(null)
@@ -360,9 +367,14 @@ export default function Bandeja({ user }: { user: UserSession }) {
 
   const sColor     = activeConv ? semaphoreColor(activeConv.last_msg_at) : 'gray'
   const timer24h   = get24hRemaining(activeConv?.last_customer_msg_at ?? null)
-  const timerColor = timer24h === 'Ventana cerrada' ? '#ef4444' : timer24h ? (
-    parseInt(timer24h) < 1 ? '#f59e0b' : '#16a34a'
-  ) : '#9ca3af'
+  // Compute diff directly for accurate color (avoid parseInt string-parse bug)
+  const _timerDiffMs = activeConv?.last_customer_msg_at
+    ? Math.max(0, new Date(activeConv.last_customer_msg_at).getTime() + 24 * 3600000 - now)
+    : -1
+  const timerColor = _timerDiffMs < 0 ? '#9ca3af'
+    : _timerDiffMs === 0 ? '#ef4444'
+    : _timerDiffMs < 6 * 3600000 ? '#f59e0b'
+    : '#16a34a'
 
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: 'system-ui, sans-serif', fontSize: 14 }}>
