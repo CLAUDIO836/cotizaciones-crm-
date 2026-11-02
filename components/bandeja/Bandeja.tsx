@@ -436,7 +436,7 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
     : '#16a34a'
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: 'system-ui, sans-serif', fontSize: 14 }}>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', fontFamily: 'system-ui, sans-serif', fontSize: 14 }}>
 
       {/* ── Left panel ─────────────────────────────────────────────────────── */}
       <div style={{ width: 300, borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', background: '#fff', flexShrink: 0 }}>
@@ -570,7 +570,7 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
             <div
               ref={messagesContainerRef}
               onScroll={handleScroll}
-              style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}
+              style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}
             >
               {loadingMsgs && messages.length === 0 && (
                 <div style={{ textAlign: 'center', color: '#9ca3af', marginTop: 40 }}>Cargando...</div>
