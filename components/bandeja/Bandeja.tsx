@@ -180,12 +180,12 @@ export default function Bandeja({ user }: { user: UserSession }) {
     }
   }, [])
 
-  // Load agents list
+  // Load agents list (solo no-admin para los tabs)
   useEffect(() => {
     fetch('/api/admin/usuarios')
       .then(r => r.ok ? r.json() : [])
-      .then((rows: { id: string; name: string; active: number }[]) =>
-        setAllAgents(rows.filter(r => r.active).map(r => ({ id: r.id, name: r.name })))
+      .then((rows: { id: string; name: string; active: number; role?: string }[]) =>
+        setAllAgents(rows.filter(r => r.active && r.role !== 'admin').map(r => ({ id: r.id, name: r.name })))
       )
       .catch(() => {})
   }, [])
