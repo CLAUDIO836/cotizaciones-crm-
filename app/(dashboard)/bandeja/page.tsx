@@ -1,10 +1,15 @@
 export const dynamic = 'force-dynamic'
+import { Suspense } from 'react'
 import { getSession } from '@/lib/api'
 import { redirect } from 'next/navigation'
 import Bandeja from '@/components/bandeja/Bandeja'
 
-export default async function BandejaPage({ searchParams }: { searchParams: { exec?: string } }) {
+export default async function BandejaPage() {
   const user = await getSession()
   if (!user) redirect('/login')
-  return <Bandeja user={user} initialExec={searchParams.exec ?? 'todos'} />
+  return (
+    <Suspense fallback={null}>
+      <Bandeja user={user} />
+    </Suspense>
+  )
 }

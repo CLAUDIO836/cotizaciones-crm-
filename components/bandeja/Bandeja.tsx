@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { UserSession } from '@/lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -124,9 +124,11 @@ function StatusIcon({ status, direction }: { status: string; direction: 'in' | '
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSession; initialExec?: string }) {
-  const isAdmin = user.role === 'admin'
-  const router  = useRouter()
+export default function Bandeja({ user }: { user: UserSession }) {
+  const isAdmin     = user.role === 'admin'
+  const router      = useRouter()
+  const searchParams = useSearchParams()
+  const initialExec  = searchParams.get('exec') ?? 'todos'
 
   const [view, setView]               = useState<'list' | 'kanban'>('list')
   const [filterAgent, setFilterAgent] = useState('')
@@ -134,7 +136,7 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
   const [agents, setAgents]           = useState<{ id: string; name: string }[]>([])
   const [allAgents, setAllAgents]     = useState<{ id: string; name: string }[]>([])
 
-  const [tabExec, setTabExec]             = useState<string>(initialExec)
+  const tabExec = initialExec  // deriva directo de searchParams → siempre sincronizado
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId]           = useState<string | null>(null)
   const [messages, setMessages]           = useState<Message[]>([])
@@ -155,8 +157,6 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
   const [now, setNow] = useState(Date.now())
   const [backfilling, setBackfilling] = useState(false)
 
-  // Sync tab when navigating from sidebar
-  useEffect(() => { setTabExec(initialExec) }, [initialExec])
 
   // Sync right panel when activeConv updated by polling (bot fills fields)
   useEffect(() => {
@@ -418,7 +418,6 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
   }
 
   function selectTab(id: string) {
-    setTabExec(id)
     router.replace(`/bandeja?exec=${id}`, { scroll: false })
   }
 
