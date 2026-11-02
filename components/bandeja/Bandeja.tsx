@@ -419,6 +419,18 @@ export default function Bandeja({ user }: { user: UserSession }) {
     finally { setBackfilling(false) }
   }
 
+  async function sendFormLink(phone: string) {
+    const formUrl = `${window.location.origin}/form/${phone}`
+    const msg = `Hola 👋 Para agilizar tu cotización, te pedimos que completes este breve formulario con los detalles de tu traslado:\n\n${formUrl}\n\nSolo toma 1 minuto y así te enviamos la cotización de inmediato 🚌`
+    const res = await fetch('/api/whatsapp/cloud/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, text: msg }),
+    })
+    if (res.ok) {
+      if (activeId) await loadMessages(activeId)
+    }
+  }
+
   function selectTab(id: string) {
     router.replace(`/bandeja?exec=${id}`, { scroll: false })
   }
@@ -574,6 +586,13 @@ export default function Bandeja({ user }: { user: UserSession }) {
                     ? <button onClick={() => toggleBot(false)} style={btnStyle('#2563eb')}>Tomar chat</button>
                     : <button onClick={() => toggleBot(true)}  style={btnStyle('#6b7280')}>Devolver al bot</button>
                   }
+                  <button
+                    onClick={() => sendFormLink(activeConv.phone)}
+                    title="Enviar link del formulario al cliente por WhatsApp"
+                    style={btnStyle('#0ea5e9')}
+                  >
+                    📋 Formulario
+                  </button>
                   <button
                     onClick={() => {
                       const p = new URLSearchParams({ phone: activeConv.phone })
