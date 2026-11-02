@@ -3606,7 +3606,7 @@ if ($action === 'wa_cloud_send') {
     $conv = $convStmt->fetch();
     if ($conv && $wamid) {
         $msgId = uuid();
-        db()->prepare("INSERT IGNORE INTO wa_cloud_messages (id, conversation_id, wamid, direction, content) VALUES (?,?,?,'out',?)")
+        db()->prepare("INSERT IGNORE INTO wa_cloud_messages (id, conversation_id, wamid, direction, content, sender_type) VALUES (?,?,?,'out',?,'human')")
             ->execute([$msgId, $conv['id'], $wamid, $text ?? json_encode($template)]);
     }
 
@@ -3618,8 +3618,15 @@ if ($action === 'wa_cloud_list') {
     $user    = requireAuth();
     $isAdmin = isAdmin($user);
 
-    // Migración stage si no existe
-    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN stage VARCHAR(20) NOT NULL DEFAULT 'nuevo' AFTER bot_active"); } catch (PDOException $e) {}
+    // Migraciones
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN stage  VARCHAR(20) NOT NULL DEFAULT 'nuevo'     AFTER bot_active"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN source VARCHAR(30) NOT NULL DEFAULT 'whatsapp'  AFTER stage");      } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN last_customer_msg_at DATETIME NULL");                               } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN unread_count INT NOT NULL DEFAULT 0");                              } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN notes TEXT NULL");                                                  } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN contact_rut VARCHAR(20) NULL");                                     } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_date DATE NULL");                                           } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_messages ADD COLUMN sender_type VARCHAR(20) NULL");                                          } catch (PDOException $e) {}
 
     $filterAgent = $_GET['assigned_to'] ?? null;  // UUID o 'none'
     $filterStage = $_GET['stage']       ?? null;
@@ -3644,7 +3651,8 @@ if ($action === 'wa_cloud_list') {
 
     $sql = "
         SELECT c.id, c.phone, c.contact_name, c.assigned_to, c.bot_active,
-               c.stage, c.last_msg_at,
+               c.stage, c.source, c.last_msg_at, c.last_customer_msg_at,
+               c.unread_count, c.notes, c.contact_rut, c.service_date, c.created_at,
                p.name AS assigned_name,
                m.content AS last_message
         FROM wa_cloud_conversations c
@@ -3663,10 +3671,29 @@ if ($action === 'wa_cloud_list') {
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     foreach ($rows as &$r) {
-        $r['bot_active'] = (bool)(int)$r['bot_active'];
-        $r['stage'] = $r['stage'] ?? 'nuevo';
+        $r['bot_active']           = (bool)(int)$r['bot_active'];
+        $r['stage']                = $r['stage']  ?? 'nuevo';
+        $r['source']               = $r['source'] ?? 'whatsapp';
+        $r['unread_count']         = (int)($r['unread_count'] ?? 0);
+        $r['last_customer_msg_at'] = $r['last_customer_msg_at'] ?? null;
+        $r['notes']                = $r['notes']       ?? null;
+        $r['contact_rut']          = $r['contact_rut']  ?? null;
+        $r['service_date']         = $r['service_date'] ?? null;
     }
     ok($rows);
+}
+
+// ── Bandeja WhatsApp: cambiar canal de origen ────────────────────────────────
+if ($action === 'wa_cloud_source') {
+    requireAuth();
+    $b      = body();
+    $convId = $b['conv_id'] ?? null;
+    $source = $b['source']  ?? null;
+    $valid  = ['whatsapp', 'facebook', 'instagram', 'google', 'referido', 'otro'];
+    if (!$convId || !in_array($source, $valid)) err('conv_id y source válido requeridos');
+    db()->prepare("UPDATE wa_cloud_conversations SET source = ? WHERE id = ?")
+        ->execute([$source, $convId]);
+    ok(['source' => $source]);
 }
 
 // ── Bandeja WhatsApp: cambiar etapa ──────────────────────────────────────────
@@ -3675,11 +3702,43 @@ if ($action === 'wa_cloud_stage') {
     $b     = body();
     $convId = $b['conv_id'] ?? null;
     $stage  = $b['stage']   ?? null;
-    $valid  = ['nuevo', 'cotizando', 'ganado', 'perdido'];
+    $valid  = ['nuevo', 'cotizando', 'ganado', 'perdido', 'cerrado'];
     if (!$convId || !in_array($stage, $valid)) err('conv_id y stage válido requeridos');
     db()->prepare("UPDATE wa_cloud_conversations SET stage = ? WHERE id = ?")
         ->execute([$stage, $convId]);
     ok(['stage' => $stage]);
+}
+
+// ── Bandeja WhatsApp: marcar conversación como leída ────────────────────────
+if ($action === 'wa_cloud_read') {
+    requireAuth();
+    $b = body();
+    $convId = $b['conv_id'] ?? null;
+    if (!$convId) err('conv_id requerido');
+    db()->prepare("UPDATE wa_cloud_conversations SET unread_count = 0 WHERE id = ?")
+        ->execute([$convId]);
+    ok(['read' => true]);
+}
+
+// ── Bandeja WhatsApp: guardar notas y datos de contacto ─────────────────────
+if ($action === 'wa_cloud_note') {
+    requireAuth();
+    $b = body();
+    $convId      = $b['conv_id']      ?? null;
+    $notes       = $b['notes']        ?? null;
+    $contactRut  = $b['contact_rut']  ?? null;
+    $serviceDate = $b['service_date'] ?? null;
+    if (!$convId) err('conv_id requerido');
+    $fields = [];
+    $vals   = [];
+    if ($notes       !== null) { $fields[] = 'notes = ?';        $vals[] = $notes ?: null; }
+    if ($contactRut  !== null) { $fields[] = 'contact_rut = ?';  $vals[] = $contactRut ?: null; }
+    if ($serviceDate !== null) { $fields[] = 'service_date = ?'; $vals[] = $serviceDate ?: null; }
+    if (!$fields) err('Nada que actualizar');
+    $vals[] = $convId;
+    db()->prepare("UPDATE wa_cloud_conversations SET " . implode(', ', $fields) . " WHERE id = ?")
+        ->execute($vals);
+    ok(['saved' => true]);
 }
 
 // ── Bandeja WhatsApp: mensajes de una conversación ───────────────────────────
@@ -3698,7 +3757,7 @@ if ($action === 'wa_cloud_messages') {
     }
 
     $stmt = db()->prepare("
-        SELECT id, direction, content, msg_type, status, created_at
+        SELECT id, direction, content, msg_type, status, sender_type, created_at
         FROM wa_cloud_messages
         WHERE conversation_id = ?
         ORDER BY created_at ASC
@@ -3748,6 +3807,17 @@ if ($action === 'wa_cloud_take') {
         ->execute($vals);
 
     ok(['bot_active' => (bool)$botActive, 'assigned_to' => !$botActive ? $user['id'] : null]);
+}
+
+if ($action === 'wa_cloud_assign') {
+    $user = requireAuth();
+    $b = body();
+    $convId    = $b['conv_id']     ?? null;
+    $assignTo  = $b['assigned_to'] ?? null;  // null = quitar asignación
+    if (!$convId) err('conv_id requerido');
+    db()->prepare("UPDATE wa_cloud_conversations SET assigned_to = ? WHERE id = ?")
+        ->execute([$assignTo ?: null, $convId]);
+    ok(['assigned_to' => $assignTo ?: null]);
 }
 
 // ── Bot: historial de conversación (autenticado con X-Internal-Secret) ───────

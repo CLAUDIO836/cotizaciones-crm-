@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { UserSession } from '@/lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Stage  = 'nuevo' | 'cotizando' | 'ganado' | 'perdido'
+type Stage  = 'nuevo' | 'cotizando' | 'ganado' | 'perdido' | 'cerrado'
 type Source = 'whatsapp' | 'facebook' | 'instagram' | 'google' | 'referido' | 'otro'
 
 interface Conversation {
@@ -18,7 +18,33 @@ interface Conversation {
   source: Source
   last_msg_at: string | null
   last_message: string | null
+  last_customer_msg_at: string | null
+  unread_count: number
+  notes: string | null
+  contact_rut: string | null
+  service_date: string | null
+  created_at: string | null
 }
+
+interface Message {
+  id: string
+  direction: 'in' | 'out'
+  content: string
+  msg_type: string
+  status: string
+  sender_type: string | null
+  created_at: string
+}
+
+// ── Stage config ──────────────────────────────────────────────────────────────
+const STAGES: { id: Stage; label: string; color: string; bg: string; dot: string }[] = [
+  { id: 'nuevo',      label: 'Nuevo',              color: '#6b7280', bg: '#f3f4f6', dot: '#9ca3af' },
+  { id: 'cotizando',  label: 'Preparando cotiz.',  color: '#1d4ed8', bg: '#eff6ff', dot: '#3b82f6' },
+  { id: 'ganado',     label: 'Ganado',             color: '#166534', bg: '#f0fdf4', dot: '#22c55e' },
+  { id: 'perdido',    label: 'Perdido',            color: '#991b1b', bg: '#fef2f2', dot: '#ef4444' },
+  { id: 'cerrado',    label: 'Cerrado',            color: '#4b5563', bg: '#f9fafb', dot: '#9ca3af' },
+]
+const stageMap = Object.fromEntries(STAGES.map(s => [s.id, s]))
 
 const SOURCES: { id: Source; label: string; icon: string }[] = [
   { id: 'whatsapp',  label: 'WhatsApp',  icon: '💬' },
@@ -30,31 +56,12 @@ const SOURCES: { id: Source; label: string; icon: string }[] = [
 ]
 const sourceMap = Object.fromEntries(SOURCES.map(s => [s.id, s]))
 
-interface Message {
-  id: string
-  direction: 'in' | 'out'
-  content: string
-  msg_type: string
-  status: string
-  created_at: string
-}
-
-// ── Stage config ──────────────────────────────────────────────────────────────
-const STAGES: { id: Stage; label: string; color: string; bg: string; dot: string }[] = [
-  { id: 'nuevo',      label: 'Nuevo',              color: '#6b7280', bg: '#f3f4f6', dot: '#9ca3af' },
-  { id: 'cotizando',  label: 'Preparando cotiz.',  color: '#1d4ed8', bg: '#eff6ff', dot: '#3b82f6' },
-  { id: 'ganado',     label: 'Ganado',             color: '#166534', bg: '#f0fdf4', dot: '#22c55e' },
-  { id: 'perdido',    label: 'Perdido',            color: '#991b1b', bg: '#fef2f2', dot: '#ef4444' },
-]
-
-const stageMap = Object.fromEntries(STAGES.map(s => [s.id, s]))
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function isBusinessHours(): boolean {
-  const now = new Date()
+  const now   = new Date()
   const chile = new Date(now.getTime() - 3 * 60 * 60 * 1000)
-  const day = chile.getUTCDay()
-  const mins = chile.getUTCHours() * 60 + chile.getUTCMinutes()
+  const day   = chile.getUTCDay()
+  const mins  = chile.getUTCHours() * 60 + chile.getUTCMinutes()
   return day >= 1 && day <= 5 && mins >= 510 && mins < 1080
 }
 
@@ -68,7 +75,7 @@ function semaphoreColor(lastMsgAt: string | null): 'green' | 'yellow' | 'red' | 
 
 function fmtTime(dt: string | null): string {
   if (!dt) return ''
-  const d = new Date(dt)
+  const d   = new Date(dt)
   const now = new Date()
   if (d.toDateString() === now.toDateString())
     return d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
@@ -77,6 +84,16 @@ function fmtTime(dt: string | null): string {
 
 function fmtFull(dt: string): string {
   return new Date(dt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+}
+
+function get24hRemaining(lastCustomerMsgAt: string | null): string | null {
+  if (!lastCustomerMsgAt) return null
+  const expiry = new Date(lastCustomerMsgAt).getTime() + 24 * 60 * 60 * 1000
+  const diff   = expiry - Date.now()
+  if (diff <= 0) return 'Ventana cerrada'
+  const h = Math.floor(diff / 3600000)
+  const m = Math.floor((diff % 3600000) / 60000)
+  return `${h}h ${m}m`
 }
 
 function SemDot({ color }: { color: ReturnType<typeof semaphoreColor> }) {
@@ -93,29 +110,60 @@ function StagePill({ stage }: { stage: Stage | null | undefined }) {
   )
 }
 
+function StatusIcon({ status, direction }: { status: string; direction: 'in' | 'out' }) {
+  if (direction !== 'out') return null
+  if (status === 'read')      return <span style={{ color: '#34b7f1', fontSize: 11, marginLeft: 3 }}>✓✓</span>
+  if (status === 'delivered') return <span style={{ color: '#aaa',    fontSize: 11, marginLeft: 3 }}>✓✓</span>
+  if (status === 'sent')      return <span style={{ color: '#aaa',    fontSize: 11, marginLeft: 3 }}>✓</span>
+  return null
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function Bandeja({ user }: { user: UserSession }) {
   const isAdmin = user.role === 'admin'
   const router  = useRouter()
 
-  const [view, setView]           = useState<'list' | 'kanban'>('list')
+  const [view, setView]               = useState<'list' | 'kanban'>('list')
   const [filterAgent, setFilterAgent] = useState('')
   const [filterStage, setFilterStage] = useState('')
-  const [agents, setAgents]       = useState<{ id: string; name: string }[]>([])
+  const [agents, setAgents]           = useState<{ id: string; name: string }[]>([])
+  const [allAgents, setAllAgents]     = useState<{ id: string; name: string }[]>([])
 
-  const [allAgents, setAllAgents]  = useState<{ id: string; name: string }[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const [activeId, setActiveId]   = useState<string | null>(null)
-  const [messages, setMessages]   = useState<Message[]>([])
-  const [activeConv, setActiveConv] = useState<Conversation | null>(null)
-  const [text, setText]           = useState('')
-  const [sending, setSending]     = useState(false)
-  const [loadingMsgs, setLoadingMsgs] = useState(false)
-  const bottomRef  = useRef<HTMLDivElement>(null)
-  const lastSeenAt = useRef<Record<string, string>>({})  // convId → last_msg_at
+  const [activeId, setActiveId]           = useState<string | null>(null)
+  const [messages, setMessages]           = useState<Message[]>([])
+  const [activeConv, setActiveConv]       = useState<Conversation | null>(null)
+  const [text, setText]                   = useState('')
+  const [sending, setSending]             = useState(false)
+  const [loadingMsgs, setLoadingMsgs]     = useState(false)
+
+  // Right panel state (saved on blur)
+  const [rightNotes, setRightNotes]       = useState('')
+  const [rightRut, setRightRut]           = useState('')
+  const [rightDate, setRightDate]         = useState('')
+
+  // Scroll refs
+  const messagesEndRef       = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const isAtBottomRef        = useRef(true)
+
+  const lastSeenAt = useRef<Record<string, string>>({})
   const notifPerm  = useRef<NotificationPermission>('default')
 
-  // Pedir permiso de notificaciones al montar
+  function handleScroll() {
+    const el = messagesContainerRef.current
+    if (!el) return
+    isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
+
+  // Scroll to bottom only if user was already at bottom
+  useEffect(() => {
+    if (isAtBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages])
+
+  // Request notifications permission
   useEffect(() => {
     if (typeof Notification === 'undefined') return
     notifPerm.current = Notification.permission
@@ -124,6 +172,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
     }
   }, [])
 
+  // Load agents list
   useEffect(() => {
     fetch('/api/admin/usuarios')
       .then(r => r.ok ? r.json() : [])
@@ -143,14 +192,14 @@ export default function Bandeja({ user }: { user: UserSession }) {
       if (!res.ok) return
       const data: Conversation[] = await res.json()
 
-      // Detectar mensajes nuevos y notificar
+      // Browser notifications for new messages
       if (notifPerm.current === 'granted' && Object.keys(lastSeenAt.current).length > 0) {
         for (const conv of data) {
-          const prev = lastSeenAt.current[conv.id]
-          const isNew = !prev                                          // conversación nueva
-          const hasNewMsg = prev && conv.last_msg_at && conv.last_msg_at > prev  // mensaje nuevo
+          const prev      = lastSeenAt.current[conv.id]
+          const isNew     = !prev
+          const hasNewMsg = prev && conv.last_msg_at && conv.last_msg_at > prev
           if ((isNew || hasNewMsg) && conv.id !== activeId) {
-            const name = conv.contact_name || `+${conv.phone}`
+            const name  = conv.contact_name || `+${conv.phone}`
             const notif = new Notification(`💬 ${name}`, {
               body: conv.last_message || 'Nuevo mensaje',
               icon: '/favicon.ico',
@@ -160,7 +209,6 @@ export default function Bandeja({ user }: { user: UserSession }) {
           }
         }
       }
-      // Actualizar registro de timestamps
       for (const conv of data) {
         if (conv.last_msg_at) lastSeenAt.current[conv.id] = conv.last_msg_at
       }
@@ -170,7 +218,6 @@ export default function Bandeja({ user }: { user: UserSession }) {
         const updated = data.find(c => c.id === activeId)
         if (updated) setActiveConv(updated)
       }
-      // Extraer agentes únicos para el filtro
       const seen = new Set<string>()
       const list: { id: string; name: string }[] = []
       for (const c of data) {
@@ -196,26 +243,48 @@ export default function Bandeja({ user }: { user: UserSession }) {
       const res = await fetch(`/api/whatsapp/cloud/messages?conv_id=${convId}`)
       if (!res.ok) return
       const data = await res.json()
+      // Preserve scroll position: only jump to bottom on first load
+      const wasEmpty = messages.length === 0
       setMessages(data.messages ?? [])
       setActiveConv(data.conversation ?? null)
+      if (wasEmpty) isAtBottomRef.current = true
     } catch { /* ignore */ } finally {
       setLoadingMsgs(false)
     }
-  }, [])
+  }, [messages.length])
 
   useEffect(() => {
     if (!activeId) return
     loadMessages(activeId)
     const iv = setInterval(() => loadMessages(activeId), 5000)
     return () => clearInterval(iv)
-  }, [activeId, loadMessages])
-
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  }, [activeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function selectConv(conv: Conversation) {
     setActiveId(conv.id)
     setActiveConv(conv)
     setMessages([])
+    isAtBottomRef.current = true
+    // Populate right panel
+    setRightNotes(conv.notes ?? '')
+    setRightRut(conv.contact_rut ?? '')
+    setRightDate(conv.service_date ?? '')
+    // Mark as read
+    if (conv.unread_count > 0) {
+      fetch('/api/whatsapp/cloud/read', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conv_id: conv.id }),
+      }).catch(() => {})
+      setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c))
+    }
+  }
+
+  async function saveNote() {
+    if (!activeId) return
+    await fetch('/api/whatsapp/cloud/note', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conv_id: activeId, notes: rightNotes, contact_rut: rightRut, service_date: rightDate }),
+    }).catch(() => {})
   }
 
   async function toggleBot(botActive: boolean) {
@@ -256,9 +325,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
     })
     const agent = allAgents.find(a => a.id === assignedTo)
     setActiveConv(prev => prev ? {
-      ...prev,
-      assigned_to: assignedTo,
-      assigned_name: agent?.name ?? null,
+      ...prev, assigned_to: assignedTo, assigned_name: agent?.name ?? null,
     } : prev)
     await loadConversations()
   }
@@ -277,6 +344,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
       })
       if (res.ok) {
         setText('')
+        isAtBottomRef.current = true
         if (activeId) await loadMessages(activeId)
         await loadConversations()
       }
@@ -290,7 +358,11 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const mine       = conversations.filter(c => c.assigned_to === user.id)
   const others     = isAdmin ? conversations.filter(c => c.assigned_to && c.assigned_to !== user.id) : []
 
-  const sColor = activeConv ? semaphoreColor(activeConv.last_msg_at) : 'gray'
+  const sColor     = activeConv ? semaphoreColor(activeConv.last_msg_at) : 'gray'
+  const timer24h   = get24hRemaining(activeConv?.last_customer_msg_at ?? null)
+  const timerColor = timer24h === 'Ventana cerrada' ? '#ef4444' : timer24h ? (
+    parseInt(timer24h) < 1 ? '#f59e0b' : '#16a34a'
+  ) : '#9ca3af'
 
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: 'system-ui, sans-serif', fontSize: 14 }}>
@@ -309,23 +381,14 @@ export default function Bandeja({ user }: { user: UserSession }) {
           </div>
           <p style={{ margin: '0 0 8px', color: '#6b7280', fontSize: 12 }}>{conversations.length} conversaciones</p>
 
-          {/* Filtros */}
           {isAdmin && (
-            <select
-              value={filterAgent}
-              onChange={e => setFilterAgent(e.target.value)}
-              style={selectStyle}
-            >
+            <select value={filterAgent} onChange={e => setFilterAgent(e.target.value)} style={selectStyle}>
               <option value="">Todos los agentes</option>
               <option value="none">Sin asignar</option>
               {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           )}
-          <select
-            value={filterStage}
-            onChange={e => setFilterStage(e.target.value)}
-            style={{ ...selectStyle, marginTop: 4 }}
-          >
+          <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={{ ...selectStyle, marginTop: 4 }}>
             <option value="">Todas las etapas</option>
             {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
@@ -346,7 +409,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
       </div>
 
       {/* ── Chat panel ─────────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#f9fafb' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#f9fafb', minWidth: 0 }}>
         {!activeConv ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>
             Selecciona una conversación
@@ -362,7 +425,6 @@ export default function Bandeja({ user }: { user: UserSession }) {
                     <span style={{ fontWeight: 700, color: '#111' }}>{activeConv.contact_name || activeConv.phone}</span>
                     <span style={{ color: '#6b7280', fontSize: 12 }}>+{activeConv.phone}</span>
                     <StagePill stage={activeConv.stage} />
-                    {/* Canal de origen */}
                     {(() => {
                       const src = sourceMap[activeConv.source ?? 'whatsapp'] ?? sourceMap['whatsapp']
                       return (
@@ -388,7 +450,6 @@ export default function Bandeja({ user }: { user: UserSession }) {
                 </div>
 
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  {/* Selector de canal */}
                   <select
                     value={activeConv.source ?? 'whatsapp'}
                     onChange={e => changeSource(e.target.value as Source)}
@@ -396,8 +457,6 @@ export default function Bandeja({ user }: { user: UserSession }) {
                   >
                     {SOURCES.map(s => <option key={s.id} value={s.id}>{s.icon} {s.label}</option>)}
                   </select>
-
-                  {/* Selector de etapa */}
                   <select
                     value={activeConv.stage ?? 'nuevo'}
                     onChange={e => changeStage(e.target.value as Stage)}
@@ -405,13 +464,10 @@ export default function Bandeja({ user }: { user: UserSession }) {
                   >
                     {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                   </select>
-
-                  {activeConv.bot_active && (
-                    <button onClick={() => toggleBot(false)} style={btnStyle('#2563eb')}>Tomar chat</button>
-                  )}
-                  {!activeConv.bot_active && (
-                    <button onClick={() => toggleBot(true)} style={btnStyle('#6b7280')}>Devolver al bot</button>
-                  )}
+                  {activeConv.bot_active
+                    ? <button onClick={() => toggleBot(false)} style={btnStyle('#2563eb')}>Tomar chat</button>
+                    : <button onClick={() => toggleBot(true)}  style={btnStyle('#6b7280')}>Devolver al bot</button>
+                  }
                   <button
                     onClick={() => {
                       const p = new URLSearchParams({ phone: activeConv.phone })
@@ -428,28 +484,42 @@ export default function Bandeja({ user }: { user: UserSession }) {
             </div>
 
             {/* Messages */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div
+              ref={messagesContainerRef}
+              onScroll={handleScroll}
+              style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}
+            >
               {loadingMsgs && messages.length === 0 && (
                 <div style={{ textAlign: 'center', color: '#9ca3af', marginTop: 40 }}>Cargando...</div>
               )}
-              {messages.map(msg => (
-                <div key={msg.id} style={{ display: 'flex', justifyContent: msg.direction === 'out' ? 'flex-end' : 'flex-start' }}>
-                  <div style={{
-                    maxWidth: '70%', padding: '8px 12px', borderRadius: 12,
-                    background: msg.direction === 'out' ? '#2563eb' : '#fff',
-                    color: msg.direction === 'out' ? '#fff' : '#111',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
-                    borderBottomRightRadius: msg.direction === 'out' ? 2 : 12,
-                    borderBottomLeftRadius:  msg.direction === 'in'  ? 2 : 12,
-                  }}>
-                    <div style={{ wordBreak: 'break-word' }}>{msg.content}</div>
-                    <div style={{ fontSize: 10, marginTop: 4, opacity: 0.7, textAlign: msg.direction === 'out' ? 'right' : 'left' }}>
-                      {fmtFull(msg.created_at)}
+              {messages.map(msg => {
+                const isBot = msg.direction === 'out' && msg.sender_type === 'bot'
+                const isHuman = msg.direction === 'out' && msg.sender_type === 'human'
+                return (
+                  <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.direction === 'out' ? 'flex-end' : 'flex-start' }}>
+                    {msg.direction === 'out' && (
+                      <span style={{ fontSize: 10, color: '#9ca3af', marginBottom: 2, marginRight: 4 }}>
+                        {isBot ? '🤖 Bot' : isHuman ? '👤 Ejecutivo' : ''}
+                      </span>
+                    )}
+                    <div style={{
+                      maxWidth: '70%', padding: '8px 12px', borderRadius: 12,
+                      background: msg.direction === 'out' ? (isBot ? '#7c3aed' : '#2563eb') : '#fff',
+                      color: msg.direction === 'out' ? '#fff' : '#111',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                      borderBottomRightRadius: msg.direction === 'out' ? 2 : 12,
+                      borderBottomLeftRadius:  msg.direction === 'in'  ? 2 : 12,
+                    }}>
+                      <div style={{ wordBreak: 'break-word' }}>{msg.content}</div>
+                      <div style={{ fontSize: 10, marginTop: 4, opacity: 0.7, textAlign: msg.direction === 'out' ? 'right' : 'left', display: 'flex', justifyContent: msg.direction === 'out' ? 'flex-end' : 'flex-start', alignItems: 'center', gap: 2 }}>
+                        {fmtFull(msg.created_at)}
+                        <StatusIcon status={msg.status} direction={msg.direction} />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-              <div ref={bottomRef} />
+                )
+              })}
+              <div ref={messagesEndRef} />
             </div>
 
             {/* Input */}
@@ -477,6 +547,84 @@ export default function Bandeja({ user }: { user: UserSession }) {
           </>
         )}
       </div>
+
+      {/* ── Right panel ────────────────────────────────────────────────────── */}
+      {activeConv && (
+        <div style={{ width: 260, borderLeft: '1px solid #e5e7eb', background: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto' }}>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid #e5e7eb' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: '#111', marginBottom: 12 }}>Ficha del cliente</div>
+
+            {/* Nombre */}
+            <RightField label="Nombre" value={activeConv.contact_name || '—'} />
+
+            {/* Teléfono con click-to-call */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 2 }}>Teléfono</div>
+              <a href={`tel:+${activeConv.phone}`} style={{ fontSize: 13, color: '#2563eb', textDecoration: 'none', fontWeight: 500 }}>
+                📞 +{activeConv.phone}
+              </a>
+            </div>
+
+            {/* RUT */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 2 }}>RUT</div>
+              <input
+                value={rightRut}
+                onChange={e => setRightRut(e.target.value)}
+                onBlur={saveNote}
+                placeholder="12.345.678-9"
+                style={rightInputStyle}
+              />
+            </div>
+
+            {/* Fecha servicio */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 2 }}>Fecha de servicio</div>
+              <input
+                type="date"
+                value={rightDate}
+                onChange={e => setRightDate(e.target.value)}
+                onBlur={saveNote}
+                style={rightInputStyle}
+              />
+            </div>
+
+            {/* Ventana 24h */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 2 }}>Ventana WA (24h)</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: timerColor }}>
+                {timer24h ?? 'Sin mensajes del cliente'}
+              </div>
+            </div>
+          </div>
+
+          {/* Notas */}
+          <div style={{ padding: '12px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>Notas internas</div>
+            <textarea
+              value={rightNotes}
+              onChange={e => setRightNotes(e.target.value)}
+              onBlur={saveNote}
+              placeholder="Escribe notas sobre este cliente…"
+              style={{
+                flex: 1, minHeight: 120, padding: '8px 10px', border: '1px solid #e5e7eb',
+                borderRadius: 6, fontSize: 13, fontFamily: 'inherit', resize: 'vertical',
+                outline: 'none', color: '#374151', lineHeight: 1.5,
+              }}
+            />
+            <div style={{ fontSize: 11, color: '#d1d5db', marginTop: 4 }}>Se guarda al perder foco</div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RightField({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 13, color: '#111' }}>{value}</div>
     </div>
   )
 }
@@ -494,10 +642,8 @@ function KanbanPanel({ conversations, activeId, onSelect }: {
         return (
           <div key={stage.id}>
             <div style={{
-              padding: '8px 16px 4px',
-              display: 'flex', alignItems: 'center', gap: 6,
-              borderBottom: `2px solid ${stage.dot}`,
-              background: stage.bg,
+              padding: '8px 16px 4px', display: 'flex', alignItems: 'center', gap: 6,
+              borderBottom: `2px solid ${stage.dot}`, background: stage.bg,
             }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.dot, display: 'inline-block' }} />
               <span style={{ fontSize: 11, fontWeight: 700, color: stage.color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -509,7 +655,7 @@ function KanbanPanel({ conversations, activeId, onSelect }: {
               <div style={{ padding: '8px 16px', fontSize: 12, color: '#d1d5db', fontStyle: 'italic' }}>—</div>
             )}
             {items.map(c => {
-              const color = semaphoreColor(c.last_msg_at)
+              const color  = semaphoreColor(c.last_msg_at)
               const active = c.id === activeId
               return (
                 <div
@@ -517,20 +663,25 @@ function KanbanPanel({ conversations, activeId, onSelect }: {
                   onClick={() => onSelect(c)}
                   style={{
                     padding: '9px 16px', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'flex-start',
-                    background: active ? '#eff6ff' : 'transparent',
+                    background: active ? '#eff6ff' : c.unread_count > 0 ? '#fefce8' : 'transparent',
                     borderLeft: active ? '3px solid #2563eb' : '3px solid transparent',
                   }}
                 >
                   <div style={{ marginTop: 5 }}><SemDot color={color} /></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontWeight: c.unread_count > 0 ? 700 : 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {c.contact_name || `+${c.phone}`}
                       </span>
                       <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0, marginLeft: 8 }}>{fmtTime(c.last_msg_at)}</span>
                     </div>
                     {c.assigned_name && (
                       <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>→ {c.assigned_name}</div>
+                    )}
+                    {c.unread_count > 0 && (
+                      <span style={{ display: 'inline-block', marginTop: 2, fontSize: 10, fontWeight: 700, background: '#eab308', color: '#fff', borderRadius: 10, padding: '1px 6px' }}>
+                        {c.unread_count}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -555,25 +706,33 @@ function ConvSection({ title, items, activeId, onSelect, userId }: {
         {title} ({items.length})
       </div>
       {items.map(c => {
-        const color  = semaphoreColor(c.last_msg_at)
-        const active = c.id === activeId
+        const color   = semaphoreColor(c.last_msg_at)
+        const active  = c.id === activeId
+        const unread  = c.unread_count > 0
         return (
           <div
             key={c.id}
             onClick={() => onSelect(c)}
             style={{
               padding: '9px 16px', cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'flex-start',
-              background: active ? '#eff6ff' : 'transparent',
-              borderLeft: active ? '3px solid #2563eb' : '3px solid transparent',
+              background: active ? '#eff6ff' : unread ? '#fefce8' : 'transparent',
+              borderLeft: active ? '3px solid #2563eb' : unread ? '3px solid #eab308' : '3px solid transparent',
             }}
           >
             <div style={{ marginTop: 5 }}><SemDot color={color} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 500, color: '#111', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontWeight: unread ? 700 : 500, color: '#111', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {c.contact_name || `+${c.phone}`}
                 </span>
-                <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0, marginLeft: 8 }}>{fmtTime(c.last_msg_at)}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, marginLeft: 8 }}>
+                  {unread && (
+                    <span style={{ fontSize: 10, fontWeight: 700, background: '#eab308', color: '#fff', borderRadius: 10, padding: '1px 5px' }}>
+                      {c.unread_count}
+                    </span>
+                  )}
+                  <span style={{ fontSize: 11, color: '#9ca3af' }}>{fmtTime(c.last_msg_at)}</span>
+                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
                 <div style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
@@ -612,4 +771,10 @@ function viewBtn(active: boolean): React.CSSProperties {
 const selectStyle: React.CSSProperties = {
   width: '100%', padding: '6px 10px', border: '1px solid #e5e7eb', borderRadius: 6,
   fontSize: 12, color: '#374151', background: '#fff', outline: 'none', cursor: 'pointer',
+}
+
+const rightInputStyle: React.CSSProperties = {
+  width: '100%', padding: '5px 8px', border: '1px solid #e5e7eb', borderRadius: 6,
+  fontSize: 13, color: '#374151', background: '#fff', outline: 'none', fontFamily: 'inherit',
+  boxSizing: 'border-box',
 }

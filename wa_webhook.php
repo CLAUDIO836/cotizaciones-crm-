@@ -58,8 +58,20 @@ set_time_limit(120);
 // ── Parsear y procesar mensajes ───────────────────────────────────────────────
 foreach ($body['entry'] ?? [] as $entry) {
     foreach ($entry['changes'] ?? [] as $change) {
-        if (($change['field'] ?? '') !== 'messages') continue;
         $val = $change['value'] ?? [];
+
+        // Procesar actualizaciones de estado (sent/delivered/read)
+        foreach ($val['statuses'] ?? [] as $st) {
+            $stWamid  = $st['id']     ?? '';
+            $stStatus = $st['status'] ?? '';
+            if (!$stWamid || !in_array($stStatus, ['sent', 'delivered', 'read'])) continue;
+            try {
+                db()->prepare("UPDATE wa_cloud_messages SET status = ? WHERE wamid = ?")
+                    ->execute([$stStatus, $stWamid]);
+            } catch (Throwable $e) {}
+        }
+
+        if (($change['field'] ?? '') !== 'messages') continue;
 
         foreach ($val['messages'] ?? [] as $msg) {
             $wamid = $msg['id']        ?? '';
@@ -138,6 +150,13 @@ function ensureTables(): void {
         "ALTER TABLE wa_cloud_conversations ADD COLUMN last_message TEXT AFTER last_msg_at",
         "ALTER TABLE profiles ADD COLUMN wa_last_assigned_at DATETIME NULL",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN stage VARCHAR(20) NOT NULL DEFAULT 'nuevo' AFTER bot_active",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN source VARCHAR(30) NOT NULL DEFAULT 'whatsapp' AFTER stage",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN last_customer_msg_at DATETIME NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN unread_count INT NOT NULL DEFAULT 0",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN notes TEXT NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN contact_rut VARCHAR(20) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_date DATE NULL",
+        "ALTER TABLE wa_cloud_messages ADD COLUMN sender_type VARCHAR(20) NULL",
     ] as $sql) {
         try { $pdo->exec($sql); } catch (PDOException $e) {
             if ($e->getCode() !== '42S21') throw $e;
@@ -180,6 +199,31 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             $botActive = true;
             $pdo->prepare("INSERT INTO wa_cloud_conversations (id, phone, contact_name, bot_active, last_msg_at, last_message) VALUES (?,?,?,1,NOW(),?)")
                 ->execute([$convId, $phone, $name ?: null, mb_substr($text, 0, 500)]);
+
+            // Auto-assign: ejecutiva con menos conversaciones activas entre las tres comerciales
+            $pool = [
+                'fe6e5e4b-854a-11f1-adc3-56000529c2a9', // Danae Moscoso
+                'beb2594e-be75-11f1-adc3-56000529c2a9', // Javiera Aguilera
+                '9263684f-854a-11f1-adc3-56000529c2a9', // Jhocisbell Santana
+            ];
+            $placeholders = implode(',', array_fill(0, count($pool), '?'));
+            $counts = $pdo->prepare(
+                "SELECT assigned_to, COUNT(*) AS n FROM wa_cloud_conversations
+                 WHERE assigned_to IN ($placeholders) GROUP BY assigned_to"
+            );
+            $counts->execute($pool);
+            $countMap = array_column($counts->fetchAll(PDO::FETCH_ASSOC), 'n', 'assigned_to');
+            $minExec  = null;
+            $minN     = PHP_INT_MAX;
+            foreach ($pool as $execId) {
+                $n = (int)($countMap[$execId] ?? 0);
+                if ($n < $minN) { $minN = $n; $minExec = $execId; }
+            }
+            if ($minExec) {
+                $pdo->prepare("UPDATE wa_cloud_conversations SET assigned_to = ? WHERE id = ?")
+                    ->execute([$minExec, $convId]);
+                error_log("[wa_webhook] AUTO-ASSIGN conv={$convId} exec={$minExec}");
+            }
         }
 
         // Guardar mensaje entrante (INSERT IGNORE deduplica)
@@ -190,6 +234,11 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             VALUES (?,?,?,'in',?,?)");
         $stmt->execute([$msgId, $convId, $wamid, $text, $created_at]);
         $isNew = $stmt->rowCount() > 0;
+
+        if ($isNew) {
+            $pdo->prepare("UPDATE wa_cloud_conversations SET last_customer_msg_at = NOW(), unread_count = unread_count + 1 WHERE id = ?")
+                ->execute([$convId]);
+        }
 
         if (!$isNew) { error_log("[wa_webhook] SKIP dup wamid={$wamid} phone={$phone}"); return; }
         if (!$botActive) { error_log("[wa_webhook] SKIP bot_inactive phone={$phone}"); return; }
@@ -220,8 +269,8 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             if ($wamidOut) {
                 $outId = dbUuid();
                 $pdo->prepare("INSERT IGNORE INTO wa_cloud_messages
-                    (id, conversation_id, wamid, direction, content, created_at)
-                    VALUES (?,?,?,'out',?,NOW())")
+                    (id, conversation_id, wamid, direction, content, sender_type, created_at)
+                    VALUES (?,?,?,'out',?,'bot',NOW())")
                     ->execute([$outId, $convId, $wamidOut, $botReply]);
             }
         }
@@ -546,6 +595,13 @@ function buildSystemPrompt(string $phone, ?string $name): string {
            "- ventas@transccl.cl — para documentos o detalles extensos por correo.\n" .
            "- +56 2 2945 5713 — operaciones 24/7 (servicios en curso, reclamos, objetos perdidos, atrasos). No es ventas.\n" .
            "- NUNCA nombrar clientes de TransCCL (confidencialidad). NUNCA inventar información.\n\n" .
+           "## SERVICIOS FUERA DE SANTIAGO / REGIÓN METROPOLITANA\n" .
+           "TransCCL opera DESDE la Región Metropolitana (Santiago). Si el cliente indica que necesita transporte " .
+           "con origen Y destino ambos en otra región (Valparaíso, Bío-Bío, etc.), infórmale con amabilidad:\n" .
+           "'¡Buenas noticias! Cubrimos todo Chile, pero nuestros servicios parten desde Santiago. " .
+           "Si el recorrido incluye Santiago como origen o destino, con gusto te cotizamos 😊 " .
+           "Si es un trayecto dentro de otra región solamente, eso escapa a nuestra operación por ahora.'\n" .
+           "NUNCA rechazar de plano — siempre verificar si el trayecto tiene relación con la RM.\n\n" .
            "## URGENCIA (SOLO LO VERDADERO)\n" .
            "Para la oferta educativa (<15-nov): 'Solo tenemos 8 buses diarios para esta oferta, conviene reservar pronto.' " .
            "NUNCA inventar cupos específicos restantes. Para otros servicios, NO mencionar urgencia artificial.\n\n" .
