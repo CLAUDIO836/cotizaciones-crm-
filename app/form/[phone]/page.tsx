@@ -2,8 +2,6 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 
-const API = process.env.NEXT_PUBLIC_CRM_API_URL ?? 'https://elon.getitsolutions.cl/crm-api.php'
-
 const TIPOS = [
   'Traslado escolar / educacional',
   'Traslado empresarial',
@@ -31,7 +29,7 @@ export default function FormPage() {
 
   useEffect(() => {
     if (!phone) { setStep('error'); return }
-    fetch(`${API}?action=wa_form_get&phone=${phone}`)
+    fetch(`/api/form/${phone}`)
       .then(r => r.json())
       .then(d => {
         if (d.ok && d.data) {
@@ -54,11 +52,10 @@ export default function FormPage() {
     if (!name.trim() || !origin.trim() || !dest.trim() || !date || !pax || !tipo) return
     setSaving(true)
     try {
-      const r = await fetch(`${API}?action=wa_form_save`, {
+      const r = await fetch(`/api/form/${phone}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone,
           contact_name: name.trim(),
           contact_email: email.trim() || null,
           service_origin: origin.trim(),
