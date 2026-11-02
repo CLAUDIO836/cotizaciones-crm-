@@ -153,6 +153,7 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
   const [rightPax, setRightPax]             = useState('')
   const [rightTipo, setRightTipo]           = useState('')
   const [now, setNow] = useState(Date.now())
+  const [backfilling, setBackfilling] = useState(false)
 
   // Sync tab when navigating from sidebar
   useEffect(() => { setTabExec(initialExec) }, [initialExec])
@@ -404,6 +405,18 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
     }
   }
 
+  async function runBackfill() {
+    if (backfilling) return
+    setBackfilling(true)
+    try {
+      const r = await fetch('/api/whatsapp/cloud/backfill', { method: 'POST' })
+      const d = await r.json()
+      alert(`Backfill completado: ${d.updated ?? 0} fichas actualizadas de ${d.checked ?? 0} conversaciones revisadas.`)
+      await loadConversations()
+    } catch { alert('Error en backfill') }
+    finally { setBackfilling(false) }
+  }
+
   function selectTab(id: string) {
     setTabExec(id)
     router.replace(`/bandeja?exec=${id}`, { scroll: false })
@@ -451,7 +464,17 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
               </h2>
               <p style={{ margin: 0, color: '#6b7280', fontSize: 12 }}>{tabFiltered.length} conversaciones</p>
             </div>
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              {isAdmin && (
+                <button
+                  onClick={runBackfill}
+                  disabled={backfilling}
+                  title="Rellenar fichas desde historial de chats"
+                  style={{ fontSize: 11, padding: '3px 7px', borderRadius: 4, border: '1px solid #d1d5db', background: backfilling ? '#f3f4f6' : '#fff', color: '#6b7280', cursor: backfilling ? 'default' : 'pointer' }}
+                >
+                  {backfilling ? '⏳' : '🔄'}
+                </button>
+              )}
               <button onClick={() => setView('list')}   style={viewBtn(view === 'list')}>☰</button>
               <button onClick={() => setView('kanban')} style={viewBtn(view === 'kanban')}>⊞</button>
             </div>

@@ -1,0 +1,13 @@
+import { NextResponse } from 'next/server'
+import { crmPost, getToken } from '@/lib/api'
+
+export async function POST() {
+  const token = await getToken()
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  try {
+    const r = await crmPost('wa_cloud_backfill', {}, {}, token)
+    return NextResponse.json(r.data)
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
+}
