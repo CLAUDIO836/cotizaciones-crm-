@@ -3627,6 +3627,11 @@ if ($action === 'wa_cloud_list') {
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN contact_rut VARCHAR(20) NULL");                                     } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_date DATE NULL");                                           } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_messages ADD COLUMN sender_type VARCHAR(20) NULL");                                          } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN contact_email VARCHAR(100) NULL");                                    } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin VARCHAR(300) NULL");                                   } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination VARCHAR(300) NULL");                              } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_passengers INT NULL");                                        } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_type VARCHAR(100) NULL");                                     } catch (PDOException $e) {}
 
     // Backfill last_customer_msg_at para conversaciones que aún no lo tienen
     try {
@@ -3663,6 +3668,7 @@ if ($action === 'wa_cloud_list') {
         SELECT c.id, c.phone, c.contact_name, c.assigned_to, c.bot_active,
                c.stage, c.source, c.last_msg_at, c.last_customer_msg_at,
                c.unread_count, c.notes, c.contact_rut, c.service_date, c.created_at,
+               c.contact_email, c.service_origin, c.service_destination, c.service_passengers, c.service_type,
                p.name AS assigned_name,
                m.content AS last_message
         FROM wa_cloud_conversations c
@@ -3733,21 +3739,17 @@ if ($action === 'wa_cloud_read') {
 // ── Bandeja WhatsApp: guardar notas y datos de contacto ─────────────────────
 if ($action === 'wa_cloud_note') {
     requireAuth();
-    $b = body();
-    $convId      = $b['conv_id']      ?? null;
-    $notes       = $b['notes']        ?? null;
-    $contactRut  = $b['contact_rut']  ?? null;
-    $serviceDate = $b['service_date'] ?? null;
-    if (!$convId) err('conv_id requerido');
+    $b  = body();
+    $id = $b['conv_id'] ?? '';
+    if (!$id) err('conv_id requerido');
     $fields = [];
     $vals   = [];
-    if ($notes       !== null) { $fields[] = 'notes = ?';        $vals[] = $notes ?: null; }
-    if ($contactRut  !== null) { $fields[] = 'contact_rut = ?';  $vals[] = $contactRut ?: null; }
-    if ($serviceDate !== null) { $fields[] = 'service_date = ?'; $vals[] = $serviceDate ?: null; }
-    if (!$fields) err('Nada que actualizar');
-    $vals[] = $convId;
-    db()->prepare("UPDATE wa_cloud_conversations SET " . implode(', ', $fields) . " WHERE id = ?")
-        ->execute($vals);
+    foreach (['notes','contact_rut','service_date','contact_email','service_origin','service_destination','service_passengers','service_type'] as $f) {
+        if (array_key_exists($f, $b)) { $fields[] = "$f = ?"; $vals[] = ($b[$f] !== '' ? $b[$f] : null); }
+    }
+    if (empty($fields)) err('Sin campos');
+    $vals[] = $id;
+    db()->prepare("UPDATE wa_cloud_conversations SET " . implode(', ', $fields) . " WHERE id = ?")->execute($vals);
     ok(['saved' => true]);
 }
 

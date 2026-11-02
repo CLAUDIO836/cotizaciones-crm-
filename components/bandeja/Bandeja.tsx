@@ -23,6 +23,11 @@ interface Conversation {
   notes: string | null
   contact_rut: string | null
   service_date: string | null
+  contact_email: string | null
+  service_origin: string | null
+  service_destination: string | null
+  service_passengers: number | null
+  service_type: string | null
   created_at: string | null
 }
 
@@ -139,13 +144,31 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
   const [loadingMsgs, setLoadingMsgs]     = useState(false)
 
   // Right panel state (saved on blur)
-  const [rightNotes, setRightNotes]       = useState('')
-  const [rightRut, setRightRut]           = useState('')
-  const [rightDate, setRightDate]         = useState('')
+  const [rightNotes, setRightNotes]         = useState('')
+  const [rightRut, setRightRut]             = useState('')
+  const [rightDate, setRightDate]           = useState('')
+  const [rightEmail, setRightEmail]         = useState('')
+  const [rightOrigin, setRightOrigin]       = useState('')
+  const [rightDestino, setRightDestino]     = useState('')
+  const [rightPax, setRightPax]             = useState('')
+  const [rightTipo, setRightTipo]           = useState('')
   const [now, setNow] = useState(Date.now())
 
   // Sync tab when navigating from sidebar
   useEffect(() => { setTabExec(initialExec) }, [initialExec])
+
+  // Sync right panel when activeConv updated by polling (bot fills fields)
+  useEffect(() => {
+    if (!activeConv) return
+    setRightNotes(activeConv.notes ?? '')
+    setRightRut(activeConv.contact_rut ?? '')
+    setRightDate(activeConv.service_date ?? '')
+    setRightEmail(activeConv.contact_email ?? '')
+    setRightOrigin(activeConv.service_origin ?? '')
+    setRightDestino(activeConv.service_destination ?? '')
+    setRightPax(activeConv.service_passengers?.toString() ?? '')
+    setRightTipo(activeConv.service_type ?? '')
+  }, [activeConv?.id]) // only when conversation changes, not on every update
 
   // Tick cada 30s para actualizar el cronómetro 24h en vivo
   useEffect(() => {
@@ -157,6 +180,7 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
   const messagesEndRef       = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef        = useRef(true)
+  const hasLoadedRef         = useRef(false)
 
   const lastSeenAt = useRef<Record<string, string>>({})
   const notifPerm  = useRef<NotificationPermission>('default')
@@ -254,15 +278,16 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
       const res = await fetch(`/api/whatsapp/cloud/messages?conv_id=${convId}`)
       if (!res.ok) return
       const data = await res.json()
-      // Preserve scroll position: only jump to bottom on first load
-      const wasEmpty = messages.length === 0
+      // Only jump to bottom on first load — subsequent polls preserve scroll position
+      const firstLoad = !hasLoadedRef.current
       setMessages(data.messages ?? [])
       setActiveConv(data.conversation ?? null)
-      if (wasEmpty) isAtBottomRef.current = true
+      hasLoadedRef.current = true
+      if (firstLoad) isAtBottomRef.current = true
     } catch { /* ignore */ } finally {
       setLoadingMsgs(false)
     }
-  }, [messages.length])
+  }, [])
 
   useEffect(() => {
     if (!activeId) return
@@ -275,11 +300,17 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
     setActiveId(conv.id)
     setActiveConv(conv)
     setMessages([])
+    hasLoadedRef.current = false
     isAtBottomRef.current = true
     // Populate right panel
     setRightNotes(conv.notes ?? '')
     setRightRut(conv.contact_rut ?? '')
     setRightDate(conv.service_date ?? '')
+    setRightEmail(conv.contact_email ?? '')
+    setRightOrigin(conv.service_origin ?? '')
+    setRightDestino(conv.service_destination ?? '')
+    setRightPax(conv.service_passengers?.toString() ?? '')
+    setRightTipo(conv.service_type ?? '')
     // Mark as read
     if (conv.unread_count > 0) {
       fetch('/api/whatsapp/cloud/read', {
@@ -294,7 +325,17 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
     if (!activeId) return
     await fetch('/api/whatsapp/cloud/note', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conv_id: activeId, notes: rightNotes, contact_rut: rightRut, service_date: rightDate }),
+      body: JSON.stringify({
+        conv_id: activeId,
+        notes: rightNotes,
+        contact_rut: rightRut,
+        service_date: rightDate,
+        contact_email: rightEmail || null,
+        service_origin: rightOrigin || null,
+        service_destination: rightDestino || null,
+        service_passengers: rightPax ? parseInt(rightPax) : null,
+        service_type: rightTipo || null,
+      }),
     }).catch(() => {})
   }
 
@@ -627,6 +668,67 @@ export default function Bandeja({ user, initialExec = 'todos' }: { user: UserSes
                 value={rightDate}
                 onChange={e => setRightDate(e.target.value)}
                 onBlur={saveNote}
+                style={rightInputStyle}
+              />
+            </div>
+
+            {/* Email */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 2 }}>Email</div>
+              <input
+                value={rightEmail}
+                onChange={e => setRightEmail(e.target.value)}
+                onBlur={saveNote}
+                placeholder="correo@ejemplo.com"
+                style={rightInputStyle}
+              />
+            </div>
+
+            {/* Origen */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 2 }}>Origen</div>
+              <input
+                value={rightOrigin}
+                onChange={e => setRightOrigin(e.target.value)}
+                onBlur={saveNote}
+                placeholder="Dirección de salida"
+                style={rightInputStyle}
+              />
+            </div>
+
+            {/* Destino */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 2 }}>Destino</div>
+              <input
+                value={rightDestino}
+                onChange={e => setRightDestino(e.target.value)}
+                onBlur={saveNote}
+                placeholder="Destino del servicio"
+                style={rightInputStyle}
+              />
+            </div>
+
+            {/* N° pasajeros */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 2 }}>N° pasajeros</div>
+              <input
+                type="number"
+                value={rightPax}
+                onChange={e => setRightPax(e.target.value)}
+                onBlur={saveNote}
+                placeholder="45"
+                style={rightInputStyle}
+              />
+            </div>
+
+            {/* Tipo servicio */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 2 }}>Tipo servicio</div>
+              <input
+                value={rightTipo}
+                onChange={e => setRightTipo(e.target.value)}
+                onBlur={saveNote}
+                placeholder="Ej: salida educativa"
                 style={rightInputStyle}
               />
             </div>

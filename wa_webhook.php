@@ -259,6 +259,38 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         $shouldEscalate = str_contains($botReply, '[ESCALAR_A_HUMANO]');
         $botReply       = trim(str_replace('[ESCALAR_A_HUMANO]', '', $botReply));
 
+        // Parsear FICHA_JSON y guardar campos de cotización en la conversación
+        if (preg_match('/\[FICHA_JSON:(\{[^\]]+\})\]/', $botReply, $fichaMatch)) {
+            $ficha = json_decode($fichaMatch[1], true) ?? [];
+            $fichaFields = []; $fichaVals = [];
+            $fichaMap = [
+                'nombre'    => 'contact_name',
+                'email'     => 'contact_email',
+                'rut'       => 'contact_rut',
+                'origen'    => 'service_origin',
+                'destino'   => 'service_destination',
+                'fecha'     => 'service_date',
+                'pasajeros' => 'service_passengers',
+                'tipo'      => 'service_type',
+            ];
+            foreach ($fichaMap as $key => $col) {
+                if (!empty($ficha[$key])) {
+                    $v = $ficha[$key];
+                    if ($col === 'service_date' && preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $v, $pd)) {
+                        $v = "{$pd[3]}-{$pd[2]}-{$pd[1]}";
+                    }
+                    $fichaFields[] = "$col = ?";
+                    $fichaVals[]   = $v;
+                }
+            }
+            if ($fichaFields) {
+                $fichaVals[] = $convId;
+                $pdo->prepare("UPDATE wa_cloud_conversations SET " . implode(', ', $fichaFields) . " WHERE id = ?")->execute($fichaVals);
+            }
+            // Limpiar bloque del mensaje visible
+            $botReply = trim(preg_replace('/\[FICHA_JSON:[^\]]+\]/', '', $botReply));
+        }
+
         // Enviar respuesta por WhatsApp
         if ($botReply) {
             error_log("[wa_webhook] SEND phone={$phone} len=" . strlen($botReply));
@@ -499,9 +531,23 @@ function buildSystemPrompt(string $phone, ?string $name): string {
            "4. Dirección exacta destino.\n" .
            "5. Fecha y hora de salida; hora de retorno.\n" .
            "6. ¿Espera o deja y retira? ¿Paradas?\n" .
-           "7. Nombre, correo, razón social.\n" .
+           "7. Nombre completo del contacto, correo, razón social.\n" .
            "8. RUT (AL FINAL: 'para emitir la cotización formal').\n\n" .
            "Antes de preguntar, revisar TODO lo que el cliente ya escribió.\n\n" .
+           "## FICHA_JSON (MUY IMPORTANTE)\n" .
+           "Al final de CADA respuesta tuya, si en la conversación ya conoces alguno de estos datos, incluye obligatoriamente este bloque exacto (sin espacios extra, al final del texto, en una nueva línea):\n" .
+           "[FICHA_JSON:{\"nombre\":\"...\",\"email\":\"...\",\"rut\":\"...\",\"origen\":\"...\",\"destino\":\"...\",\"fecha\":\"...\",\"pasajeros\":\"...\",\"tipo\":\"...\"}]\n\n" .
+           "Reglas del FICHA_JSON:\n" .
+           "- Incluye SOLO los campos que YA conoces; omite los desconocidos (no pongas \"\" ni null).\n" .
+           "- \"nombre\": nombre completo del contacto o razón social.\n" .
+           "- \"email\": correo del contacto.\n" .
+           "- \"rut\": RUT de la empresa/institución.\n" .
+           "- \"origen\": dirección exacta de salida.\n" .
+           "- \"destino\": nombre/dirección del destino.\n" .
+           "- \"fecha\": fecha del servicio (dd/mm/yyyy).\n" .
+           "- \"pasajeros\": número de pasajeros (solo el número).\n" .
+           "- \"tipo\": tipo de servicio (ej. \"salida educativa\", \"arriendo\", \"traslado personal\").\n" .
+           "- Si no hay NINGÚN dato aún, no incluyas el bloque.\n\n" .
            "## BASE DE CONOCIMIENTO TRANSCCL\n" .
            "TransCCL (Transportes Transccl SpA): empresa chilena de transporte de pasajeros con 15 años de experiencia (desde 2010).\n" .
            "Logros: +16.500 personas viajan con nosotros, +33.355 servicios realizados, 1,5 millones de personas transportadas, +50 empresas y colegios clientes.\n" .
