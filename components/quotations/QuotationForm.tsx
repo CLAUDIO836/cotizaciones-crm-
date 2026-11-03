@@ -280,7 +280,17 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     if (prefilledOrigin) setDesde(prefilledOrigin)
     if (prefilledDestination) setHasta(prefilledDestination)
     if (prefilledDate) setFechaSalida(prefilledDate + 'T08:00')
-    if (prefilledVehicle) setVehicleType(prefilledVehicle)
+    if (prefilledVehicle) {
+      // Normalizar: "Bus 45", "minibus", "taxibus", etc. → clave del selector
+      const v = prefilledVehicle.toLowerCase().replace(/[^a-z]/g, '')
+      if (v.startsWith('taxibus') || v.startsWith('taxib')) setVehicleType('taxibus')
+      else if (v.startsWith('minibus') || v.startsWith('minib')) setVehicleType('minibus')
+      else if (v.startsWith('minivan') || v.startsWith('van')) setVehicleType('minivan')
+      else if (v.startsWith('bus') || v.startsWith('b4') || v.startsWith('b3')) setVehicleType('bus')
+    }
+    if (prefilledPassengers && prefilledPassengers > 0) {
+      setItems(prev => prev.map((item, i) => i === 0 ? { ...item, pasajeros: prefilledPassengers! } : item))
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check Vespucio cuando pipeline = SER_EDUCACIONALES y hay coordenadas de destino

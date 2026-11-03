@@ -149,6 +149,9 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [sending, setSending]             = useState(false)
   const [loadingMsgs, setLoadingMsgs]     = useState(false)
 
+  // Modal completitud antes de cotizar
+  const [showCotizarModal, setShowCotizarModal] = useState(false)
+
   // Right panel state (saved on blur)
   const [rightNotes, setRightNotes]         = useState('')
   const [rightRut, setRightRut]             = useState('')
@@ -326,6 +329,64 @@ export default function Bandeja({ user }: { user: UserSession }) {
       }).catch(() => {})
       setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c))
     }
+  }
+
+  // ── Completitud antes de cotizar ─────────────────────────────────────────────
+  const CAMPOS_REQUERIDOS = [
+    { key: 'contact_name',        label: 'Nombre y apellido',   get: () => activeConv?.contact_name },
+    { key: 'contact_email',       label: 'Email',               get: () => rightEmail },
+    { key: 'contact_rut',         label: 'RUT',                 get: () => rightRut },
+    { key: 'service_origin',      label: 'Origen',              get: () => rightOrigin },
+    { key: 'service_destination', label: 'Destino',             get: () => rightDestino },
+    { key: 'service_date',        label: 'Fecha del servicio',  get: () => rightDate },
+    { key: 'service_passengers',  label: 'N° pasajeros',        get: () => rightPax },
+    { key: 'service_type',        label: 'Tipo de servicio',    get: () => rightTipo },
+  ]
+
+  function camposFaltantes() {
+    return CAMPOS_REQUERIDOS.filter(c => !c.get()?.toString().trim())
+  }
+
+  async function saveNoteAndGoCotizar() {
+    // Guardar ficha actualizada antes de cotizar
+    if (activeId) {
+      await fetch('/api/whatsapp/cloud/note', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conv_id: activeId,
+          notes: rightNotes,
+          contact_rut: rightRut,
+          service_date: rightDate,
+          contact_email: rightEmail || null,
+          service_origin: rightOrigin || null,
+          service_destination: rightDestino || null,
+          service_passengers: rightPax ? parseInt(rightPax) : null,
+          service_type: rightTipo || null,
+          service_vehicle: rightVehiculo || null,
+        }),
+      }).catch(() => {})
+    }
+    if (!activeConv) return
+    const p = new URLSearchParams({ phone: activeConv.phone })
+    if (activeConv.contact_name) p.set('name', activeConv.contact_name)
+    if (activeConv.id) p.set('conv_id', activeConv.id)
+    router.push(`/cotizaciones/nueva?${p}`)
+  }
+
+  async function sendMsgFaltantes() {
+    if (!activeConv) return
+    const faltantes = camposFaltantes().map(c => c.label)
+    const msg = `Hola! Para prepararte el presupuesto necesito los siguientes datos:\n${faltantes.map(l => `• ${l}`).join('\n')}\n\nPuedes enviármelos por este medio. ¡Gracias!`
+    await fetch('/api/whatsapp/cloud/take', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conv_id: activeConv.id, bot_active: false }),
+    })
+    await fetch('/api/whatsapp/cloud/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: activeConv.phone, text: msg }),
+    })
+    setShowCotizarModal(false)
+    await loadMessages(activeConv.id)
   }
 
   async function saveNote() {
@@ -620,10 +681,12 @@ export default function Bandeja({ user }: { user: UserSession }) {
                   </button>
                   <button
                     onClick={() => {
-                      const p = new URLSearchParams({ phone: activeConv.phone })
-                      if (activeConv.contact_name) p.set('name', activeConv.contact_name)
-                      if (activeConv.id) p.set('conv_id', activeConv.id)
-                      router.push(`/cotizaciones/nueva?${p}`)
+                      const faltantes = camposFaltantes()
+                      if (faltantes.length === 0) {
+                        void saveNoteAndGoCotizar()
+                      } else {
+                        setShowCotizarModal(true)
+                      }
                     }}
                     style={btnStyle('#1B8A4B')}
                   >
@@ -843,6 +906,81 @@ export default function Bandeja({ user }: { user: UserSession }) {
           </div>
         </div>
       )}
+
+      {/* ── Modal: completar ficha antes de cotizar ── */}
+      {showCotizarModal && activeConv && (() => {
+        const faltantes = camposFaltantes()
+        const pct = Math.round(((CAMPOS_REQUERIDOS.length - faltantes.length) / CAMPOS_REQUERIDOS.length) * 100)
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: '#fff', borderRadius: 16, padding: 28, maxWidth: 500, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+              <h2 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: '#111' }}>Ficha incompleta</h2>
+              <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
+                La ficha del cliente tiene un {pct}% de completitud. Para cotizar bien necesitamos al menos un 90%.
+              </p>
+
+              {/* Campos faltantes editables */}
+              {faltantes.length > 0 && (
+                <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', marginBottom: 10 }}>Faltan estos datos:</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {faltantes.map(c => {
+                      const setters: Record<string, (v: string) => void> = {
+                        contact_email: setRightEmail,
+                        contact_rut: setRightRut,
+                        service_origin: setRightOrigin,
+                        service_destination: setRightDestino,
+                        service_date: setRightDate,
+                        service_passengers: setRightPax,
+                        service_type: setRightTipo,
+                      }
+                      const setter = setters[c.key]
+                      if (!setter) return <div key={c.key} style={{ fontSize: 13, color: '#b45309' }}>• {c.label} (editar en ficha del cliente)</div>
+                      return (
+                        <div key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <label style={{ fontSize: 12, fontWeight: 600, color: '#92400e', width: 150, flexShrink: 0 }}>{c.label}</label>
+                          {c.key === 'service_date' ? (
+                            <input type="date" style={{ flex: 1, border: '1px solid #fcd34d', borderRadius: 6, padding: '4px 8px', fontSize: 13 }}
+                              onChange={e => setter(e.target.value)} />
+                          ) : c.key === 'service_passengers' ? (
+                            <input type="number" min={1} placeholder="N°" style={{ flex: 1, border: '1px solid #fcd34d', borderRadius: 6, padding: '4px 8px', fontSize: 13 }}
+                              onChange={e => setter(e.target.value)} />
+                          ) : (
+                            <input type={c.key === 'contact_email' ? 'email' : 'text'} placeholder={c.label} style={{ flex: 1, border: '1px solid #fcd34d', borderRadius: 6, padding: '4px 8px', fontSize: 13 }}
+                              onChange={e => setter(e.target.value)} />
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {/* Enviar WA solicitando los faltantes */}
+                {faltantes.length > 0 && (
+                  <button
+                    onClick={() => void sendMsgFaltantes()}
+                    style={{ background: '#0ea5e9', color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    Pedir datos por WhatsApp
+                  </button>
+                )}
+                {/* Guardar lo que se llenó y cotizar */}
+                <button
+                  onClick={() => { setShowCotizarModal(false); void saveNoteAndGoCotizar() }}
+                  style={{ background: '#1B8A4B', color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  Guardar y cotizar igual
+                </button>
+                <button
+                  onClick={() => setShowCotizarModal(false)}
+                  style={{ background: 'white', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
