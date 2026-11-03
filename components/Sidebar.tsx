@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, FileText, FileCheck, Users, UserCog, LogOut, Filter,
   BarChart3, CalendarDays, Inbox, Bot, PhoneCall, Phone, MessageCircle,
-  Calculator, ShieldCheck, ChevronDown, Briefcase,
+  Calculator, ShieldCheck, ChevronDown, ChevronLeft, ChevronRight, Briefcase,
 } from 'lucide-react'
 
 interface Profile {
@@ -73,6 +73,18 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
 
   const [execOpen,   setExecOpen]   = useState(onBandeja)
   const [execAgents, setExecAgents] = useState<{ id: string; name: string }[]>([])
+  const [collapsed,  setCollapsed]  = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('sidebar_collapsed') === '1'
+  })
+
+  function toggleCollapse() {
+    setCollapsed(c => {
+      const next = !c
+      localStorage.setItem('sidebar_collapsed', next ? '1' : '0')
+      return next
+    })
+  }
 
   useEffect(() => { if (onBandeja) setExecOpen(true) }, [onBandeja])
 
@@ -184,6 +196,16 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
         )}
 
         <div className="flex-1" />
+
+        {/* Toggle collapse */}
+        <button onClick={toggleCollapse} title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+          className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 mb-1">
+          {collapsed
+            ? <ChevronRight className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.4)' }} />
+            : <ChevronLeft  className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.4)' }} />
+          }
+        </button>
+
         <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold uppercase cursor-pointer mb-1"
           style={{ background: '#1B8A4B' }} title={profile?.name ?? ''}>
           {profile?.name?.[0] ?? '?'}
@@ -195,7 +217,16 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
       </div>
 
       {/* ── Label panel ───────────────────────────────────────────────── */}
-      <div className="w-40 flex flex-col py-4" style={{ background: '#1C2033', overflow: 'hidden' }}>
+      <div className="flex flex-col py-4"
+        style={{
+          background: '#1C2033',
+          overflow: 'hidden',
+          width: collapsed ? 0 : 160,
+          minWidth: collapsed ? 0 : 160,
+          transition: 'width 0.2s ease, min-width 0.2s ease',
+          opacity: collapsed ? 0 : 1,
+          pointerEvents: collapsed ? 'none' : 'auto',
+        }}>
         <div className="px-4 mb-4">
           <p className="text-white font-bold text-sm">CRM</p>
           <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
