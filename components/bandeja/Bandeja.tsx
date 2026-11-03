@@ -94,6 +94,16 @@ function fmtFull(dt: string): string {
   return new Date(dt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
 }
 
+function convCompleteness(c: Conversation): number {
+  const fields = [
+    c.contact_name, c.contact_email, c.contact_rut,
+    c.service_origin, c.service_destination, c.service_date,
+    c.service_passengers?.toString(), c.service_type,
+  ]
+  const filled = fields.filter(f => f?.toString().trim()).length
+  return Math.round((filled / fields.length) * 100)
+}
+
 function get24hRemaining(lastCustomerMsgAt: string | null): string | null {
   if (!lastCustomerMsgAt) return null
   const expiry = new Date(lastCustomerMsgAt).getTime() + 24 * 60 * 60 * 1000
@@ -164,6 +174,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [rightVehiculo, setRightVehiculo]   = useState('')
   const [now, setNow] = useState(Date.now())
   const [backfilling, setBackfilling] = useState(false)
+  const [reactivating, setReactivating] = useState(false)
 
 
   // Sync right panel when activeConv updated by polling (bot fills fields)
@@ -410,10 +421,23 @@ export default function Bandeja({ user }: { user: UserSession }) {
 
   async function toggleBot(botActive: boolean) {
     if (!activeId) return
-    await fetch('/api/whatsapp/cloud/take', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conv_id: activeId, bot_active: botActive }),
-    })
+    if (botActive) {
+      // Reactivar bot: lee contexto y envía mensaje proactivo
+      setReactivating(true)
+      try {
+        await fetch('/api/whatsapp/cloud/reactivate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conv_id: activeId }),
+        })
+      } finally {
+        setReactivating(false)
+      }
+    } else {
+      await fetch('/api/whatsapp/cloud/take', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conv_id: activeId, bot_active: false }),
+      })
+    }
     await loadConversations()
     await loadMessages(activeId)
   }
@@ -670,7 +694,9 @@ export default function Bandeja({ user }: { user: UserSession }) {
                   </select>
                   {activeConv.bot_active
                     ? <button onClick={() => toggleBot(false)} style={btnStyle('#2563eb')}>Tomar chat</button>
-                    : <button onClick={() => toggleBot(true)}  style={btnStyle('#6b7280')}>Devolver al bot</button>
+                    : <button onClick={() => toggleBot(true)} disabled={reactivating} style={btnStyle('#6b7280', reactivating)} title="El bot lee la conversacion y envia mensaje proactivo">
+                        {reactivating ? '⏳ Activando…' : 'Devolver al bot'}
+                      </button>
                   }
                   <button
                     onClick={() => sendFormLink(activeConv.phone)}
@@ -1071,9 +1097,11 @@ function ConvSection({ title, items, activeId, onSelect, userId }: {
         {title} ({items.length})
       </div>
       {items.map(c => {
-        const color   = semaphoreColor(c.last_customer_msg_at)
-        const active  = c.id === activeId
-        const unread  = c.unread_count > 0
+        const color      = semaphoreColor(c.last_customer_msg_at)
+        const active     = c.id === activeId
+        const unread     = c.unread_count > 0
+        const pct        = convCompleteness(c)
+        const incomplete = pct < 90
         return (
           <div
             key={c.id}
@@ -1087,9 +1115,21 @@ function ConvSection({ title, items, activeId, onSelect, userId }: {
             <div style={{ marginTop: 5 }}><SemDot color={color} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: unread ? 700 : 500, color: '#111', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {c.contact_name || `+${c.phone}`}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                  <span style={{ fontWeight: unread ? 700 : 500, color: '#111', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.contact_name || `+${c.phone}`}
+                  </span>
+                  {incomplete && (
+                    <span
+                      title={`Ficha ${pct}% completa — faltan datos para cotizar`}
+                      style={{
+                        width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                        background: pct < 50 ? '#ef4444' : '#f97316',
+                        display: 'inline-block',
+                      }}
+                    />
+                  )}
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, marginLeft: 8 }}>
                   {unread && (
                     <span style={{ fontSize: 10, fontWeight: 700, background: '#eab308', color: '#fff', borderRadius: 10, padding: '1px 5px' }}>
