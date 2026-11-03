@@ -159,6 +159,31 @@ export async function fetchActivitiesAll(filters: Record<string, string> = {}) {
   return (r.data as Activity[]) ?? []
 }
 
+export interface WaConv {
+  id: string
+  phone: string
+  contact_name: string | null
+  contact_rut: string | null
+  contact_email: string | null
+  service_type: string | null
+  service_origin: string | null
+  service_destination: string | null
+  service_date: string | null
+  service_passengers: number | null
+  service_vehicle: string | null
+  assigned_to: string | null
+  assigned_name: string | null
+  stage: string
+  bot_active: boolean
+}
+
+export async function fetchWaConv(convId: string, token?: string): Promise<WaConv | null> {
+  try {
+    const r = await crmGet('wa_cloud_detail', { conv_id: convId }, token)
+    return r.data as WaConv ?? null
+  } catch { return null }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface Client {

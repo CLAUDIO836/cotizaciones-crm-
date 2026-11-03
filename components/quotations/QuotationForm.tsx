@@ -164,6 +164,14 @@ interface Props {
   userId: string
   prefilledPhone?: string
   prefilledName?: string
+  prefilledRUT?: string
+  prefilledEmail?: string
+  prefilledService?: string
+  prefilledOrigin?: string
+  prefilledDestination?: string
+  prefilledDate?: string
+  prefilledPassengers?: number
+  prefilledVehicle?: string
   quotation?: {
     id: string
     client_id: string
@@ -236,7 +244,7 @@ const DEFAULT_DIARIO_ITEM: Item = {
   ruta_nombre: '', desde_item: '', hasta_item: '', hora_salida_item: '', hora_retorno_item: '', tiene_paradas: false, obs_paradas: '',
 }
 
-export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation, prefilledPhone, prefilledName }: Props) {
+export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation, prefilledPhone, prefilledName, prefilledRUT, prefilledEmail, prefilledService, prefilledOrigin, prefilledDestination, prefilledDate, prefilledPassengers, prefilledVehicle }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
 
@@ -263,11 +271,16 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
 
   // Pre-fill desde WhatsApp
   useEffect(() => {
-    if (prefilledPhone) {
-      setNewClientCelular(prefilledPhone)
-      setShowNewClient(true)
-    }
+    const hasWaData = prefilledPhone || prefilledName || prefilledRUT || prefilledEmail
+    if (hasWaData) setShowNewClient(true)
+    if (prefilledPhone) setNewClientCelular(prefilledPhone)
     if (prefilledName) setNewClientName(prefilledName)
+    if (prefilledRUT) setNewClientRut(prefilledRUT)
+    if (prefilledEmail) setNewClientEmail(prefilledEmail)
+    if (prefilledOrigin) setDesde(prefilledOrigin)
+    if (prefilledDestination) setHasta(prefilledDestination)
+    if (prefilledDate) setFechaSalida(prefilledDate + 'T08:00')
+    if (prefilledVehicle) setVehicleType(prefilledVehicle)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check Vespucio cuando pipeline = SER_EDUCACIONALES y hay coordenadas de destino
@@ -615,6 +628,47 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           defaultClientRut={quotation?.client_rut ?? clienteCotizador?.rut}
           defaultContactId={quotation?.contact_id ?? clienteCotizador?.contactId}
         />
+
+        {/* Banner: datos de WhatsApp disponibles para crear cliente */}
+        {showNewClient && !clientId && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-amber-800">📲 Datos recibidos desde WhatsApp</p>
+              <button type="button" className="text-xs text-amber-600 underline" onClick={() => setShowNewClient(false)}>Ocultar</button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs text-amber-700 font-medium">Nombre y apellido *</label>
+                <input type="text" value={newClientName} onChange={e => setNewClientName(e.target.value)}
+                  placeholder="Nombre Apellido" className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-amber-700 font-medium">RUT</label>
+                <input type="text" value={newClientRut} onChange={e => setNewClientRut(e.target.value)}
+                  placeholder="12.345.678-9" className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-amber-700 font-medium">Celular *</label>
+                <input type="text" value={newClientCelular} onChange={e => setNewClientCelular(e.target.value)}
+                  placeholder="+56 9..." className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-amber-700 font-medium">Email *</label>
+                <input type="email" value={newClientEmail} onChange={e => setNewClientEmail(e.target.value)}
+                  placeholder="email@..." className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+              </div>
+            </div>
+            <button type="button"
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+              style={{ background: '#1B8A4B' }}
+              onClick={async () => {
+                const id = await createNewClient()
+                if (id) { setClientId(id); setShowNewClient(false); toast.success('Cliente creado') }
+              }}>
+              + Crear como persona natural
+            </button>
+          </div>
+        )}
 
         {/* Pipeline + Etapa */}
         <div className="grid grid-cols-2 gap-4">

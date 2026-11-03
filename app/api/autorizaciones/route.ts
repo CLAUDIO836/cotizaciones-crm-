@@ -24,8 +24,8 @@ export async function POST(req: NextRequest) {
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await req.json().catch(() => ({}))
   const { _action, ...data } = body as { _action?: string } & Record<string, unknown>
-  const action = { create: 'autz_create', decide: 'autz_decide', cancel: 'autz_cancel' }[_action ?? '']
-  if (!action) return NextResponse.json({ error: '_action debe ser create, decide o cancel' }, { status: 400 })
+  const action = { create: 'autz_create', decide: 'autz_decide', cancel: 'autz_cancel', reopen: 'autz_reopen' }[_action ?? '']
+  if (!action) return NextResponse.json({ error: '_action debe ser create, decide, cancel o reopen' }, { status: 400 })
   try {
     return NextResponse.json(await crmPost(action, data, {}, token))
   } catch (e) {

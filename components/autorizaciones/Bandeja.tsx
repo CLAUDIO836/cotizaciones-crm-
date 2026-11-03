@@ -51,7 +51,7 @@ function Tarjeta({ a, esAprobador, miId, onCambio }: {
   const e = ESTADO[a.status]
   const bajaPct = a.precio_lista && a.precio_solicitado ? 1 - a.precio_solicitado / a.precio_lista : null
 
-  async function accion(_action: 'decide' | 'cancel', decision?: 'aprobada' | 'rechazada') {
+  async function accion(_action: 'decide' | 'cancel' | 'reopen', decision?: 'aprobada' | 'rechazada') {
     setEnviando(true)
     const res = await fetch('/api/autorizaciones', {
       method: 'POST',
@@ -61,7 +61,7 @@ function Tarjeta({ a, esAprobador, miId, onCambio }: {
     const json = await res.json().catch(() => ({}))
     setEnviando(false)
     if (!res.ok) { toast.error(json.error ?? 'No se pudo guardar'); onCambio(); return }
-    toast.success(_action === 'cancel' ? 'Solicitud anulada' : decision === 'aprobada' ? 'Aprobada' : 'Rechazada')
+    toast.success(_action === 'cancel' ? 'Solicitud anulada' : _action === 'reopen' ? 'Solicitud reenviada a pendiente' : decision === 'aprobada' ? 'Aprobada' : 'Rechazada')
     onCambio()
   }
 
@@ -98,9 +98,17 @@ function Tarjeta({ a, esAprobador, miId, onCambio }: {
       {a.detalle && <pre className="whitespace-pre-wrap text-xs text-gray-600 font-sans bg-gray-50 rounded-lg p-2">{a.detalle}</pre>}
 
       {a.status !== 'pendiente' && (
-        <p className="text-sm text-gray-700">
-          {e.label} por {a.decided_by_name} · {fecha(a.decided_at)}{a.comentario && <> — “{a.comentario}”</>}
-        </p>
+        <div className=”space-y-2”>
+          <p className=”text-sm text-gray-700”>
+            {e.label} por {a.decided_by_name} · {fecha(a.decided_at)}{a.comentario && <> — “{a.comentario}”</>}
+          </p>
+          {a.status === 'anulada' && (esAprobador || a.requested_by === miId) && (
+            <Button type=”button” variant=”outline” size=”sm” disabled={enviando}
+              onClick={() => accion('reopen')}>
+              ↩ Reenviar a pendiente
+            </Button>
+          )}
+        </div>
       )}
 
       {a.status === 'pendiente' && (esAprobador || a.requested_by === miId) && (

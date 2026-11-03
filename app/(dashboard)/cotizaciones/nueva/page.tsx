@@ -1,5 +1,5 @@
 import QuotationForm from '@/components/quotations/QuotationForm'
-import { getSession, fetchClients, fetchProfiles, fetchCompanies } from '@/lib/api'
+import { getSession, fetchClients, fetchProfiles, fetchCompanies, fetchWaConv } from '@/lib/api'
 import { redirect } from 'next/navigation'
 
 async function getPipedrivePipelines() {
@@ -24,11 +24,12 @@ export default async function NuevaCotizacionPage({
   const session = await getSession()
   if (!session) redirect('/login')
   const params = await searchParams
-  const [clients, sellers, companies, pipelines] = await Promise.all([
+  const [clients, sellers, companies, pipelines, waConv] = await Promise.all([
     fetchClients(),
     fetchProfiles(),
     fetchCompanies(),
     getPipedrivePipelines(),
+    params.conv_id ? fetchWaConv(params.conv_id) : Promise.resolve(null),
   ])
 
   return (
@@ -40,8 +41,16 @@ export default async function NuevaCotizacionPage({
         sellers={sellers ?? []}
         companies={companies ?? []}
         userId={session.id}
-        prefilledPhone={params.phone}
-        prefilledName={params.name}
+        prefilledPhone={params.phone ?? waConv?.phone}
+        prefilledName={params.name ?? waConv?.contact_name ?? undefined}
+        prefilledRUT={waConv?.contact_rut ?? undefined}
+        prefilledEmail={waConv?.contact_email ?? undefined}
+        prefilledService={waConv?.service_type ?? undefined}
+        prefilledOrigin={waConv?.service_origin ?? undefined}
+        prefilledDestination={waConv?.service_destination ?? undefined}
+        prefilledDate={waConv?.service_date ?? undefined}
+        prefilledPassengers={waConv?.service_passengers ?? undefined}
+        prefilledVehicle={waConv?.service_vehicle ?? undefined}
       />
     </div>
   )
