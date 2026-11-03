@@ -391,15 +391,15 @@ export default function ProspectosDashboard({
           {/* ── Summary cards ── */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <BigCard value={s?.con_intencion ?? 0}
-              label="Con intención de venta"
+              label="Con intención"
               sub={`≥1:31 min · ${s?.intencion_pct ?? 0}% del total campaña`}
               dot="bg-green-500" />
             <BigCard value={s?.contactada ?? 0}
-              label="Contactadas"
+              label="Contactada"
               sub="46 – 90 segundos"
               dot="bg-blue-400" />
             <BigCard value={s?.fria ?? 0}
-              label="Llamada fría"
+              label="Fría"
               sub="31 – 45 segundos"
               dot="bg-orange-400" />
             <BigCard value={s?.sin_respuesta ?? 0}
