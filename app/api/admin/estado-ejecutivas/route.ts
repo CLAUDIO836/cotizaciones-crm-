@@ -10,6 +10,10 @@ export async function GET(req: NextRequest) {
 
   const url = `${CRM_API}?action=wa_estado_ejecutivas&_s=ccl2026adm`
   const res = await fetch(url, { cache: 'no-store' })
-  const data = await res.json()
-  return NextResponse.json(data)
+  const text = await res.text()
+  try {
+    return NextResponse.json(JSON.parse(text))
+  } catch {
+    return NextResponse.json({ error: 'php_error', status: res.status, body: text.substring(0, 500) }, { status: 500 })
+  }
 }
