@@ -301,7 +301,7 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
                   ? 'ring-2 ring-offset-1 shadow-sm'
                   : 'bg-white hover:shadow-sm'
               }`}
-              style={active ? { borderColor: s.dot, ringColor: s.dot, background: '#fafafa' } : {}}>
+              style={active ? { borderColor: s.dot, background: '#fafafa' } : {}}>
               <div className="flex items-center gap-2 mb-1">
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.dot }} />
                 <span className="text-xs font-semibold text-gray-600">{CAT_LABEL[cat]}</span>
