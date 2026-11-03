@@ -270,7 +270,6 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
           )}
         </div>
 
-        <div className="flex-1" />
         <div className="px-4 pb-2">
           <p className="text-xs font-medium truncate" style={{ color: 'rgba(255,255,255,0.6)' }}>
             {profile?.name}
