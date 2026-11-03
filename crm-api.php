@@ -3644,10 +3644,11 @@ if ($action === 'wa_cloud_list') {
     } catch (PDOException $e) {}
 
     // Auto-cerrar: ventana 24h expirada → stage=cerrado, bot=0
+    // NO cerrar formulario_completo (ejecutiva debe poder verlos y cotizar)
     try {
         db()->exec("UPDATE wa_cloud_conversations
             SET stage = 'cerrado', bot_active = 0
-            WHERE stage NOT IN ('cerrado', 'ganado', 'perdido')
+            WHERE stage NOT IN ('cerrado', 'ganado', 'perdido', 'formulario_completo', 'cotizando')
             AND last_customer_msg_at IS NOT NULL
             AND last_customer_msg_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)");
     } catch (PDOException $e) {}
@@ -4199,10 +4200,141 @@ if ($action === 'wa_form_save') {
         }
     }
     if (!$sets) err('Sin campos para guardar');
+
+    // Verificar si ya tenía formulario enviado antes (para enviar confirmación solo la primera vez)
+    $prevStmt = db()->prepare("SELECT id, contact_name, form_submitted_at FROM wa_cloud_conversations WHERE phone = ? LIMIT 1");
+    $prevStmt->execute([$phone]);
+    $prev = $prevStmt->fetch();
+    $esPrimeroEnvio = empty($prev['form_submitted_at']);
+
     $sets[] = "form_submitted_at = COALESCE(form_submitted_at, NOW())";
+    $sets[] = "stage = 'formulario_completo'";
     $vals[] = $phone;
     db()->prepare("UPDATE wa_cloud_conversations SET " . implode(', ', $sets) . " WHERE phone = ?")
         ->execute($vals);
+
+    // Enviar confirmación WA solo la primera vez que se completa el formulario
+    if ($esPrimeroEnvio && $prev) {
+        $waToken = defined('META_WA_TOKEN')           ? META_WA_TOKEN           : (getenv('WHATSAPP_TOKEN') ?: '');
+        $phoneId = defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : (getenv('WHATSAPP_PHONE_NUMBER_ID') ?: '');
+        if ($waToken && $phoneId) {
+            $nombre    = $prev['contact_name'] ? explode(' ', trim($prev['contact_name']))[0] : null;
+            $saludo    = $nombre ? "¡Gracias, $nombre!" : "¡Gracias!";
+            $msgTexto  = "$saludo ✅ Recibimos tu solicitud de transporte.\n\n"
+                       . "Nuestro equipo ya está preparando tu cotización y te contactará a la brevedad. "
+                       . "Si tienes alguna consulta adicional, escríbenos aquí mismo. 🚌\n\n"
+                       . "www.transccl.cl";
+
+            $payload = [
+                'messaging_product' => 'whatsapp',
+                'to'                => $phone,
+                'type'              => 'text',
+                'text'              => ['body' => $msgTexto, 'preview_url' => false],
+            ];
+            $ch = curl_init("https://graph.facebook.com/v21.0/{$phoneId}/messages");
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST           => true,
+                CURLOPT_HTTPHEADER     => ["Authorization: Bearer {$waToken}", 'Content-Type: application/json'],
+                CURLOPT_POSTFIELDS     => json_encode($payload),
+                CURLOPT_TIMEOUT        => 10,
+            ]);
+            $waResp   = curl_exec($ch);
+            $waStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($waStatus < 400) {
+                $wamid = (json_decode($waResp, true) ?? [])['messages'][0]['id'] ?? null;
+                if ($wamid) {
+                    db()->prepare(
+                        "INSERT IGNORE INTO wa_cloud_messages
+                         (id, conversation_id, wamid, direction, content, sender_type, created_at)
+                         VALUES (?, ?, ?, 'out', ?, 'bot', NOW())"
+                    )->execute([uuid(), $prev['id'], $wamid, $msgTexto]);
+                }
+            } else {
+                error_log('[wa_form_save] WA confirm error ' . $waStatus . ': ' . substr($waResp, 0, 200));
+            }
+
+            // ── Notificar al ejecutivo asignado (WA personal + Email) ──────────
+            $convFull = db()->prepare(
+                "SELECT c.*, p.name AS exec_name, p.email AS exec_email, p.celular AS exec_celular
+                 FROM wa_cloud_conversations c
+                 LEFT JOIN profiles p ON p.id = c.assigned_to
+                 WHERE c.phone = ? LIMIT 1"
+            );
+            $convFull->execute([$phone]);
+            $conv = $convFull->fetch();
+
+            // Si no tiene ejecutivo asignado, notificar a Claudio
+            $execPhone  = $conv['exec_celular'] ?? null;
+            $execEmail  = $conv['exec_email']   ?? null;
+            $execName   = $conv['exec_name']    ?? 'Equipo';
+            if (!$execPhone) { $execPhone = '56974270657'; $execEmail = 'claudio@transccl.cl'; $execName = 'Claudio'; }
+
+            $clientName  = $conv['contact_name']        ?? 'Cliente';
+            $origen      = $conv['service_origin']      ?? '—';
+            $destino     = $conv['service_destination'] ?? '—';
+            $fecha       = $conv['service_date']        ?? '—';
+            $pax         = $conv['service_passengers']  ?? '—';
+            $tipo        = $conv['service_type']        ?? '—';
+            $clientPhone = $conv['phone']               ?? $phone;
+
+            // A) WA al ejecutivo — texto libre (cliente escribió primero, ventana abierta)
+            $waExecMsg = "🔔 *$clientName* completó el formulario de cotización.\n\n"
+                       . "*Servicio:* $tipo\n"
+                       . "*Desde:* $origen\n*Hacia:* $destino\n"
+                       . "*Fecha:* $fecha\n*Pasajeros:* $pax\n"
+                       . "*Tel cliente:* +$clientPhone\n\n"
+                       . "👉 Cotizar: https://crm.transccl.cl";
+            $waExecPayload = [
+                'messaging_product' => 'whatsapp',
+                'to'                => $execPhone,
+                'type'              => 'text',
+                'text'              => ['body' => $waExecMsg, 'preview_url' => false],
+            ];
+            $ch2 = curl_init("https://graph.facebook.com/v21.0/{$phoneId}/messages");
+            curl_setopt_array($ch2, [
+                CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER     => ["Authorization: Bearer {$waToken}", 'Content-Type: application/json'],
+                CURLOPT_POSTFIELDS     => json_encode($waExecPayload),
+                CURLOPT_TIMEOUT        => 10,
+            ]);
+            $waExecResp   = curl_exec($ch2);
+            $waExecStatus = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+            curl_close($ch2);
+            if ($waExecStatus >= 400) {
+                error_log('[wa_form_save] WA exec notify error ' . $waExecStatus . ': ' . substr($waExecResp, 0, 200));
+            }
+
+            // B) Email al ejecutivo
+            if ($execEmail) {
+                $subject = "🔔 $clientName completó el formulario — cotizar ahora";
+                $htmlEmail = "<!DOCTYPE html><html><body style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px'>"
+                           . "<h2 style='color:#1a56db'>Nuevo formulario completo</h2>"
+                           . "<p>Hola <strong>$execName</strong>, el cliente <strong>$clientName</strong> completó su solicitud y está esperando cotización.</p>"
+                           . "<table style='width:100%;border-collapse:collapse;margin:20px 0'>"
+                           . "<tr style='background:#f3f4f6'><td style='padding:10px;font-weight:bold'>Cliente</td><td style='padding:10px'>$clientName</td></tr>"
+                           . "<tr><td style='padding:10px;font-weight:bold'>Teléfono</td><td style='padding:10px'>+$clientPhone</td></tr>"
+                           . "<tr style='background:#f3f4f6'><td style='padding:10px;font-weight:bold'>Servicio</td><td style='padding:10px'>$tipo</td></tr>"
+                           . "<tr><td style='padding:10px;font-weight:bold'>Desde</td><td style='padding:10px'>$origen</td></tr>"
+                           . "<tr style='background:#f3f4f6'><td style='padding:10px;font-weight:bold'>Hacia</td><td style='padding:10px'>$destino</td></tr>"
+                           . "<tr><td style='padding:10px;font-weight:bold'>Fecha</td><td style='padding:10px'>$fecha</td></tr>"
+                           . "<tr style='background:#f3f4f6'><td style='padding:10px;font-weight:bold'>Pasajeros</td><td style='padding:10px'>$pax</td></tr>"
+                           . "</table>"
+                           . "<a href='https://crm.transccl.cl' style='background:#1a56db;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block'>Ir al CRM a cotizar →</a>"
+                           . "<p style='margin-top:30px;color:#6b7280;font-size:12px'>TransCCL · Sistema automático</p>"
+                           . "</body></html>";
+
+                $headers  = "MIME-Version: 1.0\r\n";
+                $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+                $headers .= "From: Sofia TransCCL <noreply@transccl.cl>\r\n";
+                $headers .= "Reply-To: noreply@transccl.cl\r\n";
+                @mail($execEmail, $subject, $htmlEmail, $headers);
+            }
+        }
+    }
+
     ok(['saved' => true]);
 }
 

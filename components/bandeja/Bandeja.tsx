@@ -136,6 +136,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [view, setView]               = useState<'list' | 'kanban'>('list')
   const [filterAgent, setFilterAgent] = useState('')
   const [filterStage, setFilterStage] = useState('')
+  const [searchQ, setSearchQ]         = useState('')
   const [agents, setAgents]           = useState<{ id: string; name: string }[]>([])
   const [allAgents, setAllAgents]     = useState<{ id: string; name: string }[]>([])
 
@@ -445,6 +446,12 @@ export default function Bandeja({ user }: { user: UserSession }) {
     if (tabExec === 'todos')      return true
     if (tabExec === 'sinasignar') return !c.assigned_to
     return c.assigned_to === tabExec
+  }).filter(c => {
+    if (!searchQ) return true
+    const q = searchQ.toLowerCase().replace(/\s+/g, '')
+    const name  = (c.contact_name ?? '').toLowerCase().replace(/\s+/g, '')
+    const phone = (c.phone ?? '').replace(/\s+/g, '')
+    return name.includes(q) || phone.includes(q)
   })
   const unread = (id: string) =>
     conversations.filter(c => c.assigned_to === id && (c.unread_count ?? 0) > 0).length
@@ -496,6 +503,19 @@ export default function Bandeja({ user }: { user: UserSession }) {
               <button onClick={() => setView('list')}   style={viewBtn(view === 'list')}>☰</button>
               <button onClick={() => setView('kanban')} style={viewBtn(view === 'kanban')}>⊞</button>
             </div>
+          </div>
+          <div style={{ position: 'relative', marginBottom: 6 }}>
+            <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: 13, pointerEvents: 'none' }}>🔍</span>
+            <input
+              type="text"
+              value={searchQ}
+              onChange={e => setSearchQ(e.target.value)}
+              placeholder="Buscar nombre o teléfono…"
+              style={{ width: '100%', boxSizing: 'border-box', paddingLeft: 26, paddingRight: searchQ ? 26 : 8, paddingTop: 6, paddingBottom: 6, fontSize: 13, border: '1px solid #d1d5db', borderRadius: 6, outline: 'none', background: '#f9fafb', color: '#111827' }}
+            />
+            {searchQ && (
+              <button onClick={() => setSearchQ('')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>
+            )}
           </div>
           <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={selectStyle}>
             <option value="">Todas las etapas</option>

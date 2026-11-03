@@ -161,7 +161,7 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
       </div>
 
       {/* Label panel */}
-      <div className="w-40 flex flex-col py-4" style={{ background: '#1C2033' }}>
+      <div className="w-40 flex flex-col py-4" style={{ background: '#1C2033', overflow: 'hidden' }}>
         <div className="px-4 mb-5">
           <p className="text-white font-bold text-sm">CRM</p>
           <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
@@ -169,7 +169,7 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
           </p>
         </div>
 
-        <div className="flex flex-col gap-0.5 px-2">
+        <div className="flex flex-col gap-0.5 px-2" style={{ flex: 1, overflowY: 'auto' }}>
           {navItems.map(({ href, label, icon: Icon, badge, agentBadge, autzBadge }) => {
             const badgeCount = badge ? profile?.pending_leads : agentBadge ? profile?.agent_attention : autzBadge ? profile?.autz_pending : 0
             return (

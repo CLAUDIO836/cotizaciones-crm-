@@ -189,7 +189,7 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         $pdo = db();
 
         // Upsert conversación (incluye ficha para pasarla al bot)
-        $stmt = $pdo->prepare("SELECT id, bot_active, assigned_to, contact_name, contact_email, contact_rut, service_origin, service_destination, service_date, service_passengers, service_type, service_vehicle, form_link_sent_at, form_submitted_at, followup_count, handoff_requested_at FROM wa_cloud_conversations WHERE phone = ?");
+        $stmt = $pdo->prepare("SELECT id, bot_active, stage, assigned_to, contact_name, contact_email, contact_rut, service_origin, service_destination, service_date, service_passengers, service_type, service_vehicle, form_link_sent_at, form_submitted_at, followup_count, handoff_requested_at FROM wa_cloud_conversations WHERE phone = ?");
         $stmt->execute([$phone]);
         $conv = $stmt->fetch();
 
@@ -245,7 +245,27 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         }
 
         if (!$isNew) { error_log("[wa_webhook] SKIP dup wamid={$wamid} phone={$phone}"); return; }
-        if (!$botActive) { error_log("[wa_webhook] SKIP bot_inactive phone={$phone}"); return; }
+
+        // Si la conversación estaba cerrada y el cliente escribe de nuevo → reactivar
+        if (!$botActive) {
+            $pdo->prepare(
+                "UPDATE wa_cloud_conversations
+                 SET bot_active = 1,
+                     stage = 'nuevo',
+                     followup_count = 0,
+                     form_link_sent_at = NULL,
+                     form_submitted_at = NULL,
+                     handoff_requested_at = NULL
+                 WHERE id = ?"
+            )->execute([$convId]);
+            $botActive = true;
+            $conv['bot_active']          = 1;
+            $conv['stage']               = 'nuevo';
+            $conv['form_link_sent_at']   = null;
+            $conv['form_submitted_at']   = null;
+            $conv['handoff_requested_at']= null;
+            error_log("[wa_webhook] REACTIVATE phone={$phone} conv={$convId}");
+        }
 
         error_log("[wa_webhook] PROC phone={$phone} wamid={$wamid} ai=" . (bool)_AI_KEY . " wa=" . (bool)_WA_TOKEN);
 
