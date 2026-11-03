@@ -354,8 +354,11 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   const [clienteCotizador, setClienteCotizador] = useState<{ id: string; name: string; rut?: string; contactId: string | null } | null>(null)
 
   // Nuevo cliente inline
-  const [newClientName, setNewClientName] = useState('')
-  const [newClientRut, setNewClientRut] = useState('')
+  const [newClientTipo, setNewClientTipo] = useState<'natural' | 'empresa'>('natural')
+  const [newClientName, setNewClientName] = useState('')        // persona natural: nombre + apellido / empresa: nombre del contacto
+  const [newClientRut, setNewClientRut] = useState('')          // RUT persona natural
+  const [newClientEmpresaNombre, setNewClientEmpresaNombre] = useState('') // nombre de la empresa
+  const [newClientEmpresaRut, setNewClientEmpresaRut] = useState('')        // RUT de la empresa
   const [newClientContacto, setNewClientContacto] = useState('')
   const [newClientTelFijo, setNewClientTelFijo] = useState('')
   const [newClientCelular, setNewClientCelular] = useState('')
@@ -415,24 +418,46 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   }
 
   async function createNewClient(): Promise<string | null> {
-    if (!newClientName.trim()) return null
-    if (!newClientCelular.trim() && !newClientTelFijo.trim()) { toast.error('El cliente debe tener al menos un teléfono'); return null }
-    if (!newClientEmail.trim()) { toast.error('El email del cliente es obligatorio'); return null }
-    const res = await fetch('/api/clients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: newClientName.trim(),
-        rut: newClientRut.trim() || null,
-        contacto: newClientContacto.trim() || null,
-        telefono_fijo: newClientTelFijo.trim() || null,
-        telefono_celular: newClientCelular.trim() || null,
-        email: newClientEmail.trim() || null,
-      }),
-    })
-    const json = await res.json()
-    if (!res.ok) { toast.error('Error al crear cliente'); return null }
-    return json.data?.id ?? null
+    if (newClientTipo === 'natural') {
+      const palabras = newClientName.trim().split(/\s+/)
+      if (palabras.length < 2) { toast.error('Escribe nombre Y apellido (mínimo dos palabras)'); return null }
+      if (!newClientCelular.trim()) { toast.error('El celular del cliente es obligatorio'); return null }
+      if (!newClientEmail.trim()) { toast.error('El email del cliente es obligatorio'); return null }
+      const res = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newClientName.trim(),
+          rut: newClientRut.trim() || null,
+          telefono_celular: newClientCelular.trim(),
+          email: newClientEmail.trim(),
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) { toast.error(json.error ?? 'Error al crear cliente'); return null }
+      return json.data?.id ?? null
+    } else {
+      // Empresa
+      if (!newClientEmpresaNombre.trim()) { toast.error('Escribe el nombre de la empresa'); return null }
+      if (!newClientEmpresaRut.trim()) { toast.error('El RUT de la empresa es obligatorio'); return null }
+      if (!newClientName.trim()) { toast.error('Escribe el nombre del contacto'); return null }
+      if (!newClientCelular.trim()) { toast.error('El celular del contacto es obligatorio'); return null }
+      if (!newClientEmail.trim()) { toast.error('El email del contacto es obligatorio'); return null }
+      const res = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newClientEmpresaNombre.trim(),
+          rut: newClientEmpresaRut.trim(),
+          contacto: newClientName.trim(),
+          telefono_celular: newClientCelular.trim(),
+          email: newClientEmail.trim(),
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) { toast.error(json.error ?? 'Error al crear cliente'); return null }
+      return json.data?.id ?? null
+    }
   }
 
   // Los precios calculados con el tarifario no pueden quedar bajo el mínimo sin aprobación
@@ -639,43 +664,89 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           defaultContactId={quotation?.contact_id ?? clienteCotizador?.contactId}
         />
 
-        {/* Banner: datos de WhatsApp disponibles para crear cliente */}
+        {/* Banner: crear cliente desde datos WhatsApp */}
         {showNewClient && !clientId && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-amber-800">📲 Datos recibidos desde WhatsApp</p>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <p className="text-sm font-semibold text-amber-800">📲 Crear cliente con datos de WhatsApp</p>
               <button type="button" className="text-xs text-amber-600 underline" onClick={() => setShowNewClient(false)}>Ocultar</button>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs text-amber-700 font-medium">Nombre y apellido *</label>
-                <input type="text" value={newClientName} onChange={e => setNewClientName(e.target.value)}
-                  placeholder="Nombre Apellido" className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-amber-700 font-medium">RUT</label>
-                <input type="text" value={newClientRut} onChange={e => setNewClientRut(e.target.value)}
-                  placeholder="12.345.678-9" className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-amber-700 font-medium">Celular *</label>
-                <input type="text" value={newClientCelular} onChange={e => setNewClientCelular(e.target.value)}
-                  placeholder="+56 9..." className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-amber-700 font-medium">Email *</label>
-                <input type="email" value={newClientEmail} onChange={e => setNewClientEmail(e.target.value)}
-                  placeholder="email@..." className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
-              </div>
+
+            {/* Toggle persona natural / empresa */}
+            <div className="flex gap-2">
+              {(['natural', 'empresa'] as const).map(t => (
+                <button key={t} type="button"
+                  onClick={() => setNewClientTipo(t)}
+                  className="px-3 py-1 rounded-full text-xs font-semibold border transition-all"
+                  style={newClientTipo === t
+                    ? { background: '#1B8A4B', color: 'white', borderColor: '#1B8A4B' }
+                    : { background: 'white', color: '#92400e', borderColor: '#fcd34d' }}>
+                  {t === 'natural' ? 'Persona Natural' : 'Empresa'}
+                </button>
+              ))}
             </div>
+
+            {newClientTipo === 'natural' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1 col-span-2">
+                  <label className="text-xs text-amber-700 font-medium">Nombre y apellido * <span className="text-amber-500">(dos palabras mínimo)</span></label>
+                  <input type="text" value={newClientName} onChange={e => setNewClientName(e.target.value)}
+                    placeholder="Juan Perez" className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-amber-700 font-medium">RUT</label>
+                  <input type="text" value={newClientRut} onChange={e => setNewClientRut(e.target.value)}
+                    placeholder="12.345.678-9" className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-amber-700 font-medium">Celular *</label>
+                  <input type="text" value={newClientCelular} onChange={e => setNewClientCelular(e.target.value)}
+                    placeholder="+56 9..." className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <label className="text-xs text-amber-700 font-medium">Email *</label>
+                  <input type="email" value={newClientEmail} onChange={e => setNewClientEmail(e.target.value)}
+                    placeholder="email@..." className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1 col-span-2">
+                  <label className="text-xs text-amber-700 font-medium">Nombre de la empresa *</label>
+                  <input type="text" value={newClientEmpresaNombre} onChange={e => setNewClientEmpresaNombre(e.target.value)}
+                    placeholder="Empresa XYZ SpA" className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-amber-700 font-medium">RUT empresa *</label>
+                  <input type="text" value={newClientEmpresaRut} onChange={e => setNewClientEmpresaRut(e.target.value)}
+                    placeholder="76.543.210-1" className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-amber-700 font-medium">Nombre del contacto *</label>
+                  <input type="text" value={newClientName} onChange={e => setNewClientName(e.target.value)}
+                    placeholder="Juan Perez" className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-amber-700 font-medium">Celular del contacto *</label>
+                  <input type="text" value={newClientCelular} onChange={e => setNewClientCelular(e.target.value)}
+                    placeholder="+56 9..." className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-amber-700 font-medium">Email del contacto *</label>
+                  <input type="email" value={newClientEmail} onChange={e => setNewClientEmail(e.target.value)}
+                    placeholder="email@..." className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+                </div>
+              </div>
+            )}
+
             <button type="button"
               className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
               style={{ background: '#1B8A4B' }}
               onClick={async () => {
                 const id = await createNewClient()
-                if (id) { setClientId(id); setShowNewClient(false); toast.success('Cliente creado') }
+                if (id) { setClientId(id); setShowNewClient(false); toast.success(newClientTipo === 'empresa' ? 'Empresa creada' : 'Cliente creado') }
               }}>
-              + Crear como persona natural
+              {newClientTipo === 'empresa' ? '+ Crear empresa' : '+ Crear persona natural'}
             </button>
           </div>
         )}
