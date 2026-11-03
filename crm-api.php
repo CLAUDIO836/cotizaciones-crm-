@@ -2187,13 +2187,13 @@ if ($action === 'prospects_list') {
     if ($call_cat === 'sin_llamar') {
         $where .= ' AND NOT EXISTS (SELECT 1 FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call" AND a.duration_sec IS NOT NULL)';
     } elseif ($call_cat === 'con_intencion') {
-        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") >= 60';
-    } elseif ($call_cat === 'contactado_call') {
-        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") BETWEEN 15 AND 59';
+        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") >= 91';
+    } elseif ($call_cat === 'contactada') {
+        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") BETWEEN 46 AND 90';
     } elseif ($call_cat === 'fria') {
-        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") BETWEEN 5 AND 14';
-    } elseif ($call_cat === 'fallida') {
-        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") BETWEEN 0 AND 4';
+        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") BETWEEN 31 AND 45';
+    } elseif ($call_cat === 'sin_respuesta') {
+        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") BETWEEN 0 AND 30';
     }
 
     $stmt = db()->prepare("
@@ -2665,9 +2665,9 @@ if ($action === 'call_status_update') {
                 $contact->execute([$phone9, $phone9]);
                 $cRow = $contact->fetch();
                 if ($cRow) {
-                    $result = $duration >= 60 ? 'interested'
-                            : ($duration >= 15 ? 'contacted'
-                            : ($duration >= 5  ? 'cold' : 'no_answer'));
+                    $result = $duration >= 91 ? 'interested'
+                            : ($duration >= 46 ? 'contacted'
+                            : ($duration >= 31 ? 'cold' : 'no_answer'));
                     db()->prepare("INSERT INTO prospect_activities
                         (id, prospect_id, contact_id, user_id, type, result, duration_sec, call_sid, created_at)
                         VALUES (UUID(), ?, ?, ?, 'call', ?, ?, ?, NOW())")
@@ -2784,13 +2784,13 @@ if ($action === 'call_dashboard') {
 
     // Clasificar cada colegio por su mejor llamada
     function classifyDuration(int $d): string {
-        if ($d >= 60) return 'con_intencion';
-        if ($d >= 15) return 'contactado';
-        if ($d >= 5)  return 'fria';
-        return 'fallida';
+        if ($d >= 91) return 'con_intencion';
+        if ($d >= 46) return 'contactada';
+        if ($d >= 31) return 'fria';
+        return 'sin_respuesta';
     }
 
-    $summary = ['con_intencion' => 0, 'contactado' => 0, 'fria' => 0, 'fallida' => 0, 'total_colegios' => 0, 'total_calls' => 0];
+    $summary = ['con_intencion' => 0, 'contactada' => 0, 'fria' => 0, 'sin_respuesta' => 0, 'total_colegios' => 0, 'total_calls' => 0];
     foreach ($prospectRows as &$p) {
         $p['best_duration'] = (int)$p['best_duration'];
         $p['call_count']    = (int)$p['call_count'];
@@ -2836,7 +2836,7 @@ if ($action === 'call_dashboard') {
         if (!isset($execMap[$uid])) {
             $execMap[$uid] = [
                 'user_id' => $uid, 'executive_name' => $r['executive_name'],
-                'con_intencion' => 0, 'contactado' => 0, 'fria' => 0, 'fallida' => 0,
+                'con_intencion' => 0, 'contactada' => 0, 'fria' => 0, 'sin_respuesta' => 0,
                 'total_colegios' => 0, 'total_calls' => 0, 'days' => [], 'daily_intencion' => [],
             ];
         }
@@ -2855,9 +2855,9 @@ if ($action === 'call_dashboard') {
             'user_id'              => $e['user_id'],
             'executive_name'       => $e['executive_name'],
             'con_intencion'        => $e['con_intencion'],
-            'contactado'           => $e['contactado'],
+            'contactada'           => $e['contactada'],
             'fria'                 => $e['fria'],
-            'fallida'              => $e['fallida'],
+            'sin_respuesta'        => $e['sin_respuesta'],
             'total_colegios'       => $e['total_colegios'],
             'days_active'          => $days,
             'total_calls'          => $e['total_calls'],
@@ -2877,7 +2877,7 @@ if ($action === 'call_dashboard') {
     $commMap = [];
     foreach ($prospectRows as $p) {
         $c = $p['commune'] ?? 'Sin asignar';
-        if (!isset($commMap[$c])) $commMap[$c] = ['con_intencion'=>0,'contactado'=>0,'fria'=>0,'fallida'=>0,'llamados'=>0];
+        if (!isset($commMap[$c])) $commMap[$c] = ['con_intencion'=>0,'contactada'=>0,'fria'=>0,'sin_respuesta'=>0,'llamados'=>0];
         $commMap[$c][$p['category']]++;
         $commMap[$c]['llamados']++;
     }
@@ -2890,9 +2890,9 @@ if ($action === 'call_dashboard') {
             'total'         => $total,
             'llamados'      => $d['llamados'],
             'con_intencion' => $d['con_intencion'],
-            'contactado'    => $d['contactado'],
+            'contactada'    => $d['contactada'],
             'fria'          => $d['fria'],
-            'fallida'       => $d['fallida'],
+            'sin_respuesta' => $d['sin_respuesta'],
             'sin_contacto'  => max(0, $total - $d['llamados']),
             'coverage_pct'  => $total > 0 ? round($d['llamados']       / $total * 100) : 0,
             'intencion_pct' => $total > 0 ? round($d['con_intencion']  / $total * 100) : 0,
@@ -2903,7 +2903,7 @@ if ($action === 'call_dashboard') {
         if (!isset($commMap[$comm]) && (!$filter_commune || $comm === $filter_commune)) {
             $communeStats[] = [
                 'commune' => $comm, 'total' => $total, 'llamados' => 0,
-                'con_intencion' => 0, 'contactado' => 0, 'fria' => 0, 'fallida' => 0,
+                'con_intencion' => 0, 'contactada' => 0, 'fria' => 0, 'sin_respuesta' => 0,
                 'sin_contacto' => $total, 'coverage_pct' => 0, 'intencion_pct' => 0,
             ];
         }
@@ -3039,7 +3039,7 @@ if ($action === 'call_recording_update') {
                 $cRow = $contact->fetch();
                 if ($cRow) {
                     $dur = $duration ?? 0;
-                    $result = $dur >= 60 ? 'interested' : ($dur >= 15 ? 'contacted' : ($dur >= 5 ? 'cold' : 'no_answer'));
+                    $result = $dur >= 91 ? 'interested' : ($dur >= 46 ? 'contacted' : ($dur >= 31 ? 'cold' : 'no_answer'));
                     db()->prepare("INSERT IGNORE INTO prospect_activities (id, prospect_id, contact_id, user_id, type, result, duration_sec, call_sid, recording_url, created_at) VALUES (UUID(), ?, ?, ?, 'call', ?, ?, ?, ?, NOW())")
                         ->execute([$cRow['prospect_id'], $cRow['contact_id'], $ocRow['user_id'], $result, $dur, $primarySid, $recordingUrl]);
                     // Actualizar estado del prospecto si estaba sin gestionar
@@ -3792,19 +3792,50 @@ if ($action === 'wa_cloud_messages') {
     ok(['conversation' => $convRow, 'messages' => $messages]);
 }
 
-// ── Bandeja WhatsApp: asignar conversación ────────────────────────────────────
-if ($action === 'wa_cloud_assign') {
-    $user = requireAuth();
-    $b = body();
-    $convId    = $b['conv_id']    ?? null;
-    $assignTo  = $b['assign_to']  ?? null;  // user_id o null para desasignar
-
-    if (!$convId) err('conv_id requerido');
-
-    $stmt = db()->prepare("UPDATE wa_cloud_conversations SET assigned_to = ? WHERE id = ?");
-    $stmt->execute([$assignTo ?: null, $convId]);
-    ok(['assigned_to' => $assignTo]);
+// ── Admin: estado ejecutivas ──────────────────────────────────────────────────
+if ($action === 'wa_estado_ejecutivas') {
+    $secret = $_GET['_s'] ?? ($_SERVER['HTTP_X_ADMIN_SECRET'] ?? '');
+    if ($secret !== 'ccl2026adm') requireAuth();
+    $excluir = ['56974270657','56999000001','56999999999','56999990001'];
+    $ph = implode(',', array_fill(0, count($excluir), '?'));
+    $resumen = db()->prepare("
+        SELECT COALESCE(p.name,'Sin asignar') AS ejecutiva,
+               COUNT(*) AS total,
+               SUM(c.stage='nuevo') AS nuevo,
+               SUM(c.stage='formulario_enviado') AS form_enviado,
+               SUM(c.stage='formulario_completo') AS form_completo,
+               SUM(c.stage='cotizando') AS cotizando,
+               SUM(c.stage='cerrado') AS cerrado,
+               SUM(c.stage='ganado') AS ganado,
+               SUM(c.stage='perdido') AS perdido,
+               SUM(c.bot_active=1 AND c.stage NOT IN ('cerrado','ganado','perdido')) AS bot_activo,
+               SUM(c.form_link_sent_at IS NOT NULL AND c.form_submitted_at IS NULL) AS esperando_form,
+               SUM(c.form_submitted_at IS NOT NULL) AS forms_recibidos
+        FROM wa_cloud_conversations c
+        LEFT JOIN profiles p ON p.id = c.assigned_to
+        WHERE c.phone NOT IN ($ph)
+        GROUP BY c.assigned_to, p.name
+        ORDER BY p.name IS NULL, p.name
+    ");
+    $resumen->execute($excluir);
+    $detalle = db()->prepare("
+        SELECT COALESCE(p.name,'Sin asignar') AS ejecutiva,
+               c.contact_name, c.phone, c.stage, c.bot_active,
+               c.form_link_sent_at IS NOT NULL AS form_enviado,
+               c.form_submitted_at IS NOT NULL AS form_recibido,
+               TIMESTAMPDIFF(HOUR, c.last_customer_msg_at, NOW()) AS horas_sin_msg,
+               c.followup_count
+        FROM wa_cloud_conversations c
+        LEFT JOIN profiles p ON p.id = c.assigned_to
+        WHERE c.stage NOT IN ('cerrado','ganado','perdido')
+          AND c.phone NOT IN ($ph)
+        ORDER BY p.name IS NULL, p.name, c.stage, c.updated_at DESC
+    ");
+    $detalle->execute($excluir);
+    ok(['resumen' => $resumen->fetchAll(), 'detalle' => $detalle->fetchAll()]);
 }
+
+// ── Bandeja WhatsApp: asignar conversación ─ (ver bloque correcto más abajo) ──
 
 // ── Bandeja WhatsApp: tomar chat (humano) / liberar (bot) ────────────────────
 if ($action === 'wa_cloud_take') {
@@ -4048,12 +4079,44 @@ if ($action === 'autz_cancel') {
     ok(['id' => $b['id'], 'status' => 'anulada']);
 }
 
+if ($action === 'autz_reopen') {
+    $u = requireAuth();
+    autzEnsureTable();
+    $b = body();
+    $stmt = db()->prepare("UPDATE price_authorizations
+        SET status = 'pendiente', decided_by = NULL, decided_by_name = NULL, decided_at = NULL, comentario = NULL
+        WHERE id = ? AND status = 'anulada' AND (requested_by = ? OR ?)");
+    $stmt->execute([$b['id'] ?? '', $u['id'], autzEsAprobador($u) ? 1 : 0]);
+    if ($stmt->rowCount() === 0) err('No se puede reabrir: no fue anulada o no tienes permiso', 409);
+    ok(['id' => $b['id'], 'status' => 'pendiente']);
+}
+
 if ($action === 'autz_pending_count') {
     $u = requireAuth();
     autzEnsureTable();
     $esAprobador = autzEsAprobador($u);
     $n = $esAprobador ? (int)db()->query("SELECT COUNT(*) FROM price_authorizations WHERE status = 'pendiente'")->fetchColumn() : 0;
     ok(['count' => $n, 'es_aprobador' => $esAprobador]);
+}
+
+// ── Detalle de una conversación WA por ID ─────────────────────────────────────
+if ($action === 'wa_cloud_detail') {
+    $user = requireAuth();
+    $convId = $_GET['conv_id'] ?? ($body['conv_id'] ?? null);
+    if (!$convId) err('conv_id requerido');
+    $conv = db()->prepare("SELECT c.id, c.phone, c.contact_name, c.assigned_to, c.bot_active, c.stage, c.source,
+        c.last_msg_at, c.last_customer_msg_at, c.unread_count, c.notes,
+        c.contact_rut, c.service_date, c.contact_email,
+        c.service_origin, c.service_destination, c.service_passengers, c.service_type, c.service_vehicle,
+        c.created_at, p.name AS assigned_name
+        FROM wa_cloud_conversations c
+        LEFT JOIN profiles p ON p.id = c.assigned_to
+        WHERE c.id = ?");
+    $conv->execute([$convId]);
+    $row = $conv->fetch(PDO::FETCH_ASSOC);
+    if (!$row) err('Conversación no encontrada', 404);
+    if (!isAdmin($user) && $row['assigned_to'] && $row['assigned_to'] !== $user['id']) err('Forbidden', 403);
+    ok($row);
 }
 
 // ── Backfill ficha desde historial (Claude extrae datos de cada conv) ─────────
@@ -4336,6 +4399,138 @@ if ($action === 'wa_form_save') {
     }
 
     ok(['saved' => true]);
+}
+
+// ── wa_bot_reactivate ─────────────────────────────────────────────────────────
+if ($action === 'wa_bot_reactivate') {
+    $user   = requireAuth();
+    $b      = body();
+    $convId = $b['conv_id'] ?? null;
+    if (!$convId) err('conv_id requerido');
+
+    $convStmt = db()->prepare("SELECT * FROM wa_cloud_conversations WHERE id = ?");
+    $convStmt->execute([$convId]);
+    $conv = $convStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$conv) err('Conversación no encontrada', 404);
+
+    // Activar bot
+    db()->prepare("UPDATE wa_cloud_conversations SET bot_active = 1 WHERE id = ?")
+       ->execute([$convId]);
+
+    // Últimos 30 mensajes (cronológico)
+    $msgStmt = db()->prepare(
+        "SELECT direction, content, sender_type FROM wa_cloud_messages
+         WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 30"
+    );
+    $msgStmt->execute([$convId]);
+    $msgs = array_reverse($msgStmt->fetchAll(PDO::FETCH_ASSOC));
+
+    $historyText = '';
+    foreach ($msgs as $m) {
+        $who = $m['direction'] === 'in' ? 'Cliente'
+             : ($m['sender_type'] === 'bot' ? 'Sofía (bot)' : 'Ejecutivo');
+        $historyText .= "[{$who}]: {$m['content']}\n";
+    }
+
+    // Campos faltantes
+    $faltantes = [];
+    if (!$conv['contact_name'])      $faltantes[] = 'nombre y apellido';
+    if (!$conv['contact_email'])     $faltantes[] = 'email';
+    if (!$conv['contact_rut'])       $faltantes[] = 'RUT';
+    if (!$conv['service_origin'])    $faltantes[] = 'origen del traslado';
+    if (!$conv['service_destination']) $faltantes[] = 'destino del traslado';
+    if (!$conv['service_date'])      $faltantes[] = 'fecha del servicio';
+    if (!$conv['service_passengers']) $faltantes[] = 'número de pasajeros';
+    if (!$conv['service_type'])      $faltantes[] = 'tipo de servicio';
+
+    $fichaTexto = "Nombre: " . ($conv['contact_name']        ?? 'desconocido') . "\n"
+        . "Email: "         . ($conv['contact_email']        ?? 'no registrado') . "\n"
+        . "RUT: "           . ($conv['contact_rut']          ?? 'no registrado') . "\n"
+        . "Origen: "        . ($conv['service_origin']       ?? 'no registrado') . "\n"
+        . "Destino: "       . ($conv['service_destination']  ?? 'no registrado') . "\n"
+        . "Fecha: "         . ($conv['service_date']         ?? 'no registrada') . "\n"
+        . "Pasajeros: "     . ($conv['service_passengers']   ?? 'no registrado') . "\n"
+        . "Tipo servicio: " . ($conv['service_type']         ?? 'no registrado') . "\n"
+        . "Vehículo: "      . ($conv['service_vehicle']      ?? 'no registrado');
+
+    $faltantesStr = count($faltantes) > 0
+        ? "DATOS FALTANTES que debes pedir naturalmente: " . implode(', ', $faltantes) . "\n"
+        : "Ya tienes todos los datos. Ofrece enviar la cotización pronto.\n";
+
+    $systemPrompt = "Eres Sofía, asistente de TransCCL (empresa de traslados en buses, minibuses y vans en Chile).
+Acaban de pasarte esta conversación de WhatsApp para que continues el seguimiento.
+Tu tarea: leer TODA la conversación y enviar UN solo mensaje de seguimiento natural en español chileno informal.
+
+REGLAS:
+- Escribe de forma natural, como si llevaras la conversación, sin mencionar que hubo un ejecutivo humano
+- Si el cliente ya dejó ciertos datos, no los repitas ni los pidas de nuevo
+- Sé breve: máximo 3-4 oraciones
+- NO uses emojis en exceso (máximo 1-2)
+- Tono: amable, profesional y chileno
+{$faltantesStr}";
+
+    $userContent = "HISTORIAL:\n{$historyText}\n\nFICHA:\n{$fichaTexto}\n\nRedacta el mensaje de seguimiento:";
+
+    // Llamar a Claude
+    $aiKey = defined('AI_KEY') ? AI_KEY : (getenv('ANTHROPIC_API_KEY') ?: '');
+    if (!$aiKey) err('AI_KEY no configurada', 503);
+
+    $ch = curl_init('https://api.anthropic.com/v1/messages');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER     => [
+            'x-api-key: ' . $aiKey, 'anthropic-version: 2023-06-01', 'Content-Type: application/json',
+        ],
+        CURLOPT_POSTFIELDS => json_encode([
+            'model' => 'claude-sonnet-5-5', 'max_tokens' => 300,
+            'system'   => $systemPrompt,
+            'messages' => [['role' => 'user', 'content' => $userContent]],
+        ]),
+        CURLOPT_TIMEOUT => 30,
+    ]);
+    $aiResp   = curl_exec($ch);
+    $aiStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($aiStatus >= 400) err('Error al generar mensaje IA: ' . substr($aiResp, 0, 200), 503);
+    $aiData = json_decode($aiResp, true);
+    $botMsg = trim($aiData['content'][0]['text'] ?? '');
+    if (!$botMsg) err('IA no generó mensaje', 503);
+
+    // Enviar por WA
+    $waToken = defined('META_WA_TOKEN')           ? META_WA_TOKEN           : (getenv('WHATSAPP_TOKEN') ?: '');
+    $phoneId = defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : (getenv('WHATSAPP_PHONE_NUMBER_ID') ?: '');
+    if (!$waToken || !$phoneId) err('META_WA_TOKEN / META_WA_PHONE_NUMBER_ID no configurados', 503);
+
+    $ch2 = curl_init("https://graph.facebook.com/v21.0/{$phoneId}/messages");
+    curl_setopt_array($ch2, [
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER     => ["Authorization: Bearer {$waToken}", 'Content-Type: application/json'],
+        CURLOPT_POSTFIELDS     => json_encode([
+            'messaging_product' => 'whatsapp', 'to' => $conv['phone'],
+            'type' => 'text', 'text' => ['body' => $botMsg, 'preview_url' => false],
+        ]),
+        CURLOPT_TIMEOUT => 10,
+    ]);
+    $waResp   = curl_exec($ch2);
+    $waStatus = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+    curl_close($ch2);
+
+    if ($waStatus >= 400) {
+        error_log('[wa_bot_reactivate] WA send error ' . $waStatus . ': ' . substr($waResp, 0, 200));
+    }
+
+    // Guardar mensaje en DB
+    $msgId = bin2hex(random_bytes(16));
+    db()->prepare(
+        "INSERT INTO wa_cloud_messages (id, conversation_id, direction, content, msg_type, status, sender_type)
+         VALUES (?, ?, 'out', ?, 'text', 'sent', 'bot')"
+    )->execute([$msgId, $convId, $botMsg]);
+
+    db()->prepare("UPDATE wa_cloud_conversations SET last_msg_at = NOW(), bot_active = 1 WHERE id = ?")
+       ->execute([$convId]);
+
+    ok(['bot_active' => true, 'message' => $botMsg]);
 }
 
 // ── Not found ─────────────────────────────────────────────────────────────────

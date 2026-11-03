@@ -19,6 +19,35 @@ interface CallRow {
   prospect_company: string | null
 }
 
+type CallCat = 'con_intencion' | 'contactada' | 'fria' | 'sin_respuesta'
+
+function classifyCall(sec: number | null): CallCat {
+  if (!sec || sec <= 0) return 'sin_respuesta'
+  if (sec >= 91) return 'con_intencion'
+  if (sec >= 46) return 'contactada'
+  if (sec >= 31) return 'fria'
+  return 'sin_respuesta'
+}
+
+const CAT_LABEL: Record<CallCat, string> = {
+  con_intencion: 'Con intención',
+  contactada:    'Contactada',
+  fria:          'Fría',
+  sin_respuesta: 'Sin respuesta',
+}
+const CAT_RANGE: Record<CallCat, string> = {
+  con_intencion: '≥1:31 min',
+  contactada:    '46–90s',
+  fria:          '31–45s',
+  sin_respuesta: '0–30s',
+}
+const CAT_STYLE: Record<CallCat, { badge: string; dot: string }> = {
+  con_intencion: { badge: 'bg-green-100 text-green-700',  dot: '#16a34a' },
+  contactada:    { badge: 'bg-blue-100 text-blue-700',    dot: '#3b82f6' },
+  fria:          { badge: 'bg-orange-100 text-orange-700',dot: '#f97316' },
+  sin_respuesta: { badge: 'bg-gray-100 text-gray-500',    dot: '#9ca3af' },
+}
+
 interface Props {
   calls: CallRow[]
   executives: { id: string; name: string }[]
@@ -64,6 +93,7 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
   const [direction, setDirection] = useState('')
   const [quickYear, setQuickYear]   = useState('')
   const [quickMonth, setQuickMonth] = useState('')
+  const [catFilter, setCatFilter] = useState<CallCat | ''>('')
 
   function applyQuick(year: string, month: string) {
     setQuickYear(year); setQuickMonth(month)
@@ -96,6 +126,7 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
       if (dateTo   && dt.dateVal > dateTo)   return false
       if (executive && c.user_id !== executive) return false
       if (direction && (c.direction ?? 'outbound') !== direction) return false
+      if (catFilter && classifyCall(c.duration_sec) !== catFilter) return false
       if (search) {
         const q = search.toLowerCase()
         const match =
@@ -107,18 +138,40 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
       }
       return true
     })
-  }, [calls, dateFrom, dateTo, executive, direction, search])
+  }, [calls, dateFrom, dateTo, executive, direction, catFilter, search])
 
   const outbound = filtered.filter(c => c.direction !== 'inbound')
   const inbound  = filtered.filter(c => c.direction === 'inbound')
   const known    = filtered.filter(c => c.contact_id)
 
-  function clearFilters() {
-    setSearch(''); setDateFrom(''); setDateTo(''); setExecutive(''); setDirection('')
-    setQuickYear(''); setQuickMonth('')
+  // Counts by category (over ALL outbound filtered, ignoring catFilter itself)
+  const allOut = useMemo(() => rows.filter(c => {
+    const dt = formatTime(c.called_at_cl ?? c.called_at)
+    if (dateFrom && dt.dateVal < dateFrom) return false
+    if (dateTo   && dt.dateVal > dateTo)   return false
+    if (executive && c.user_id !== executive) return false
+    if (direction && (c.direction ?? 'outbound') !== direction) return false
+    if (search) {
+      const q = search.toLowerCase()
+      return c.to_number.includes(q) || (c.executive_name ?? '').toLowerCase().includes(q) ||
+        (c.contact_name ?? '').toLowerCase().includes(q) || (c.prospect_company ?? '').toLowerCase().includes(q)
+    }
+    return true
+  }), [rows, dateFrom, dateTo, executive, direction, search])
+
+  const catCounts: Record<CallCat, number> = {
+    con_intencion: allOut.filter(c => classifyCall(c.duration_sec) === 'con_intencion').length,
+    contactada:    allOut.filter(c => classifyCall(c.duration_sec) === 'contactada').length,
+    fria:          allOut.filter(c => classifyCall(c.duration_sec) === 'fria').length,
+    sin_respuesta: allOut.filter(c => classifyCall(c.duration_sec) === 'sin_respuesta').length,
   }
 
-  const hasFilters = search || dateFrom || dateTo || executive || direction
+  function clearFilters() {
+    setSearch(''); setDateFrom(''); setDateTo(''); setExecutive(''); setDirection('')
+    setQuickYear(''); setQuickMonth(''); setCatFilter('')
+  }
+
+  const hasFilters = search || dateFrom || dateTo || executive || direction || catFilter
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-5">
@@ -220,19 +273,44 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
         </div>
       </div>
 
-      {/* Resumen */}
-      <div className="grid grid-cols-4 gap-4">
+      {/* Resumen general */}
+      <div className="grid grid-cols-4 gap-3">
         {[
-          { label: 'Total', value: filtered.length, color: 'text-gray-900' },
-          { label: 'Salientes', value: outbound.length, color: 'text-blue-600' },
-          { label: 'Entrantes', value: inbound.length, color: 'text-purple-600' },
-          { label: 'Conocidos', value: known.length, color: 'text-green-700' },
+          { label: 'Total', value: filtered.length, color: 'text-gray-900', sub: 'con filtros' },
+          { label: 'Salientes', value: outbound.length, color: 'text-blue-600', sub: 'del total' },
+          { label: 'Entrantes', value: inbound.length, color: 'text-purple-600', sub: 'del total' },
+          { label: 'Conocidos', value: known.length, color: 'text-green-700', sub: 'con contacto' },
         ].map(s => (
-          <div key={s.label} className="bg-white rounded-xl border p-4 text-center">
+          <div key={s.label} className="bg-white rounded-xl border p-3 text-center">
             <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
-            <div className="text-xs text-gray-500 mt-1">{s.label}</div>
+            <div className="text-xs font-medium text-gray-600 mt-0.5">{s.label}</div>
+            <div className="text-xs text-gray-400">{s.sub}</div>
           </div>
         ))}
+      </div>
+
+      {/* Categorías de llamada (clickeable = filtro) */}
+      <div className="grid grid-cols-4 gap-3">
+        {(['con_intencion', 'contactada', 'fria', 'sin_respuesta'] as CallCat[]).map(cat => {
+          const active = catFilter === cat
+          const s = CAT_STYLE[cat]
+          return (
+            <button key={cat} onClick={() => setCatFilter(active ? '' : cat)}
+              className={`rounded-xl border p-3 text-left transition-all cursor-pointer ${
+                active
+                  ? 'ring-2 ring-offset-1 shadow-sm'
+                  : 'bg-white hover:shadow-sm'
+              }`}
+              style={active ? { borderColor: s.dot, ringColor: s.dot, background: '#fafafa' } : {}}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.dot }} />
+                <span className="text-xs font-semibold text-gray-600">{CAT_LABEL[cat]}</span>
+              </div>
+              <div className="text-2xl font-bold text-gray-900">{catCounts[cat]}</div>
+              <div className="text-xs text-gray-400 mt-0.5">{CAT_RANGE[cat]}</div>
+            </button>
+          )
+        })}
       </div>
 
       {/* Tabla */}
@@ -244,7 +322,7 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
               <th className="text-left px-4 py-3 font-medium text-gray-500">Ejecutivo</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500">Número</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500">Contacto / Empresa</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500 w-20">Duración</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500 w-36">Duración</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500 w-28">Grabación</th>
               {isAdmin && <th className="w-8" />}
             </tr>
@@ -294,8 +372,19 @@ export default function LlamadasClient({ calls, executives, isAdmin }: Props) {
                       <span className="text-xs text-orange-400">Número externo</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-500 font-mono">
-                    {formatDuration(c.duration_sec) ?? '—'}
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const cat = classifyCall(c.duration_sec)
+                      const dur = formatDuration(c.duration_sec)
+                      return (
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs text-gray-500 font-mono">{dur ?? '—'}</span>
+                          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full w-fit ${CAT_STYLE[cat].badge}`}>
+                            {CAT_LABEL[cat]}
+                          </span>
+                        </div>
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-3">
                     {c.recording_url

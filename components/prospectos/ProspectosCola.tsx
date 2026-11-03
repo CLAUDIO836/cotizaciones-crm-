@@ -66,7 +66,7 @@ export default function ProspectosCola({
     applyFilter('q', search)
   }
 
-  const callCategories: (CallCategory | '')[] = ['', 'sin_llamar', 'fallida', 'fria', 'contactado_call', 'con_intencion']
+  const callCategories: (CallCategory | '')[] = ['', 'sin_llamar', 'sin_respuesta', 'fria', 'contactada', 'con_intencion']
 
   return (
     <div className="p-6 max-w-5xl mx-auto">

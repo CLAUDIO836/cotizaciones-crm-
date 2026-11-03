@@ -15,9 +15,9 @@ const DEFAULT_GOAL = 36
 
 interface Summary {
   con_intencion: number
-  contactado: number
+  contactada: number
   fria: number
-  fallida: number
+  sin_respuesta: number
   total_colegios: number
   total_calls: number
   total_campaign: number
@@ -29,9 +29,9 @@ interface ExecRow {
   user_id: string
   executive_name: string
   con_intencion: number
-  contactado: number
+  contactada: number
   fria: number
-  fallida: number
+  sin_respuesta: number
   total_colegios: number
   total_calls: number
   days_active: number
@@ -45,9 +45,9 @@ interface CommuneRow {
   total: number
   llamados: number
   con_intencion: number
-  contactado: number
+  contactada: number
   fria: number
-  fallida: number
+  sin_respuesta: number
   sin_contacto: number
   coverage_pct: number
   intencion_pct: number
@@ -81,22 +81,22 @@ function fmtDur(sec: number): string {
 }
 
 const CAT_LABEL: Record<string, string> = {
-  con_intencion: 'Con intención',
-  contactado:    'Contactado',
-  fria:          'Llamada fría',
-  fallida:       'Fallida',
+  con_intencion: 'Con intención (+91s)',
+  contactada:    'Contactada (46–90s)',
+  fria:          'Fría (31–45s)',
+  sin_respuesta: 'Sin respuesta (0–30s)',
 }
 const CAT_COLOR: Record<string, string> = {
   con_intencion: 'bg-green-100 text-green-700',
-  contactado:    'bg-yellow-100 text-yellow-700',
+  contactada:    'bg-blue-100 text-blue-700',
   fria:          'bg-orange-100 text-orange-700',
-  fallida:       'bg-red-100 text-red-700',
+  sin_respuesta: 'bg-gray-100 text-gray-600',
 }
 const CAT_DOT: Record<string, string> = {
   con_intencion: 'bg-green-500',
-  contactado:    'bg-yellow-400',
+  contactada:    'bg-blue-400',
   fria:          'bg-orange-400',
-  fallida:       'bg-red-400',
+  sin_respuesta: 'bg-gray-300',
 }
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
@@ -162,8 +162,8 @@ function GoalBar({ exec, goal }: { exec: ExecRow; goal: number }) {
         <span><span className="font-medium text-blue-500">{exec.total_calls ?? exec.total_colegios}</span> llamadas</span>
         <span><span className="font-medium text-gray-700">{exec.total_colegios}</span> colegios</span>
         <span><span className="font-medium text-green-600">{exec.con_intencion}</span> con intención</span>
-        <span><span className="font-medium text-yellow-600">{exec.contactado}</span> contactados</span>
-        <span><span className="font-medium text-red-400">{exec.fallida}</span> fallidas</span>
+        <span><span className="font-medium text-blue-600">{exec.contactada}</span> contactadas</span>
+        <span><span className="font-medium text-gray-400">{exec.sin_respuesta}</span> sin resp.</span>
       </div>
     </div>
   )
@@ -392,20 +392,20 @@ export default function ProspectosDashboard({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <BigCard value={s?.con_intencion ?? 0}
               label="Con intención de venta"
-              sub={`≥1 min · ${s?.intencion_pct ?? 0}% del total campaña`}
+              sub={`≥1:31 min · ${s?.intencion_pct ?? 0}% del total campaña`}
               dot="bg-green-500" />
-            <BigCard value={s?.contactado ?? 0}
-              label="Contactados"
-              sub="15 – 59 segundos"
-              dot="bg-yellow-400" />
+            <BigCard value={s?.contactada ?? 0}
+              label="Contactadas"
+              sub="46 – 90 segundos"
+              dot="bg-blue-400" />
             <BigCard value={s?.fria ?? 0}
               label="Llamada fría"
-              sub="5 – 14 segundos"
+              sub="31 – 45 segundos"
               dot="bg-orange-400" />
-            <BigCard value={s?.fallida ?? 0}
-              label="Fallidas / No contestó"
-              sub="0 – 4 segundos"
-              dot="bg-red-400" />
+            <BigCard value={s?.sin_respuesta ?? 0}
+              label="Sin respuesta"
+              sub="0 – 30 segundos"
+              dot="bg-gray-300" />
           </div>
 
           {/* Cobertura global */}
@@ -426,7 +426,7 @@ export default function ProspectosDashboard({
                 </div>
               </div>
               <div className="flex gap-3 text-xs flex-wrap">
-                {(['con_intencion','contactado','fria','fallida'] as const).map(cat => (
+                {(['con_intencion','contactada','fria','sin_respuesta'] as const).map(cat => (
                   <span key={cat} className={`px-2 py-1 rounded-full font-medium ${CAT_COLOR[cat]}`}>
                     {s[cat]} {CAT_LABEL[cat].toLowerCase()}
                   </span>
@@ -461,8 +461,8 @@ export default function ProspectosDashboard({
                     <th className="text-center px-3 py-3 text-blue-500">Llamadas</th>
                     <th className="text-center px-3 py-3">Colegios</th>
                     <th className="text-center px-3 py-3 text-green-600">Intención</th>
-                    <th className="text-center px-3 py-3 text-yellow-600">Contactado</th>
-                    <th className="text-center px-3 py-3 text-red-400">Fallida</th>
+                    <th className="text-center px-3 py-3 text-blue-600">Contactada</th>
+                    <th className="text-center px-3 py-3 text-gray-400">Sin resp.</th>
                     <th className="text-center px-3 py-3">Días</th>
                     <th className="text-center px-3 py-3">Col./día</th>
                     <th className="text-center px-3 py-3">Tasa</th>
@@ -477,8 +477,8 @@ export default function ProspectosDashboard({
                         <td className="px-3 py-3 text-center tabular-nums text-blue-500">{exec.total_calls ?? exec.total_colegios}</td>
                         <td className="px-3 py-3 text-center tabular-nums font-medium">{exec.total_colegios}</td>
                         <td className="px-3 py-3 text-center tabular-nums font-bold text-green-600">{exec.con_intencion}</td>
-                        <td className="px-3 py-3 text-center tabular-nums text-yellow-600">{exec.contactado}</td>
-                        <td className="px-3 py-3 text-center tabular-nums text-red-400">{exec.fallida}</td>
+                        <td className="px-3 py-3 text-center tabular-nums text-blue-600">{exec.contactada}</td>
+                        <td className="px-3 py-3 text-center tabular-nums text-gray-400">{exec.sin_respuesta}</td>
                         <td className="px-3 py-3 text-center tabular-nums text-gray-500">{exec.days_active}</td>
                         <td className={`px-3 py-3 text-center tabular-nums font-bold ${onGoal ? 'text-green-600' : 'text-red-500'}`}>
                           {(exec.daily_avg_total ?? exec.daily_avg_intencion ?? 0).toFixed(1)}
@@ -512,9 +512,9 @@ export default function ProspectosDashboard({
                       <th className="text-center px-3 py-3">Total</th>
                       <th className="text-center px-3 py-3">Llamados</th>
                       <th className="text-center px-3 py-3 text-green-600">Intención</th>
-                      <th className="text-center px-3 py-3 text-yellow-600">Contactado</th>
+                      <th className="text-center px-3 py-3 text-blue-600">Contactada</th>
                       <th className="text-center px-3 py-3 text-orange-500">Fría</th>
-                      <th className="text-center px-3 py-3 text-red-400">Fallida</th>
+                      <th className="text-center px-3 py-3 text-gray-400">Sin resp.</th>
                       <th className="text-center px-3 py-3">Sin contacto</th>
                       <th className="text-center px-3 py-3">Cobertura</th>
                     </tr>
@@ -531,9 +531,9 @@ export default function ProspectosDashboard({
                           <td className="px-3 py-2.5 text-center tabular-nums text-gray-500">{c.total}</td>
                           <td className="px-3 py-2.5 text-center tabular-nums">{c.llamados}</td>
                           <td className="px-3 py-2.5 text-center tabular-nums font-bold text-green-600">{c.con_intencion}</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums text-yellow-600">{c.contactado}</td>
+                          <td className="px-3 py-2.5 text-center tabular-nums text-blue-600">{c.contactada}</td>
                           <td className="px-3 py-2.5 text-center tabular-nums text-orange-500">{c.fria}</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums text-red-400">{c.fallida}</td>
+                          <td className="px-3 py-2.5 text-center tabular-nums text-gray-400">{c.sin_respuesta}</td>
                           <td className="px-3 py-2.5 text-center tabular-nums text-gray-400">{c.sin_contacto}</td>
                           <td className="px-3 py-2.5 text-center">
                             <div className="flex items-center gap-1.5">
