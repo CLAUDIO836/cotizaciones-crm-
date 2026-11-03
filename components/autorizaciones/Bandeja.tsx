@@ -98,14 +98,14 @@ function Tarjeta({ a, esAprobador, miId, onCambio }: {
       {a.detalle && <pre className="whitespace-pre-wrap text-xs text-gray-600 font-sans bg-gray-50 rounded-lg p-2">{a.detalle}</pre>}
 
       {a.status !== 'pendiente' && (
-        <div className=”space-y-2”>
-          <p className=”text-sm text-gray-700”>
-            {e.label} por {a.decided_by_name} · {fecha(a.decided_at)}{a.comentario && <> — “{a.comentario}”</>}
+        <div className="space-y-2">
+          <p className="text-sm text-gray-700">
+            {e.label} por {a.decided_by_name} · {fecha(a.decided_at)}{a.comentario && <> — "{a.comentario}"</>}
           </p>
           {a.status === 'anulada' && (esAprobador || a.requested_by === miId) && (
-            <Button type=”button” variant=”outline” size=”sm” disabled={enviando}
+            <Button type="button" variant="outline" size="sm" disabled={enviando}
               onClick={() => accion('reopen')}>
-              ↩ Reenviar a pendiente
+              Reenviar a pendiente
             </Button>
           )}
         </div>
@@ -180,7 +180,7 @@ export default function Bandeja({ miId }: { miId: string }) {
       {datos && datos.items.length === 0 && (
         <div className="bg-white rounded-xl border p-6 text-sm text-gray-500">
           {estado === 'pendiente' ? 'No hay solicitudes pendientes.' : 'Todavía no hay solicitudes resueltas.'}
-          {' '}Las solicitudes se crean desde el Cotizador con “Solicitar aprobación”.
+          {' '}Las solicitudes se crean desde el Cotizador con "Solicitar aprobación".
         </div>
       )}
       <div className="grid gap-3 xl:grid-cols-2">
