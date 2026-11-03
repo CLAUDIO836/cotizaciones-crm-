@@ -421,6 +421,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     if (newClientTipo === 'natural') {
       const palabras = newClientName.trim().split(/\s+/)
       if (palabras.length < 2) { toast.error('Escribe nombre Y apellido (mínimo dos palabras)'); return null }
+      if (!newClientRut.trim()) { toast.error('El RUT del cliente es obligatorio'); return null }
       if (!newClientCelular.trim()) { toast.error('El celular del cliente es obligatorio'); return null }
       if (!newClientEmail.trim()) { toast.error('El email del cliente es obligatorio'); return null }
       const res = await fetch('/api/clients', {
@@ -428,7 +429,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newClientName.trim(),
-          rut: newClientRut.trim() || null,
+          rut: newClientRut.trim(),
           telefono_celular: newClientCelular.trim(),
           email: newClientEmail.trim(),
         }),
@@ -694,7 +695,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
                     placeholder="Juan Perez" className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-amber-700 font-medium">RUT</label>
+                  <label className="text-xs text-amber-700 font-medium">RUT *</label>
                   <input type="text" value={newClientRut} onChange={e => setNewClientRut(e.target.value)}
                     placeholder="12.345.678-9" className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
                 </div>
