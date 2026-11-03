@@ -157,6 +157,10 @@ function ensureTables(): void {
         "ALTER TABLE wa_cloud_conversations ADD COLUMN contact_rut VARCHAR(20) NULL",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN service_date DATE NULL",
         "ALTER TABLE wa_cloud_messages ADD COLUMN sender_type VARCHAR(20) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN form_link_sent_at DATETIME NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN form_submitted_at DATETIME NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN followup_count TINYINT NOT NULL DEFAULT 0",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN handoff_requested_at DATETIME NULL",
     ] as $sql) {
         try { $pdo->exec($sql); } catch (PDOException $e) {
             if ($e->getCode() !== '42S21') throw $e;
@@ -184,8 +188,8 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         ensureTables();
         $pdo = db();
 
-        // Upsert conversación
-        $stmt = $pdo->prepare("SELECT id, bot_active FROM wa_cloud_conversations WHERE phone = ?");
+        // Upsert conversación (incluye ficha para pasarla al bot)
+        $stmt = $pdo->prepare("SELECT id, bot_active, assigned_to, contact_name, contact_email, contact_rut, service_origin, service_destination, service_date, service_passengers, service_type, service_vehicle, form_link_sent_at, form_submitted_at, followup_count, handoff_requested_at FROM wa_cloud_conversations WHERE phone = ?");
         $stmt->execute([$phone]);
         $conv = $stmt->fetch();
 
@@ -245,19 +249,37 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
 
         error_log("[wa_webhook] PROC phone={$phone} wamid={$wamid} ai=" . (bool)_AI_KEY . " wa=" . (bool)_WA_TOKEN);
 
+        // Obtener nombre de la ejecutiva asignada para personalizar respuestas
+        $execName = null;
+        {
+            $aStmt = $pdo->prepare(
+                "SELECT p.name FROM profiles p
+                 INNER JOIN wa_cloud_conversations c ON c.assigned_to = p.id
+                 WHERE c.id = ? LIMIT 1"
+            );
+            $aStmt->execute([$convId]);
+            $execName = $aStmt->fetch()['name'] ?? null;
+        }
+
         // Historial (últimos 20 mensajes, orden ascendente)
         $hStmt = $pdo->prepare("SELECT direction, content FROM wa_cloud_messages
             WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 20");
         $hStmt->execute([$convId]);
         $history = array_reverse($hStmt->fetchAll());
 
-        // Llamar a Claude
-        $botReply = runBot($phone, $text, $history, $name);
+        // Llamar a Claude (con estado actual de la ficha)
+        $fichaActual = $conv ? array_intersect_key((array)$conv, array_flip([
+            'contact_name','contact_email','contact_rut',
+            'service_origin','service_destination','service_date',
+            'service_passengers','service_type','service_vehicle'
+        ])) : [];
+        $botReply = runBot($phone, $text, $history, $name, $fichaActual, $execName);
         if (!$botReply) { error_log("[wa_webhook] EMPTY_REPLY phone={$phone}"); return; }
 
-        // Detectar y extraer etiqueta de escalado
-        $shouldEscalate = str_contains($botReply, '[ESCALAR_A_HUMANO]');
-        $botReply       = trim(str_replace('[ESCALAR_A_HUMANO]', '', $botReply));
+        // Detectar y extraer etiquetas de control
+        $shouldEscalate       = str_contains($botReply, '[ESCALAR_A_HUMANO]');
+        $clientePideEjecutiva = str_contains($botReply, '[CLIENTE_PIDE_EJECUTIVA]');
+        $botReply = trim(str_replace(['[ESCALAR_A_HUMANO]', '[CLIENTE_PIDE_EJECUTIVA]'], '', $botReply));
 
         // Parsear FICHA_JSON y guardar campos de cotización en la conversación
         if (preg_match('/\[FICHA_JSON:(\{[^\]]+\})\]/', $botReply, $fichaMatch)) {
@@ -307,6 +329,27 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             }
         }
 
+        // Registrar envío del link del formulario + enviar imagen de bienvenida (primera vez)
+        if ($botReply && str_contains($botReply, 'crm.transccl.cl/form/')) {
+            $yaEnvioLink = !empty($conv['form_link_sent_at']);
+            $pdo->prepare("UPDATE wa_cloud_conversations SET form_link_sent_at = COALESCE(form_link_sent_at, NOW()) WHERE id = ?")
+                ->execute([$convId]);
+            if (!$yaEnvioLink) {
+                $imgWamid = sendWAImage($phone, 'https://www.transccl.cl/img/wa_cotizacion.webp', '');
+                if ($imgWamid) {
+                    $imgId = dbUuid();
+                    $pdo->prepare("INSERT IGNORE INTO wa_cloud_messages (id, conversation_id, wamid, direction, content, sender_type, created_at) VALUES (?,?,?,'out','[imagen bienvenida cotización]','bot',NOW())")
+                        ->execute([$imgId, $convId, $imgWamid]);
+                }
+            }
+        }
+
+        // Cliente solicita hablar con ejecutiva → handoff + desactivar bot
+        if ($clientePideEjecutiva) {
+            $pdo->prepare("UPDATE wa_cloud_conversations SET handoff_requested_at = NOW(), bot_active = 0 WHERE id = ?")
+                ->execute([$convId]);
+        }
+
         // Escalar a humano
         if ($shouldEscalate) {
             $pdo->prepare("UPDATE wa_cloud_conversations SET bot_active = 0 WHERE id = ?")
@@ -353,6 +396,39 @@ function assignRoundRobin(PDO $pdo, string $convId, string $clientPhone, ?string
     }
 }
 
+function sendWAImage(string $phone, string $imageUrl, string $caption): ?string {
+    if (!_WA_TOKEN || !_WA_PHONE) return null;
+    $img = ['link' => $imageUrl];
+    if ($caption !== '') $img['caption'] = $caption;
+    $payload = [
+        'messaging_product' => 'whatsapp',
+        'to'                => $phone,
+        'type'              => 'image',
+        'image'             => $img,
+    ];
+    $ch = curl_init("https://graph.facebook.com/v21.0/" . _WA_PHONE . "/messages");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => [
+            'Authorization: Bearer ' . _WA_TOKEN,
+            'Content-Type: application/json',
+        ],
+        CURLOPT_POSTFIELDS => json_encode($payload),
+        CURLOPT_TIMEOUT    => 15,
+    ]);
+    $resp    = curl_exec($ch);
+    $curlErr = curl_error($ch);
+    $status  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($resp === false || $curlErr || $status >= 400) {
+        error_log('[wa_webhook] sendWAImage error ' . $status . ': ' . ($curlErr ?: substr($resp, 0, 200)));
+        return null;
+    }
+    $data = json_decode($resp, true) ?? [];
+    return $data['messages'][0]['id'] ?? null;
+}
+
 function sendWA(string $phone, string $text): ?string {
     if (!_WA_TOKEN || !_WA_PHONE) return null;
 
@@ -391,7 +467,7 @@ function sendWA(string $phone, string $text): ?string {
     return $data['messages'][0]['id'] ?? null;
 }
 
-function runBot(string $phone, string $latestMsg, array $history, ?string $name): ?string {
+function runBot(string $phone, string $latestMsg, array $history, ?string $name, array $ficha = [], ?string $execName = null): ?string {
     if (!_AI_KEY) return null;
 
     // Construir array de mensajes para Claude (alternando user/assistant)
@@ -419,7 +495,7 @@ function runBot(string $phone, string $latestMsg, array $history, ?string $name)
     $payload = [
         'model'      => 'claude-sonnet-5-5',
         'max_tokens' => 4096,
-        'system'     => buildSystemPrompt($phone, $name),
+        'system'     => buildSystemPrompt($phone, $name, $ficha, $execName),
         'messages'   => $messages,
     ];
 
@@ -474,7 +550,56 @@ function runBot(string $phone, string $latestMsg, array $history, ?string $name)
     return $text;
 }
 
-function buildSystemPrompt(string $phone, ?string $name): string {
+function buildFichaContext(array $ficha): string {
+    // Campos requeridos para considerar la ficha "del formulario" completa
+    $required = [
+        'contact_name'        => 'Nombre',
+        'service_origin'      => 'Origen',
+        'service_destination' => 'Destino',
+        'service_date'        => 'Fecha servicio',
+        'service_passengers'  => 'N° pasajeros',
+        'service_type'        => 'Tipo servicio',
+    ];
+    // Campos opcionales (no bloquean "ficha completa")
+    $optional = [
+        'contact_email'   => 'Email',
+        'contact_rut'     => 'RUT',
+        'service_vehicle' => 'Vehículo preferido',
+    ];
+
+    $known   = [];
+    $missing = [];
+    foreach ($required as $col => $label) {
+        $val = $ficha[$col] ?? null;
+        if ($val !== null && $val !== '' && $val !== '0') {
+            $display = ($col === 'service_date') ? date('d/m/Y', strtotime($val)) : $val;
+            $known[] = "  - {$label}: {$display}";
+        } else {
+            $missing[] = $label;
+        }
+    }
+    foreach ($optional as $col => $label) {
+        $val = $ficha[$col] ?? null;
+        if ($val !== null && $val !== '' && $val !== '0') {
+            $known[] = "  - {$label}: {$val}";
+        }
+    }
+
+    $out = "## ESTADO DE LA FICHA\n";
+    if ($known) {
+        $out .= "DATOS YA CONOCIDOS (NO volver a pedir estos):\n" . implode("\n", $known) . "\n";
+    }
+    if ($missing) {
+        $out .= "FICHA INCOMPLETA — faltan: " . implode(", ", $missing) . "\n";
+        $out .= "→ Envía el link del formulario al cliente para que los complete.\n";
+    } else {
+        $out .= "FICHA COMPLETA (llenó el formulario) — confirma con resumen y pregunta si tiene dudas.\n";
+    }
+    $out .= "\n";
+    return $out;
+}
+
+function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?string $execName = null): string {
     $tz   = new DateTimeZone('America/Santiago');
     $now  = new DateTime('now', $tz);
     $dow  = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'][(int)$now->format('w')];
@@ -524,16 +649,21 @@ function buildSystemPrompt(string $phone, ?string $name): string {
            "4. Salida ≥ 09:00 y regreso del destino < 15:00, mismo día.\n" .
            "5. Fecha ≤ 15-nov-2026.\n" .
            "6. Acepta modalidad deja y retira.\n\n" .
-           "## FICHA A RECOLECTAR (conversando, en este orden)\n" .
-           "1. Tipo de servicio.\n" .
-           "2. N° de pasajeros.\n" .
-           "3. Dirección exacta origen (calle, número, comuna).\n" .
-           "4. Dirección exacta destino.\n" .
-           "5. Fecha y hora de salida; hora de retorno.\n" .
-           "6. ¿Espera o deja y retira? ¿Paradas?\n" .
-           "7. Nombre completo del contacto, correo, razón social.\n" .
-           "8. RUT (AL FINAL: 'para emitir la cotización formal').\n\n" .
-           "Antes de preguntar, revisar TODO lo que el cliente ya escribió.\n\n" .
+           "## FLUJO DE COTIZACIÓN (NUEVO — SIEMPRE SEGUIR ESTE FLUJO)\n" .
+           "El proceso de cotización ahora usa un formulario web. NO hagas preguntas una a una para llenar la ficha.\n\n" .
+           "PASO 1 — Cliente quiere cotizar (ficha incompleta):\n" .
+           "Cuando el cliente exprese intención de cotizar o pedir transporte, envíale directamente el link del formulario.\n" .
+           "Mensaje exacto a usar (adapta el saludo, pero el link debe ir siempre):\n" .
+           "'¡Con gusto te ayudo! Para prepararte la cotización rápido, te comparto un formulario que solo toma 1 minuto 😊\n" .
+           "https://crm.transccl.cl/form/{$phone}\n" .
+           "Completa los detalles del viaje y te enviamos la cotización de inmediato 🚌'\n\n" .
+           "PASO 2 — Ficha ya completa (ESTADO DE LA FICHA indica 'FICHA COMPLETA'):\n" .
+           "Confirma con un resumen amigable de todos los datos y pregunta si tiene alguna duda o quiere agregar algo.\n" .
+           "Ejemplo: '¡Entendí muy bien tu cotización! 😊 Necesitas un [tipo] para [pasajeros] personas desde [origen] hacia [destino] el [fecha]. ¿Tienes alguna duda o quieres cambiar algo antes de que la ejecutiva te contacte?'\n\n" .
+           "PASO 3 — Resolver dudas:\n" .
+           "Responde preguntas sobre precio, vehículos, condiciones, etc. Si el cliente confirma que todo está bien → escala a ejecutiva.\n\n" .
+           "IMPORTANTE: Si el cliente ya envió datos en el chat (ejemplos de conversación más abajo), captura igual en FICHA_JSON. El formulario es el canal principal, pero el chat también sirve.\n\n" .
+           buildFichaContext($ficha) .
            "## FICHA_JSON (MUY IMPORTANTE)\n" .
            "Al final de CADA respuesta tuya, si en la conversación ya conoces alguno de estos datos, incluye obligatoriamente este bloque exacto (sin espacios extra, al final del texto, en una nueva línea):\n" .
            "[FICHA_JSON:{\"nombre\":\"...\",\"email\":\"...\",\"rut\":\"...\",\"origen\":\"...\",\"destino\":\"...\",\"fecha\":\"...\",\"pasajeros\":\"...\",\"tipo\":\"...\"}]\n\n" .
@@ -660,10 +790,16 @@ function buildSystemPrompt(string $phone, ?string $name): string {
            "Dentro del horario: 'una ejecutiva te contactará a la brevedad.'\n" .
            "Fuera del horario: 'nuestro horario es L–V 8:30–18:00; tu solicitud quedó registrada y una ejecutiva " .
            "te contactará el próximo día hábil desde las 8:30.'\n\n" .
+           "## CUANDO EL CLIENTE QUIERE HABLAR CON EJECUTIVA\n" .
+           "Si el cliente dice que quiere hablar con una persona, llamar, o ser contactado directamente:\n" .
+           "Responde exactamente así (adapta el saludo):\n" .
+           "'¡Con gusto! Puedes llamarnos al 22 945 5713" . ($execName ? " y pedir por {$execName}" : "") . ". Una ejecutiva te atenderá personalmente 😊\n" .
+           "También puedes seguir escribiendo aquí y te contactamos pronto.'\n" .
+           "Luego añade [CLIENTE_PIDE_EJECUTIVA] y [ESCALAR_A_HUMANO] al final (en líneas aparte).\n\n" .
            "## CUÁNDO ESCALAR A HUMANO\n" .
            "Incluye la etiqueta [ESCALAR_A_HUMANO] al final de tu respuesta si:\n" .
            "- La ficha está completa y el cliente confirmó el resumen.\n" .
-           "- El cliente pide hablar con una persona.\n" .
+           "- El cliente pide hablar con una persona o llamar. ADEMÁS incluye [CLIENTE_PIDE_EJECUTIVA].\n" .
            "- El cliente está molesto o reclama.\n" .
            "- Es un choque o accidente.\n" .
            "- Es traslado de personal recurrente (empresa).\n" .

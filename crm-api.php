@@ -3643,6 +3643,15 @@ if ($action === 'wa_cloud_list') {
             WHERE c.last_customer_msg_at IS NULL");
     } catch (PDOException $e) {}
 
+    // Auto-cerrar: ventana 24h expirada → stage=cerrado, bot=0
+    try {
+        db()->exec("UPDATE wa_cloud_conversations
+            SET stage = 'cerrado', bot_active = 0
+            WHERE stage NOT IN ('cerrado', 'ganado', 'perdido')
+            AND last_customer_msg_at IS NOT NULL
+            AND last_customer_msg_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)");
+    } catch (PDOException $e) {}
+
     $filterAgent = $_GET['assigned_to'] ?? null;  // UUID o 'none'
     $filterStage = $_GET['stage']       ?? null;
 
@@ -3668,7 +3677,7 @@ if ($action === 'wa_cloud_list') {
         SELECT c.id, c.phone, c.contact_name, c.assigned_to, c.bot_active,
                c.stage, c.source, c.last_msg_at, c.last_customer_msg_at,
                c.unread_count, c.notes, c.contact_rut, c.service_date, c.created_at,
-               c.contact_email, c.service_origin, c.service_destination, c.service_passengers, c.service_type,
+               c.contact_email, c.service_origin, c.service_destination, c.service_passengers, c.service_type, c.service_vehicle,
                p.name AS assigned_name,
                m.content AS last_message
         FROM wa_cloud_conversations c
@@ -3744,7 +3753,7 @@ if ($action === 'wa_cloud_note') {
     if (!$id) err('conv_id requerido');
     $fields = [];
     $vals   = [];
-    foreach (['notes','contact_rut','service_date','contact_email','service_origin','service_destination','service_passengers','service_type'] as $f) {
+    foreach (['notes','contact_rut','service_date','contact_email','service_origin','service_destination','service_passengers','service_type','service_vehicle'] as $f) {
         if (array_key_exists($f, $b)) { $fields[] = "$f = ?"; $vals[] = ($b[$f] !== '' ? $b[$f] : null); }
     }
     if (empty($fields)) err('Sin campos');
@@ -4044,6 +4053,157 @@ if ($action === 'autz_pending_count') {
     $esAprobador = autzEsAprobador($u);
     $n = $esAprobador ? (int)db()->query("SELECT COUNT(*) FROM price_authorizations WHERE status = 'pendiente'")->fetchColumn() : 0;
     ok(['count' => $n, 'es_aprobador' => $esAprobador]);
+}
+
+// ── Backfill ficha desde historial (Claude extrae datos de cada conv) ─────────
+if ($action === 'wa_cloud_backfill') {
+    $u = requireAuth();
+    if (!isAdmin($u)) err('Solo administradores', 403);
+
+    $aiKey = defined('AI_KEY') ? AI_KEY : (getenv('ANTHROPIC_API_KEY') ?: '');
+    if (!$aiKey) err('Sin API key de Claude', 500);
+
+    // Traer hasta 100 conversaciones con campos vacíos
+    $convs = db()->query(
+        "SELECT id, phone, contact_name FROM wa_cloud_conversations
+         WHERE (contact_email IS NULL OR service_origin IS NULL OR service_destination IS NULL
+             OR service_passengers IS NULL OR service_date IS NULL OR service_type IS NULL)
+         ORDER BY last_msg_at DESC LIMIT 100"
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    $updated = 0;
+    foreach ($convs as $conv) {
+        // Historial de la conversación
+        $msgs = db()->prepare("SELECT direction, content FROM wa_cloud_messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 60");
+        $msgs->execute([$conv['id']]);
+        $rows = $msgs->fetchAll(PDO::FETCH_ASSOC);
+        if (count($rows) < 2) continue;
+
+        $transcript = '';
+        foreach ($rows as $r) {
+            $who = $r['direction'] === 'in' ? 'CLIENTE' : 'BOT';
+            $transcript .= "[{$who}]: {$r['content']}\n";
+        }
+
+        $extractPrompt = "Extrae del siguiente historial de WhatsApp los datos de cotización que el cliente mencionó. Responde ÚNICAMENTE con JSON en este formato exacto (omite los campos que no aparecen en la conversación, no pongas null ni cadenas vacías):\n{\"nombre\":\"...\",\"email\":\"...\",\"rut\":\"...\",\"origen\":\"...\",\"destino\":\"...\",\"fecha\":\"dd/mm/yyyy\",\"pasajeros\":\"número\",\"tipo\":\"...\"}\n\nHistorial:\n" . mb_substr($transcript, 0, 6000);
+
+        $ch = curl_init('https://api.anthropic.com/v1/messages');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => [
+                'x-api-key: ' . $aiKey,
+                'anthropic-version: 2023-06-01',
+                'Content-Type: application/json',
+            ],
+            CURLOPT_POSTFIELDS => json_encode([
+                'model' => 'claude-haiku-5-5',
+                'max_tokens' => 300,
+                'messages' => [['role' => 'user', 'content' => $extractPrompt]],
+            ]),
+            CURLOPT_TIMEOUT => 20,
+        ]);
+        $raw  = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($code !== 200) continue;
+
+        $resp = json_decode($raw, true);
+        $text = trim($resp['content'][0]['text'] ?? '');
+        if (!$text) continue;
+
+        // Extraer JSON de la respuesta (puede venir entre ```json ... ```)
+        if (preg_match('/\{[^}]+\}/s', $text, $m)) {
+            $ficha = json_decode($m[0], true);
+            if (!is_array($ficha)) continue;
+        } else continue;
+
+        $map = [
+            'nombre'    => 'contact_name',
+            'email'     => 'contact_email',
+            'rut'       => 'contact_rut',
+            'origen'    => 'service_origin',
+            'destino'   => 'service_destination',
+            'fecha'     => 'service_date',
+            'pasajeros' => 'service_passengers',
+            'tipo'      => 'service_type',
+        ];
+        $fields = []; $vals = [];
+        foreach ($map as $k => $col) {
+            if (!empty($ficha[$k])) {
+                $v = $ficha[$k];
+                if ($col === 'service_date' && preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $v, $pd)) {
+                    $v = "{$pd[3]}-{$pd[2]}-{$pd[1]}";
+                }
+                if ($col === 'service_passengers') $v = (int)$v ?: null;
+                $fields[] = "$col = ?";
+                $vals[]   = $v;
+            }
+        }
+        if ($fields) {
+            $vals[] = $conv['id'];
+            db()->prepare("UPDATE wa_cloud_conversations SET " . implode(', ', $fields) . " WHERE id = ?")->execute($vals);
+            $updated++;
+        }
+    }
+    ok(['checked' => count($convs), 'updated' => $updated]);
+}
+
+// ── MIGRACIÓN (admin) ─────────────────────────────────────────────────────────
+if ($action === 'wa_migrate_vehicle') {
+    if (($_GET['k'] ?? '') !== 'transccl2026') err('Forbidden', 403);
+    try {
+        db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_vehicle VARCHAR(50) NULL AFTER service_type");
+        ok(['added' => true]);
+    } catch (PDOException $e) {
+        ok(['already_exists' => true, 'msg' => $e->getMessage()]);
+    }
+}
+
+// ── FORMULARIO PÚBLICO (sin auth) ────────────────────────────────────────────
+if ($action === 'wa_form_get') {
+    $phone = preg_replace('/\D/', '', body()['phone'] ?? ($_GET['phone'] ?? ''));
+    if (!$phone) err('phone requerido');
+    $stmt = db()->prepare(
+        "SELECT contact_name, contact_email, contact_rut,
+                service_origin, service_destination, service_date,
+                service_passengers, service_type, service_vehicle
+         FROM wa_cloud_conversations WHERE phone = ? LIMIT 1"
+    );
+    $stmt->execute([$phone]);
+    $row = $stmt->fetch() ?: [];
+    if (!empty($row['service_date'])) {
+        $row['service_date'] = date('Y-m-d', strtotime($row['service_date']));
+    }
+    ok($row);
+}
+
+if ($action === 'wa_form_save') {
+    $b     = body();
+    $phone = preg_replace('/\D/', '', $b['phone'] ?? '');
+    if (!$phone) err('phone requerido');
+    $stmt = db()->prepare("SELECT id FROM wa_cloud_conversations WHERE phone = ? LIMIT 1");
+    $stmt->execute([$phone]);
+    if (!$stmt->fetch()) err('Conversación no encontrada', 404);
+
+    $allowed = ['contact_name','contact_email','contact_rut',
+                'service_origin','service_destination','service_date',
+                'service_passengers','service_type','service_vehicle'];
+    $sets = []; $vals = [];
+    foreach ($allowed as $col) {
+        if (array_key_exists($col, $b)) {
+            $v = $b[$col] === '' ? null : $b[$col];
+            if ($col === 'service_passengers' && $v !== null) $v = (int)$v ?: null;
+            $sets[] = "$col = ?";
+            $vals[] = $v;
+        }
+    }
+    if (!$sets) err('Sin campos para guardar');
+    $sets[] = "form_submitted_at = COALESCE(form_submitted_at, NOW())";
+    $vals[] = $phone;
+    db()->prepare("UPDATE wa_cloud_conversations SET " . implode(', ', $sets) . " WHERE phone = ?")
+        ->execute($vals);
+    ok(['saved' => true]);
 }
 
 // ── Not found ─────────────────────────────────────────────────────────────────
