@@ -80,10 +80,10 @@ export default function ChatBox() {
         <button
           onClick={() => setOpen(true)}
           className="fixed bottom-5 right-5 z-50 w-10 h-10 rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
-          style={{ width: 52, height: 52, background: '#1d4ed8' }}
+          style={{ width: 36, height: 36, background: '#1d4ed8' }}
           aria-label="Abrir asistente"
         >
-          <MessageSquare size={22} color="#fff" />
+          <MessageSquare size={16} color="#fff" />
           {messages.length === 0 && (
             <span
               className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white"
