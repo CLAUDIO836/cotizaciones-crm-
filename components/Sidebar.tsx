@@ -144,11 +144,18 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
       {/* ── Icon rail ─────────────────────────────────────────────────── */}
       <div className="w-14 flex flex-col items-center py-4 gap-1"
         style={{ borderRight: '1px solid rgba(255,255,255,0.06)' }}>
-        {/* Logo */}
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-4"
+        {/* Logo + toggle */}
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center"
           style={{ background: '#1B8A4B' }}>
           <span className="text-white font-black text-sm">T</span>
         </div>
+        <button onClick={toggleCollapse} title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+          className="w-9 h-7 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 mb-2">
+          {collapsed
+            ? <ChevronRight className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.4)' }} />
+            : <ChevronLeft  className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.4)' }} />
+          }
+        </button>
 
         {iconRailItems.map(({ href, icon: Icon, label, ...rest }) => {
           const bc = getBadgeCount({ href, icon: Icon, label, ...rest })
@@ -196,15 +203,6 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
         )}
 
         <div className="flex-1" />
-
-        {/* Toggle collapse */}
-        <button onClick={toggleCollapse} title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-          className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 mb-1">
-          {collapsed
-            ? <ChevronRight className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.4)' }} />
-            : <ChevronLeft  className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.4)' }} />
-          }
-        </button>
 
         <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold uppercase cursor-pointer mb-1"
           style={{ background: '#1B8A4B' }} title={profile?.name ?? ''}>
