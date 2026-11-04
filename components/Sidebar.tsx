@@ -36,23 +36,27 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
   const onBandeja   = pathname.startsWith('/bandeja')
   const currentExec = onBandeja ? (searchParams.get('exec') ?? 'todos') : ''
 
-  const [execOpen,   setExecOpen]   = useState(onBandeja)
-  const [execAgents, setExecAgents] = useState<{ id: string; name: string }[]>([])
-  const [collapsed,  setCollapsed]  = useState(() => {
+  const [execOpen,    setExecOpen]   = useState(onBandeja)
+  const [execAgents,  setExecAgents] = useState<{ id: string; name: string }[]>([])
+  const [agentsFetched, setAgentsFetched] = useState(false)
+  const [collapsed,   setCollapsed]  = useState(() => {
     if (typeof window === 'undefined') return false
     return localStorage.getItem('sidebar_collapsed') === '1'
   })
 
   useEffect(() => { if (onBandeja) setExecOpen(true) }, [onBandeja])
 
+  // Solo fetch usuarios cuando se abre el submenú de Bandeja (lazy)
   useEffect(() => {
+    if (!execOpen || agentsFetched) return
+    setAgentsFetched(true)
     fetch('/api/admin/usuarios')
       .then(r => r.ok ? r.json() : [])
       .then((rows: { id: string; name: string; active: number; role?: string }[]) =>
         setExecAgents(rows.filter(r => r.active && r.role !== 'admin').map(r => ({ id: r.id, name: r.name })))
       )
       .catch(() => {})
-  }, [])
+  }, [execOpen, agentsFetched])
 
   function toggleCollapse() {
     setCollapsed(c => {
@@ -91,7 +95,7 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
     badgeCount?: number; active: boolean
   }) {
     return (
-      <Link href={href}
+      <Link href={href} prefetch={false}
         title={collapsed ? label : undefined}
         className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all group relative"
         style={itemStyle(active)}
@@ -184,7 +188,7 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
             <div className="ml-4 mt-0.5 flex flex-col gap-0.5 border-l pl-2"
               style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
               {subItems.map(item => (
-                <Link key={item.id} href={`/bandeja?exec=${item.id}`}
+                <Link key={item.id} href={`/bandeja?exec=${item.id}`} prefetch={false}
                   className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-medium transition-all"
                   style={currentExec === item.id
                     ? { background: 'rgba(27,138,75,0.12)', color: '#1B8A4B' }
