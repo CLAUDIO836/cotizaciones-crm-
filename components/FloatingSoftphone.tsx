@@ -165,7 +165,7 @@ export default function FloatingSoftphone() {
 
       {/* FAB */}
       <button onClick={() => setOpen(o => !o)}
-        className="w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl transition-all hover:scale-105 active:scale-95"
+        className="w-9 h-9 rounded-full shadow-lg flex items-center justify-center text-lg transition-all hover:scale-105 active:scale-95"
         style={{ background: inCall ? '#ef4444' : '#1B8A4B' }}
         title="Teléfono">
         {inCall ? '📵' : '📞'}
