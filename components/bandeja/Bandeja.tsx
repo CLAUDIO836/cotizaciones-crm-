@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { UserSession } from '@/lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Stage  = 'nuevo' | 'cotizando' | 'ganado' | 'perdido' | 'cerrado'
+type Stage  = 'nuevo' | 'formulario_enviado' | 'formulario_completo' | 'cotizando' | 'ganado' | 'perdido' | 'cerrado'
 type Source = 'whatsapp' | 'facebook' | 'instagram' | 'google' | 'referido' | 'otro'
 
 interface Conversation {
@@ -44,11 +44,13 @@ interface Message {
 
 // ── Stage config ──────────────────────────────────────────────────────────────
 const STAGES: { id: Stage; label: string; color: string; bg: string; dot: string }[] = [
-  { id: 'nuevo',      label: 'Nuevo',              color: '#6b7280', bg: '#f3f4f6', dot: '#9ca3af' },
-  { id: 'cotizando',  label: 'Preparando cotiz.',  color: '#1d4ed8', bg: '#eff6ff', dot: '#3b82f6' },
-  { id: 'ganado',     label: 'Ganado',             color: '#166534', bg: '#f0fdf4', dot: '#22c55e' },
-  { id: 'perdido',    label: 'Perdido',            color: '#991b1b', bg: '#fef2f2', dot: '#ef4444' },
-  { id: 'cerrado',    label: 'Cerrado',            color: '#4b5563', bg: '#f9fafb', dot: '#9ca3af' },
+  { id: 'nuevo',               label: 'Nuevo',              color: '#6b7280', bg: '#f3f4f6', dot: '#9ca3af' },
+  { id: 'formulario_enviado',  label: 'Form. enviado',      color: '#b45309', bg: '#fffbeb', dot: '#f59e0b' },
+  { id: 'formulario_completo', label: 'Listo p/ cotizar',   color: '#065f46', bg: '#ecfdf5', dot: '#10b981' },
+  { id: 'cotizando',           label: 'Preparando cotiz.',  color: '#1d4ed8', bg: '#eff6ff', dot: '#3b82f6' },
+  { id: 'ganado',              label: 'Ganado',             color: '#166534', bg: '#f0fdf4', dot: '#22c55e' },
+  { id: 'perdido',             label: 'Perdido',            color: '#991b1b', bg: '#fef2f2', dot: '#ef4444' },
+  { id: 'cerrado',             label: 'Cerrado',            color: '#4b5563', bg: '#f9fafb', dot: '#9ca3af' },
 ]
 const stageMap = Object.fromEntries(STAGES.map(s => [s.id, s]))
 
