@@ -161,6 +161,8 @@ function ensureTables(): void {
         "ALTER TABLE wa_cloud_conversations ADD COLUMN form_submitted_at DATETIME NULL",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN followup_count TINYINT NOT NULL DEFAULT 0",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN handoff_requested_at DATETIME NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN company_name VARCHAR(200) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN client_type VARCHAR(10) NULL",
     ] as $sql) {
         try { $pdo->exec($sql); } catch (PDOException $e) {
             if ($e->getCode() !== '42S21') throw $e;
@@ -281,17 +283,19 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             $execName = $aStmt->fetch()['name'] ?? null;
         }
 
-        // Historial (últimos 20 mensajes, orden ascendente)
+        // Historial (últimos 30 mensajes, orden ascendente)
         $hStmt = $pdo->prepare("SELECT direction, content FROM wa_cloud_messages
-            WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 20");
+            WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 30");
         $hStmt->execute([$convId]);
         $history = array_reverse($hStmt->fetchAll());
 
         // Llamar a Claude (con estado actual de la ficha)
         $fichaActual = $conv ? array_intersect_key((array)$conv, array_flip([
             'contact_name','contact_email','contact_rut',
+            'company_name','client_type',
             'service_origin','service_destination','service_date',
-            'service_passengers','service_type','service_vehicle'
+            'service_passengers','service_type','service_vehicle',
+            'form_submitted_at',
         ])) : [];
         $botReply = runBot($phone, $text, $history, $name, $fichaActual, $execName);
         if (!$botReply) { error_log("[wa_webhook] EMPTY_REPLY phone={$phone}"); return; }
@@ -306,14 +310,16 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             $ficha = json_decode($fichaMatch[1], true) ?? [];
             $fichaFields = []; $fichaVals = [];
             $fichaMap = [
-                'nombre'    => 'contact_name',
-                'email'     => 'contact_email',
-                'rut'       => 'contact_rut',
-                'origen'    => 'service_origin',
-                'destino'   => 'service_destination',
-                'fecha'     => 'service_date',
-                'pasajeros' => 'service_passengers',
-                'tipo'      => 'service_type',
+                'nombre'       => 'contact_name',
+                'email'        => 'contact_email',
+                'rut'          => 'contact_rut',
+                'razon_social' => 'company_name',
+                'tipo_cliente' => 'client_type',
+                'origen'       => 'service_origin',
+                'destino'      => 'service_destination',
+                'fecha'        => 'service_date',
+                'pasajeros'    => 'service_passengers',
+                'tipo'         => 'service_type',
             ];
             foreach ($fichaMap as $key => $col) {
                 if (!empty($ficha[$key])) {
@@ -333,6 +339,18 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             $botReply = trim(preg_replace('/\[FICHA_JSON:[^\]]+\]/', '', $botReply));
         }
 
+        // Safety net: si el formulario aún no fue enviado y el bot olvidó incluir el link, inyectarlo
+        // No inyectar si: formulario ya completado, O si los datos del servicio ya están en la ficha (chat)
+        $formYaEnviado   = !empty($conv['form_link_sent_at']);
+        $formSubmitado   = !empty($conv['form_submitted_at']);
+        $serviceDatosOk  = !empty($conv['service_origin']) && !empty($conv['service_destination'])
+                        && !empty($conv['service_date'])   && !empty($conv['service_passengers'])
+                        && !empty($conv['service_type']);
+        if (!$formYaEnviado && !$formSubmitado && !$serviceDatosOk && $botReply && !str_contains($botReply, 'crm.transccl.cl/form/')) {
+            $botReply .= "\n\nhttps://crm.transccl.cl/form/{$phone}";
+            error_log("[wa_webhook] SAFETY_NET_FORM_INJECT phone={$phone}");
+        }
+
         // Enviar respuesta por WhatsApp
         if ($botReply) {
             error_log("[wa_webhook] SEND phone={$phone} len=" . strlen($botReply));
@@ -349,17 +367,26 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             }
         }
 
-        // Registrar envío del link del formulario + enviar imagen de bienvenida (primera vez)
+        // Registrar envío del link del formulario + enviar imagen según tipo de servicio (primera vez)
         if ($botReply && str_contains($botReply, 'crm.transccl.cl/form/')) {
             $yaEnvioLink = !empty($conv['form_link_sent_at']);
             $pdo->prepare("UPDATE wa_cloud_conversations SET form_link_sent_at = COALESCE(form_link_sent_at, NOW()) WHERE id = ?")
                 ->execute([$convId]);
             if (!$yaEnvioLink) {
-                $imgWamid = sendWAImage($phone, 'https://www.transccl.cl/img/wa_cotizacion.webp', '');
+                // Imagen según tipo: salida educativa → flyer oferta; resto → imagen de marca
+                $esEducativa = stripos($botReply, 'salida educativa') !== false
+                            || stripos($botReply, '157.500') !== false
+                            || stripos($botReply, '187.500') !== false
+                            || stripos($botReply, 'educativa') !== false;
+                $imgUrl = $esEducativa
+                    ? 'https://www.transccl.cl/img/wa_salidas_educativas.webp'
+                    : 'https://www.transccl.cl/img/wa_transccl_marca.webp';
+                $imgLabel = $esEducativa ? '[imagen oferta salidas educativas]' : '[imagen marca TransCCL]';
+                $imgWamid = sendWAImage($phone, $imgUrl, '');
                 if ($imgWamid) {
                     $imgId = dbUuid();
-                    $pdo->prepare("INSERT IGNORE INTO wa_cloud_messages (id, conversation_id, wamid, direction, content, sender_type, created_at) VALUES (?,?,?,'out','[imagen bienvenida cotización]','bot',NOW())")
-                        ->execute([$imgId, $convId, $imgWamid]);
+                    $pdo->prepare("INSERT IGNORE INTO wa_cloud_messages (id, conversation_id, wamid, direction, content, sender_type, created_at) VALUES (?,?,?,'out',?,'bot',NOW())")
+                        ->execute([$imgId, $convId, $imgWamid, $imgLabel]);
                 }
             }
         }
@@ -571,50 +598,87 @@ function runBot(string $phone, string $latestMsg, array $history, ?string $name,
 }
 
 function buildFichaContext(array $ficha): string {
-    // Campos requeridos para considerar la ficha "del formulario" completa
-    $required = [
-        'contact_name'        => 'Nombre',
+    // Todos los campos de la ficha con sus etiquetas
+    $allFields = [
+        'contact_name'        => 'Nombre contacto',
+        'company_name'        => 'Razón social',
+        'contact_rut'         => 'RUT',
+        'contact_email'       => 'Email',
+        'client_type'         => 'Tipo cliente',
         'service_origin'      => 'Origen',
         'service_destination' => 'Destino',
         'service_date'        => 'Fecha servicio',
         'service_passengers'  => 'N° pasajeros',
         'service_type'        => 'Tipo servicio',
-    ];
-    // Campos opcionales (no bloquean "ficha completa")
-    $optional = [
-        'contact_email'   => 'Email',
-        'contact_rut'     => 'RUT',
-        'service_vehicle' => 'Vehículo preferido',
+        'service_vehicle'     => 'Vehículo preferido',
     ];
 
-    $known   = [];
-    $missing = [];
-    foreach ($required as $col => $label) {
+    $known = [];
+    foreach ($allFields as $col => $label) {
         $val = $ficha[$col] ?? null;
         if ($val !== null && $val !== '' && $val !== '0') {
             $display = ($col === 'service_date') ? date('d/m/Y', strtotime($val)) : $val;
             $known[] = "  - {$label}: {$display}";
-        } else {
-            $missing[] = $label;
         }
     }
-    foreach ($optional as $col => $label) {
-        $val = $ficha[$col] ?? null;
-        if ($val !== null && $val !== '' && $val !== '0') {
-            $known[] = "  - {$label}: {$val}";
-        }
+
+    $formSubmitted = !empty($ficha['form_submitted_at']);
+    $clientType    = $ficha['client_type'] ?? null;
+
+    // Detectar campos faltantes del formulario (datos del servicio)
+    $serviceMissing = [];
+    foreach (['service_origin'=>'Origen','service_destination'=>'Destino','service_date'=>'Fecha','service_passengers'=>'N° pasajeros','service_type'=>'Tipo servicio'] as $col => $label) {
+        if (empty($ficha[$col])) $serviceMissing[] = $label;
     }
+
+    // Datos de servicio completos aunque no haya formulario formal (recopilados en el chat)
+    $servicePorChat = empty($serviceMissing);
+    $datosServicioOk = $formSubmitted || $servicePorChat;
 
     $out = "## ESTADO DE LA FICHA\n";
     if ($known) {
         $out .= "DATOS YA CONOCIDOS (NO volver a pedir estos):\n" . implode("\n", $known) . "\n";
     }
-    if ($missing) {
-        $out .= "FICHA INCOMPLETA — faltan: " . implode(", ", $missing) . "\n";
-        $out .= "→ Envía el link del formulario al cliente para que los complete.\n";
-    } else {
-        $out .= "FICHA COMPLETA (llenó el formulario) — confirma con resumen y pregunta si tiene dudas.\n";
+
+    if (!$datosServicioOk) {
+        // PASO 1: faltan datos del servicio
+        $out .= "FICHA INCOMPLETA — faltan: " . implode(", ", $serviceMissing) . "\n";
+        $out .= "→ Envía el link del formulario al cliente para que complete los datos del servicio.\n";
+
+    } elseif (!$clientType) {
+        // PASO 2: formulario llenado, falta saber si empresa o personal
+        $out .= "FICHA PASO 2 — Formulario completado. Falta saber si cotiza como EMPRESA o PERSONA NATURAL.\n";
+        $out .= "→ Pregunta: '¿Cotizas a nombre de un colegio o empresa, o como persona particular?'\n";
+
+    } elseif ($clientType === 'empresa') {
+        // PASO 3: empresa — verificar datos de cotización
+        $faltanEmpresa = [];
+        if (empty($ficha['company_name']))   $faltanEmpresa[] = 'Razón social';
+        if (empty($ficha['contact_rut']))    $faltanEmpresa[] = 'RUT empresa';
+        if (empty($ficha['contact_name']))   $faltanEmpresa[] = 'Nombre de quien coordina';
+        if (empty($ficha['contact_email']))  $faltanEmpresa[] = 'Correo de contacto';
+
+        if ($faltanEmpresa) {
+            $out .= "FICHA EMPRESA — Faltan: " . implode(", ", $faltanEmpresa) . "\n";
+            $out .= "→ Pide estos datos en el chat, uno a uno. NO reenvíes el formulario.\n";
+        } else {
+            $out .= "FICHA COMPLETA EMPRESA — todos los datos listos para cotización formal. Confirma resumen y escala.\n";
+        }
+
+    } elseif ($clientType === 'personal') {
+        // PASO 4: persona natural
+        $faltanPersonal = [];
+        if (empty($ficha['contact_rut']))   $faltanPersonal[] = 'RUT personal';
+        if (empty($ficha['contact_email'])) $faltanPersonal[] = 'Correo de contacto';
+
+        if ($faltanPersonal) {
+            $out .= "FICHA PERSONA NATURAL — Faltan: " . implode(", ", $faltanPersonal) . "\n";
+            $out .= "→ Pide estos datos en el chat. NO reenvíes el formulario.\n";
+        } else {
+            $out .= "FICHA COMPLETA PERSONA NATURAL — todos los datos listos para cotización formal. Confirma resumen y escala.\n";
+        }
     }
+
     $out .= "\n";
     return $out;
 }
@@ -669,29 +733,66 @@ function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?str
            "4. Salida ≥ 09:00 y regreso del destino < 15:00, mismo día.\n" .
            "5. Fecha ≤ 15-nov-2026.\n" .
            "6. Acepta modalidad deja y retira.\n\n" .
-           "## FLUJO DE COTIZACIÓN (NUEVO — SIEMPRE SEGUIR ESTE FLUJO)\n" .
-           "El proceso de cotización ahora usa un formulario web. NO hagas preguntas una a una para llenar la ficha.\n\n" .
-           "PASO 1 — Cliente quiere cotizar (ficha incompleta):\n" .
-           "Cuando el cliente exprese intención de cotizar o pedir transporte, envíale directamente el link del formulario.\n" .
-           "Mensaje exacto a usar (adapta el saludo, pero el link debe ir siempre):\n" .
-           "'¡Con gusto te ayudo! Para prepararte la cotización rápido, te comparto un formulario que solo toma 1 minuto 😊\n" .
+           "## FLUJO DE COTIZACIÓN (SIEMPRE SEGUIR ESTE FLUJO — 5 PASOS)\n\n" .
+           "PASO 1 — FICHA INCOMPLETA (formulario no enviado):\n" .
+           "OBLIGATORIO: Envía el link del formulario INMEDIATAMENTE con entusiasmo. El link DEBE aparecer en tu respuesta.\n\n" .
+           "Si menciona SALIDA EDUCATIVA o colegio:\n" .
+           "'¡Qué buena salida! 🎒 Para salidas educativas en Santiago tenemos una oferta especial desde \$157.500 por bus (hasta 45 pax). Para confirmarte si califica y prepararte la cotización exacta, llena este formulario que toma 1 minuto 😊\n" .
            "https://crm.transccl.cl/form/{$phone}\n" .
-           "Completa los detalles del viaje y te enviamos la cotización de inmediato 🚌'\n\n" .
-           "PASO 2 — Ficha ya completa (ESTADO DE LA FICHA indica 'FICHA COMPLETA'):\n" .
-           "Confirma con un resumen amigable de todos los datos y pregunta si tiene alguna duda o quiere agregar algo.\n" .
-           "Ejemplo: '¡Entendí muy bien tu cotización! 😊 Necesitas un [tipo] para [pasajeros] personas desde [origen] hacia [destino] el [fecha]. ¿Tienes alguna duda o quieres cambiar algo antes de que la ejecutiva te contacte?'\n\n" .
-           "PASO 3 — Resolver dudas:\n" .
-           "Responde preguntas sobre precio, vehículos, condiciones, etc. Si el cliente confirma que todo está bien → escala a ejecutiva.\n\n" .
-           "IMPORTANTE: Si el cliente ya envió datos en el chat (ejemplos de conversación más abajo), captura igual en FICHA_JSON. El formulario es el canal principal, pero el chat también sirve.\n\n" .
+           "Evaluamos los detalles y te confirmamos si entra en la promoción 🚌'\n\n" .
+           "Para otros servicios:\n" .
+           "'¡Contamos con excelentes ofertas para tu servicio! 🎉 Para ver si calificas y prepararte la cotización exacta, llena este formulario que toma 1 minuto 😊\n" .
+           "https://crm.transccl.cl/form/{$phone}\n" .
+           "Además, por completar el formulario te regalamos un 5% de descuento adicional en tu cotización 🚌'\n\n" .
+           "PASO 2 — FICHA PASO 2 (datos del servicio completos, falta tipo de cliente):\n" .
+           "Aplica cuando: (a) el cliente completó el formulario, O (b) ya te dio origen, destino, fecha, pax y tipo de servicio en el chat.\n" .
+           "Reacciona con entusiasmo ('¡Perfecto, ya tengo todos los datos del servicio! 😊') y luego pregunta:\n" .
+           "'¿Cotizas a nombre de un colegio o empresa, o como persona particular?'\n" .
+           "Según la respuesta, incluye en el FICHA_JSON: {\"tipo_cliente\":\"empresa\"} o {\"tipo_cliente\":\"personal\"}\n\n" .
+           "PASO 3 — FICHA EMPRESA (faltan datos de la empresa):\n" .
+           "Pide los datos que faltan de forma natural, uno a uno. El estado de la ficha indica cuáles faltan.\n" .
+           "  - Razón social: '¿Cuál es el nombre legal del colegio o empresa?'\n" .
+           "  - RUT empresa:  '¿Cuál es el RUT de la empresa o institución?'\n" .
+           "  - Nombre contacto: '¿Tu nombre completo?'\n" .
+           "  - Correo: '¿Tu correo de contacto para enviarte la propuesta?'\n" .
+           "No preguntes de a varios a la vez si ya tienes algunos. Incluye cada dato en FICHA_JSON apenas el cliente lo dé.\n" .
+           "NUNCA reenvíes el formulario en este paso.\n\n" .
+           "PASO 4 — FICHA PERSONA NATURAL (faltan datos personales):\n" .
+           "Pide los datos faltantes uno a uno:\n" .
+           "  - RUT personal: '¿Tu RUT?'\n" .
+           "  - Correo: '¿Tu correo de contacto?'\n" .
+           "NUNCA reenvíes el formulario en este paso.\n\n" .
+           "PASO 5 — FICHA COMPLETA EMPRESA / FICHA COMPLETA PERSONA NATURAL:\n" .
+           "Confirma con un resumen amigable de TODOS los datos (servicio + datos de cotización) y pregunta si está correcto.\n" .
+           "Ejemplo empresa: '¡Perfecto, tengo todo listo! 😊\n" .
+           "Servicio: [tipo] para [pax] personas, [origen] → [destino], [fecha]\n" .
+           "Empresa: [razón social], RUT [rut], contacto: [nombre], [email]\n" .
+           "¿Está todo correcto?'\n" .
+           "Al confirmar → [ESCALAR_A_HUMANO]\n\n" .
+           "REGLA ABSOLUTA — FORMULARIO SOLO EN PASO 1:\n" .
+           "El link del formulario solo se envía en el PASO 1. En los PASOS 2 al 5, los datos se recopilan en el chat.\n" .
+           "Está PROHIBIDO reenviar el formulario después de que el cliente ya lo completó.\n" .
+           "Está PROHIBIDO INICIAR preguntas de: fecha, origen, destino, pasajeros o tipo de servicio en el chat si aún no tienes ningún dato.\n" .
+           "EXCEPCIÓN: Si el cliente ya te fue dando estos datos en la conversación de forma natural, ACÉPTALOS y guárdalos en FICHA_JSON. No hagas que llene el formulario de nuevo si ya te lo dijo todo.\n\n" .
+           "EXCEPCIÓN — Formulario no funciona:\n" .
+           "Si el cliente dice que no pudo llenar el formulario, SÍ puedes pedir los datos del servicio por chat: origen, destino, fecha, hora, pasajeros y nombre.\n\n" .
+           "EXCEPCIÓN — Cliente da datos en conversación:\n" .
+           "Si el cliente ya conversó contigo y te fue dando origen, destino, fecha, pax y tipo, ya tienes todo lo del formulario. Pasa directamente al PASO 2 sin insistir en el formulario.\n\n" .
+           "EXCEPCIÓN — Van o minibús con chofer:\n" .
+           "Si el cliente pide específicamente una van o minibús para traslado ejecutivo, aeropuerto o grupo pequeño, responde: '¡Con gusto! Para este tipo de servicio una ejecutiva te cotiza personalizado 😊 Llena el formulario y te contactamos al tiro:\nhttps://crm.transccl.cl/form/{$phone}' y agrega [ESCALAR_A_HUMANO] al final de tu respuesta.\n\n" .
+           "REGLA CONTINUIDAD — No te presentes de nuevo:\n" .
+           "Si ya hay mensajes previos en la conversación, NUNCA vuelvas a decir 'Hola soy Sofía' ni te presentes como si fuera el primer contacto. Continúa la conversación de forma natural desde donde quedó.\n\n" .
            buildFichaContext($ficha) .
            "## FICHA_JSON (MUY IMPORTANTE)\n" .
            "Al final de CADA respuesta tuya, si en la conversación ya conoces alguno de estos datos, incluye obligatoriamente este bloque exacto (sin espacios extra, al final del texto, en una nueva línea):\n" .
-           "[FICHA_JSON:{\"nombre\":\"...\",\"email\":\"...\",\"rut\":\"...\",\"origen\":\"...\",\"destino\":\"...\",\"fecha\":\"...\",\"pasajeros\":\"...\",\"tipo\":\"...\"}]\n\n" .
+           "[FICHA_JSON:{\"nombre\":\"...\",\"email\":\"...\",\"rut\":\"...\",\"razon_social\":\"...\",\"tipo_cliente\":\"...\",\"origen\":\"...\",\"destino\":\"...\",\"fecha\":\"...\",\"pasajeros\":\"...\",\"tipo\":\"...\"}]\n\n" .
            "Reglas del FICHA_JSON:\n" .
            "- Incluye SOLO los campos que YA conoces; omite los desconocidos (no pongas \"\" ni null).\n" .
-           "- \"nombre\": nombre completo del contacto o razón social.\n" .
+           "- \"nombre\": nombre completo de la persona de contacto (quien coordina el servicio).\n" .
            "- \"email\": correo del contacto.\n" .
-           "- \"rut\": RUT de la empresa/institución.\n" .
+           "- \"rut\": RUT de la empresa/institución O RUT personal si es persona natural.\n" .
+           "- \"razon_social\": nombre legal de la empresa, colegio o institución (solo para empresas).\n" .
+           "- \"tipo_cliente\": 'empresa' o 'personal' — incluir apenas el cliente lo confirme.\n" .
            "- \"origen\": dirección exacta de salida.\n" .
            "- \"destino\": nombre/dirección del destino.\n" .
            "- \"fecha\": fecha del servicio (dd/mm/yyyy).\n" .
