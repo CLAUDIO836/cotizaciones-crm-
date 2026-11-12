@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 
 const TIPOS = [
@@ -18,6 +18,124 @@ const VEHICULOS = [
   { id: 'notengo', label: 'Sin preferencia', desc: 'Lo que recomienden', icon: '🤷' },
 ]
 
+interface PlaceField {
+  address: string
+  placeId?: string
+  lat?: number
+  lng?: number
+  validated: boolean
+}
+const emptyPlace = (): PlaceField => ({ address: '', validated: false })
+
+interface Prediction { description: string; place_id: string }
+
+function usePlaceAutocomplete(value: PlaceField, onChange: (v: PlaceField) => void) {
+  const [suggestions, setSuggestions] = useState<Prediction[]>([])
+  const [open, setOpen] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  function handleChange(text: string) {
+    onChange({ address: text, validated: false })
+    clearTimeout(timer.current)
+    if (text.length < 3) { setSuggestions([]); setOpen(false); return }
+    timer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/places?input=${encodeURIComponent(text)}`)
+        const data = await res.json()
+        const preds: Prediction[] = (data.predictions ?? []).map((p: Prediction) => ({
+          description: p.description, place_id: p.place_id,
+        }))
+        setSuggestions(preds); setOpen(preds.length > 0)
+      } catch { setSuggestions([]); setOpen(false) }
+    }, 350)
+  }
+
+  async function select(pred: Prediction) {
+    setSuggestions([]); setOpen(false)
+    onChange({ address: pred.description, placeId: pred.place_id, validated: false })
+    try {
+      const res = await fetch(`/api/places?place_id=${encodeURIComponent(pred.place_id)}`)
+      const data = await res.json()
+      const loc = data.result?.geometry?.location
+      onChange({
+        address: pred.description,
+        placeId: pred.place_id,
+        lat: loc?.lat,
+        lng: loc?.lng,
+        validated: true,
+      })
+    } catch {
+      onChange({ address: pred.description, placeId: pred.place_id, validated: true })
+    }
+  }
+
+  return { suggestions, open, setOpen, handleChange, select }
+}
+
+function AddressFieldInline({
+  label, required, value, onChange, placeholder, inputStyle, labelStyle,
+}: {
+  label: string; required?: boolean; value: PlaceField; onChange: (v: PlaceField) => void
+  placeholder?: string; inputStyle: React.CSSProperties; labelStyle: React.CSSProperties
+}) {
+  const { suggestions, open, setOpen, handleChange, select } = usePlaceAutocomplete(value, onChange)
+  return (
+    <div style={{ position: 'relative' }}>
+      <label style={labelStyle}>
+        {label} {required && <span style={{ color: '#e53e3e' }}>*</span>}
+      </label>
+      <div style={{ position: 'relative' }}>
+        <input
+          style={{
+            ...inputStyle,
+            paddingRight: 36,
+            borderColor: value.address.length > 2
+              ? (value.validated ? '#38a169' : '#e2e8f0')
+              : '#e2e8f0',
+          }}
+          value={value.address}
+          onChange={e => handleChange(e.target.value)}
+          onBlur={() => setTimeout(() => setOpen(false), 180)}
+          placeholder={placeholder}
+          autoComplete="off"
+        />
+        {value.address.length > 2 && (
+          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none' }}>
+            {value.validated ? '✅' : '📍'}
+          </span>
+        )}
+      </div>
+      {!value.validated && value.address.length > 2 && !open && (
+        <div style={{ fontSize: 11, color: '#718096', marginTop: 3 }}>
+          Escribe y selecciona una sugerencia para validar la dirección
+        </div>
+      )}
+      {open && suggestions.length > 0 && (
+        <div style={{
+          position: 'absolute', zIndex: 100, left: 0, right: 0,
+          background: '#fff', border: '1.5px solid #cbd5e0', borderRadius: 10,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', marginTop: 4, maxHeight: 200, overflowY: 'auto',
+        }}>
+          {suggestions.map(p => (
+            <button
+              key={p.place_id}
+              type="button"
+              onMouseDown={() => select(p)}
+              style={{
+                width: '100%', textAlign: 'left', padding: '10px 14px',
+                background: 'none', border: 'none', borderBottom: '1px solid #f0f0f0',
+                cursor: 'pointer', fontSize: 13, color: '#2d3748',
+              }}
+            >
+              📍 {p.description}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function FormPage() {
   const params   = useParams()
   const rawPhone = Array.isArray(params.phone) ? params.phone[0] : params.phone
@@ -28,8 +146,8 @@ export default function FormPage() {
 
   const [name,     setName]     = useState('')
   const [email,    setEmail]    = useState('')
-  const [origin,   setOrigin]   = useState('')
-  const [dest,     setDest]     = useState('')
+  const [origin,   setOrigin]   = useState<PlaceField>(emptyPlace())
+  const [dest,     setDest]     = useState<PlaceField>(emptyPlace())
   const [date,     setDate]     = useState('')
   const [pax,      setPax]      = useState('')
   const [tipo,     setTipo]     = useState('')
@@ -44,8 +162,20 @@ export default function FormPage() {
           const f = d.data
           if (f.contact_name)        setName(f.contact_name)
           if (f.contact_email)       setEmail(f.contact_email)
-          if (f.service_origin)      setOrigin(f.service_origin)
-          if (f.service_destination) setDest(f.service_destination)
+          if (f.service_origin)      setOrigin({
+            address: f.service_origin,
+            placeId: f.service_origin_place_id ?? undefined,
+            lat: f.service_origin_lat ?? undefined,
+            lng: f.service_origin_lng ?? undefined,
+            validated: !!f.service_origin_place_id,
+          })
+          if (f.service_destination) setDest({
+            address: f.service_destination,
+            placeId: f.service_destination_place_id ?? undefined,
+            lat: f.service_destination_lat ?? undefined,
+            lng: f.service_destination_lng ?? undefined,
+            validated: !!f.service_destination_place_id,
+          })
           if (f.service_date)        setDate(f.service_date)
           if (f.service_passengers)  setPax(String(f.service_passengers))
           if (f.service_type)        setTipo(f.service_type)
@@ -58,7 +188,7 @@ export default function FormPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim() || !origin.trim() || !dest.trim() || !date || !pax || !tipo) return
+    if (!name.trim() || !origin.address.trim() || !dest.address.trim() || !date || !pax || !tipo) return
     setSaving(true)
     try {
       const r = await fetch(`/api/form/${phone}`, {
@@ -67,8 +197,14 @@ export default function FormPage() {
         body: JSON.stringify({
           contact_name: name.trim(),
           contact_email: email.trim() || null,
-          service_origin: origin.trim(),
-          service_destination: dest.trim(),
+          service_origin: origin.address.trim(),
+          service_origin_place_id: origin.placeId ?? null,
+          service_origin_lat: origin.lat ?? null,
+          service_origin_lng: origin.lng ?? null,
+          service_destination: dest.address.trim(),
+          service_destination_place_id: dest.placeId ?? null,
+          service_destination_lat: dest.lat ?? null,
+          service_destination_lng: dest.lng ?? null,
           service_date: date,
           service_passengers: parseInt(pax) || null,
           service_type: tipo,
@@ -118,7 +254,7 @@ export default function FormPage() {
     </div>
   )
 
-  const canSubmit = name.trim() && origin.trim() && dest.trim() && date && pax && tipo
+  const canSubmit = name.trim() && origin.address.trim() && dest.address.trim() && date && pax && tipo
 
   return (
     <div style={{ minHeight: '100svh', background: '#f7fafc', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -158,15 +294,21 @@ export default function FormPage() {
             </div>
 
             <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Lugar de partida <span style={{ color: '#e53e3e' }}>*</span></label>
-              <input style={inputStyle} value={origin} onChange={e => setOrigin(e.target.value)}
-                placeholder="Ciudad o dirección de salida" required />
+              <AddressFieldInline
+                label="Lugar de partida" required
+                value={origin} onChange={setOrigin}
+                placeholder="Ciudad o dirección de salida"
+                inputStyle={inputStyle} labelStyle={labelStyle}
+              />
             </div>
 
             <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Destino <span style={{ color: '#e53e3e' }}>*</span></label>
-              <input style={inputStyle} value={dest} onChange={e => setDest(e.target.value)}
-                placeholder="Ciudad o dirección de llegada" required />
+              <AddressFieldInline
+                label="Destino" required
+                value={dest} onChange={setDest}
+                placeholder="Ciudad o dirección de llegada"
+                inputStyle={inputStyle} labelStyle={labelStyle}
+              />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>

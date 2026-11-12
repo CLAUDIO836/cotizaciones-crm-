@@ -4231,8 +4231,9 @@ if ($action === 'wa_form_get') {
     if (!$phone) err('phone requerido');
     $stmt = db()->prepare(
         "SELECT contact_name, contact_email, contact_rut,
-                service_origin, service_destination, service_date,
-                service_passengers, service_type, service_vehicle
+                service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
+                service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
+                service_date, service_passengers, service_type, service_vehicle
          FROM wa_cloud_conversations WHERE phone = ? LIMIT 1"
     );
     $stmt->execute([$phone]);
@@ -4251,9 +4252,18 @@ if ($action === 'wa_form_save') {
     $stmt->execute([$phone]);
     if (!$stmt->fetch()) err('Conversación no encontrada', 404);
 
+    // Migraciones columnas Google Maps
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin_place_id VARCHAR(255) NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin_lat DOUBLE NULL");           } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin_lng DOUBLE NULL");           } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_place_id VARCHAR(255) NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_lat DOUBLE NULL");      } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_lng DOUBLE NULL");      } catch (PDOException $e) {}
+
     $allowed = ['contact_name','contact_email','contact_rut',
-                'service_origin','service_destination','service_date',
-                'service_passengers','service_type','service_vehicle'];
+                'service_origin','service_origin_place_id','service_origin_lat','service_origin_lng',
+                'service_destination','service_destination_place_id','service_destination_lat','service_destination_lng',
+                'service_date','service_passengers','service_type','service_vehicle'];
     $sets = []; $vals = [];
     foreach ($allowed as $col) {
         if (array_key_exists($col, $b)) {
