@@ -3632,6 +3632,7 @@ if ($action === 'wa_cloud_list') {
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination VARCHAR(300) NULL");                              } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_passengers INT NULL");                                        } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_type VARCHAR(100) NULL");                                     } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_vehicle VARCHAR(50) NULL AFTER service_type");                } catch (PDOException $e) {}
 
     // Backfill last_customer_msg_at para conversaciones que aún no lo tienen
     try {
@@ -3829,7 +3830,7 @@ if ($action === 'wa_estado_ejecutivas') {
         LEFT JOIN profiles p ON p.id = c.assigned_to
         WHERE c.stage NOT IN ('cerrado','ganado','perdido')
           AND c.phone NOT IN ($ph)
-        ORDER BY p.name IS NULL, p.name, c.stage, c.updated_at DESC
+        ORDER BY p.name IS NULL, p.name, c.stage, c.last_msg_at DESC
     ");
     $detalle->execute($excluir);
     ok(['resumen' => $resumen->fetchAll(), 'detalle' => $detalle->fetchAll()]);

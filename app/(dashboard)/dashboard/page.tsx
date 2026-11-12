@@ -19,7 +19,7 @@ export default async function DashboardPage() {
 
   const thisMonth = quotations.filter(q => q.year === currentYear && q.month === currentMonth)
   const openCount = quotations.filter(q => q.status === 'open').length
-  const wonThisMonth = thisMonth.filter(q => q.status === 'won').reduce((s, q) => s + (q.total ?? 0), 0)
+  const wonThisMonth = thisMonth.filter(q => q.status === 'won').reduce((s, q) => s + Number(q.total ?? 0), 0)
   const total = thisMonth.length
   const wonCount = thisMonth.filter(q => q.status === 'won').length
   const conversionRate = total > 0 ? Math.round((wonCount / total) * 100) : 0
@@ -34,7 +34,7 @@ export default async function DashboardPage() {
       ganadas: mq.filter(q => q.status === 'won').length,
       perdidas: mq.filter(q => q.status === 'lost').length,
       abiertas: mq.filter(q => q.status === 'open').length,
-      monto: mq.filter(q => q.status === 'won').reduce((s, q) => s + (q.total ?? 0), 0),
+      monto: mq.filter(q => q.status === 'won').reduce((s, q) => s + Number(q.total ?? 0), 0),
     }
   })
 
@@ -47,7 +47,7 @@ export default async function DashboardPage() {
         open: pq.filter(q => q.status === 'open').length,
         won: pq.filter(q => q.status === 'won').length,
         lost: pq.filter(q => q.status === 'lost').length,
-        total: pq.filter(q => q.status === 'won').reduce((s, q) => s + (q.total ?? 0), 0),
+        total: pq.filter(q => q.status === 'won').reduce((s, q) => s + Number(q.total ?? 0), 0),
       }
     }).filter(v => v.open + v.won + v.lost > 0)
   }
