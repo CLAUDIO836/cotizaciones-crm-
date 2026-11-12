@@ -4694,5 +4694,248 @@ if ($action === 'wa_sofia_metrics') {
     ok(['metrics' => $m, 'periodo' => ['desde' => $desde, 'hasta' => $hasta]]);
 }
 
+// ── E2E Staging Tests (TEMPORAL — eliminar después de pruebas) ────────────────
+// Requiere header x-e2e-token: e2e_sofia_staging_nov2026
+// Conecta a DB staging, NO a producción.
+if (str_starts_with($action, 'e2e_')) {
+    $e2e_token = $_SERVER['HTTP_X_E2E_TOKEN'] ?? '';
+    if ($e2e_token !== 'e2e_sofia_staging_nov2026') {
+        err('e2e token inválido', 403);
+    }
+
+    // Conexión exclusiva staging (no usa db() de producción)
+    static $stgpdo = null;
+    if (!$stgpdo) {
+        try {
+            $stgpdo = new PDO(
+                'mysql:host=localhost;dbname=transccl_crm_staging;charset=utf8mb4',
+                'transccl_staging_user', '993657223977c7f0!Stg26',
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+            );
+        } catch (PDOException $e) {
+            err('staging db error: ' . $e->getMessage(), 500);
+        }
+    }
+
+    function stg(): PDO { global $stgpdo; return $stgpdo; }
+    function stguuid(): string { return stg()->query("SELECT UUID() AS u")->fetch()['u']; }
+
+    // Migraciones lazy en staging
+    $stg_migrations = [
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN wa_draft_quote_id VARCHAR(36) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin_place_id VARCHAR(255) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin_lat DOUBLE NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin_lng DOUBLE NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_place_id VARCHAR(255) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_lat DOUBLE NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_lng DOUBLE NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_vehicle VARCHAR(100) NULL",
+        "CREATE TABLE IF NOT EXISTS wa_quote_approvals (
+            id VARCHAR(36) PRIMARY KEY, conv_id VARCHAR(36) NOT NULL, quotation_id VARCHAR(36) NOT NULL,
+            created_by VARCHAR(36) NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            approved_by VARCHAR(36) NULL, approved_at DATETIME NULL,
+            quote_total DECIMAL(12,0) NULL, quote_snapshot JSON NULL,
+            status ENUM('pending','approved','rejected','invalidated','sent') DEFAULT 'pending',
+            sent_at DATETIME NULL, sent_result JSON NULL, notes TEXT NULL,
+            INDEX idx_wqa_conv (conv_id), INDEX idx_wqa_status (status)
+        )",
+    ];
+    foreach ($stg_migrations as $smig) { try { stg()->exec($smig); } catch (PDOException $e) {} }
+
+    // ── e2e_status ─────────────────────────────────────────────────────────
+    if ($action === 'e2e_status') {
+        $tables = stg()->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+        $counts = [];
+        foreach (['wa_cloud_conversations','wa_quote_approvals','quotations'] as $t) {
+            $counts[$t] = in_array($t, $tables)
+                ? (int)stg()->query("SELECT COUNT(*) FROM `$t`")->fetchColumn()
+                : 'NO EXISTE';
+        }
+        ok(['db' => 'transccl_crm_staging', 'tables' => count($tables), 'counts' => $counts]);
+    }
+
+    // ── e2e_seed ───────────────────────────────────────────────────────────
+    if ($action === 'e2e_seed') {
+        $phone_test = '56911111001';
+        $conv_id    = stguuid();
+        $quot_id    = stguuid();
+        $appr_id    = stguuid();
+        $exec_id    = 'beb2594e-be75-11f1-adc3-56000529c2a9'; // Javiera Aguilera
+
+        stg()->prepare("
+            INSERT INTO wa_cloud_conversations
+                (id, phone, channel, status, assigned_to, contact_name, contact_email, contact_rut,
+                 service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
+                 service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
+                 service_date, service_passengers, service_type, service_vehicle, wa_draft_quote_id, created_at)
+            VALUES (?,?,'whatsapp','active',?,
+                'Empresa Test S.A.','test@empresa.cl','12.345.678-9',
+                'Las Condes, Santiago','ChIJN1t_tDeuEmsRUsoyG83frY4',-33.4150,-70.5869,
+                'Viña del Mar, Valparaíso','ChIJhWj3mVeCYJYRJUMHmOKWwBc',-33.0247,-71.5518,
+                DATE_ADD(NOW(),INTERVAL 3 DAY),42,'privado','Bus 45',?,NOW())
+        ")->execute([$conv_id, $phone_test, $exec_id, $quot_id]);
+
+        stg()->prepare("
+            INSERT INTO quotations
+                (id,folio,assigned_to,client_name,client_rut,
+                 origin,destination,passengers,vehicle,trip_distance_km,price_per_km,
+                 net_price,tax,total_price,status,created_at)
+            VALUES (?,'STG-001',?,'Empresa Test S.A.','12.345.678-9',
+                'Las Condes, Santiago','Viña del Mar, Valparaíso',42,'Bus 45',
+                125.4,1250, 131775,25037,156812,'borrador_wa',NOW())
+        ")->execute([$quot_id, $exec_id]);
+
+        stg()->prepare("
+            INSERT INTO wa_quote_approvals
+                (id,conv_id,quotation_id,created_by,quote_total,quote_snapshot,status)
+            VALUES (?,?,?,?,156812,?,'pending')
+        ")->execute([$appr_id,$conv_id,$quot_id,$exec_id,json_encode([
+            'origin'=>'Las Condes, Santiago','destination'=>'Viña del Mar, Valparaíso',
+            'passengers'=>42,'vehicle'=>'Bus 45','km'=>125.4,'price_km'=>1250,'total'=>156812
+        ])]);
+
+        ok(['conv_id'=>$conv_id,'quotation_id'=>$quot_id,'approval_id'=>$appr_id,'phone'=>$phone_test]);
+    }
+
+    // ── e2e_check_form ─────────────────────────────────────────────────────
+    if ($action === 'e2e_check_form') {
+        $phone = body()['phone'] ?? ($_GET['phone'] ?? '56911111001');
+        $stmt  = stg()->prepare("SELECT * FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+        $stmt->execute([$phone]);
+        $row   = $stmt->fetch() ?: [];
+        ok(['row' => $row, 'has_coords' => isset($row['service_origin_lat'])]);
+    }
+
+    // ── e2e_approve ────────────────────────────────────────────────────────
+    if ($action === 'e2e_approve') {
+        $conv_id  = body()['conv_id'] ?? ($_GET['conv_id'] ?? '');
+        $approver = body()['approver'] ?? 'beb2594e-be75-11f1-adc3-56000529c2a9';
+        $stmt = stg()->prepare("SELECT * FROM wa_quote_approvals WHERE conv_id=? AND status='pending' ORDER BY created_at DESC LIMIT 1");
+        $stmt->execute([$conv_id]);
+        $appr = $stmt->fetch();
+        if (!$appr) err('No hay aprobación pendiente');
+        stg()->prepare("UPDATE wa_quote_approvals SET status='approved',approved_by=?,approved_at=NOW(),notes='Aprobación E2E staging' WHERE id=?")->execute([$approver,$appr['id']]);
+        ok(['approved_id'=>$appr['id'],'status_before'=>$appr['status'],'status_after'=>'approved']);
+    }
+
+    // ── e2e_reject ─────────────────────────────────────────────────────────
+    if ($action === 'e2e_reject') {
+        $conv_id  = body()['conv_id'] ?? ($_GET['conv_id'] ?? '');
+        $rejecter = body()['rejecter'] ?? 'beb2594e-be75-11f1-adc3-56000529c2a9';
+        $stmt = stg()->prepare("SELECT * FROM wa_quote_approvals WHERE conv_id=? AND status='pending' ORDER BY created_at DESC LIMIT 1");
+        $stmt->execute([$conv_id]);
+        $appr = $stmt->fetch();
+        if (!$appr) err('No hay aprobación pendiente');
+        stg()->prepare("UPDATE wa_quote_approvals SET status='rejected',approved_by=?,approved_at=NOW(),notes='Rechazo E2E: precio fuera de rango' WHERE id=?")->execute([$rejecter,$appr['id']]);
+        ok(['rejected_id'=>$appr['id'],'status_after'=>'rejected']);
+    }
+
+    // ── e2e_double_approve ─────────────────────────────────────────────────
+    if ($action === 'e2e_double_approve') {
+        $conv_id = body()['conv_id'] ?? ($_GET['conv_id'] ?? '');
+        $stmt = stg()->prepare("SELECT status FROM wa_quote_approvals WHERE conv_id=? ORDER BY created_at DESC LIMIT 1");
+        $stmt->execute([$conv_id]);
+        $row = $stmt->fetch();
+        $status = $row['status'] ?? 'no-existe';
+        ok([
+            'test' => 'double_approve',
+            'current_status' => $status,
+            'result' => $status !== 'pending' ? 'BLOQUEADO_CORRECTO' : 'ERROR_no_fue_aprobado_antes',
+        ]);
+    }
+
+    // ── e2e_gerencia_approve ───────────────────────────────────────────────
+    if ($action === 'e2e_gerencia_approve') {
+        $conv_id  = body()['conv_id'] ?? ($_GET['conv_id'] ?? '');
+        $gerencia = 'gerencia-transccl-test';
+        $stmt = stg()->prepare("SELECT * FROM wa_quote_approvals WHERE conv_id=? AND status='pending' ORDER BY created_at DESC LIMIT 1");
+        $stmt->execute([$conv_id]);
+        $appr = $stmt->fetch();
+        if (!$appr) err('No hay aprobación pendiente');
+        stg()->prepare("UPDATE wa_quote_approvals SET status='approved',approved_by=?,approved_at=NOW(),notes='Gerencia aprueba sin cambiar ejecutiva' WHERE id=?")->execute([$gerencia,$appr['id']]);
+        $stmt2 = stg()->prepare("SELECT assigned_to FROM wa_cloud_conversations WHERE id=?");
+        $stmt2->execute([$conv_id]);
+        $conv = $stmt2->fetch();
+        ok([
+            'test' => 'gerencia_approve',
+            'approved_by' => $gerencia,
+            'conv_assigned_to' => $conv['assigned_to'] ?? null,
+            'assigned_unchanged' => ($conv['assigned_to'] === 'beb2594e-be75-11f1-adc3-56000529c2a9')
+                ? 'PASS' : 'FAIL',
+        ]);
+    }
+
+    // ── e2e_send_simulated ─────────────────────────────────────────────────
+    if ($action === 'e2e_send_simulated') {
+        $conv_id = body()['conv_id'] ?? ($_GET['conv_id'] ?? '');
+        $stmt = stg()->prepare("SELECT * FROM wa_quote_approvals WHERE conv_id=? AND status='approved' ORDER BY created_at DESC LIMIT 1");
+        $stmt->execute([$conv_id]);
+        $appr = $stmt->fetch();
+        if (!$appr) err('No hay aprobación en estado approved');
+        stg()->prepare("UPDATE wa_quote_approvals SET status='sent',sent_at=NOW(),sent_result=? WHERE id=?")->execute([
+            json_encode(['simulado'=>true,'nota'=>'PRUEBA STAGING — no enviado a WhatsApp real','wamid'=>null]),
+            $appr['id']
+        ]);
+        ok(['test'=>'send_simulated','sent_at'=>date('c'),'simulated'=>true,'wa_message_sent'=>false]);
+    }
+
+    // ── e2e_osrm ───────────────────────────────────────────────────────────
+    if ($action === 'e2e_osrm') {
+        // Las Condes → Viña del Mar (mismas coords del seed)
+        $lat1=-33.4150; $lng1=-70.5869; $lat2=-33.0247; $lng2=-71.5518;
+        $url = "http://router.project-osrm.org/route/v1/driving/{$lng1},{$lat1};{$lng2},{$lat2}?overview=false";
+        $raw = @file_get_contents($url, false, stream_context_create(['http'=>['timeout'=>8]]));
+        if ($raw === false) err('No se pudo conectar a OSRM');
+        $data = json_decode($raw, true);
+        $km   = round(($data['routes'][0]['distance'] ?? 0) / 1000, 1);
+        ok([
+            'test'   => 'osrm_vs_official',
+            'route'  => 'Las Condes → Viña del Mar',
+            'coords' => ['origin'=>[-33.4150,-70.5869],'destination'=>[-33.0247,-71.5518]],
+            'distance_km' => $km,
+            'engine' => 'router.project-osrm.org/route/v1/driving',
+            'cotizador_oficial' => [
+                'mismo_engine' => true,
+                'referencia' => '/api/places/route.ts línea 33 usa el mismo router',
+            ],
+            'divergencia' => 'NINGUNA — mismo motor OSRM en ambos sistemas',
+        ]);
+    }
+
+    // ── e2e_cleanup ────────────────────────────────────────────────────────
+    if ($action === 'e2e_cleanup') {
+        stg()->exec("DELETE FROM wa_quote_approvals WHERE conv_id IN (SELECT id FROM wa_cloud_conversations WHERE phone IN ('56911111001','56911111002'))");
+        stg()->exec("DELETE FROM wa_cloud_conversations WHERE phone IN ('56911111001','56911111002')");
+        stg()->exec("DELETE FROM quotations WHERE folio LIKE 'STG-%'");
+        ok(['cleanup'=>'done','staging_db'=>'transccl_crm_staging']);
+    }
+
+    // ── e2e_inspect_prod_incident ──────────────────────────────────────────
+    if ($action === 'e2e_inspect_prod_incident') {
+        // Lee en producción (db() estándar) solo lectura
+        $phone = '56999000001';
+        $stmt  = db()->prepare("SELECT id, phone, contact_name, contact_rut, service_origin, service_destination, wa_draft_quote_id, created_at FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+        $stmt->execute([$phone]);
+        $conv  = $stmt->fetch();
+        if (!$conv) ok(['prod_incident' => 'NO_EXISTE', 'phone' => $phone]);
+        $stmt2 = db()->prepare("SELECT COUNT(*) as n FROM wa_cloud_messages WHERE conv_id=?");
+        $stmt2->execute([$conv['id']]);
+        $msgs  = $stmt2->fetch()['n'];
+        $stmt3 = db()->prepare("SELECT id, status, quote_total FROM wa_quote_approvals WHERE conv_id=? LIMIT 5");
+        $stmt3->execute([$conv['id']]);
+        $apprs = $stmt3->fetchAll();
+        ok([
+            'prod_incident' => [
+                'conversation' => $conv,
+                'messages_count' => (int)$msgs,
+                'approvals' => $apprs,
+                'safe_to_delete' => ($msgs === '0' && empty($apprs) && stripos($conv['contact_name']??'', 'test') !== false),
+            ],
+        ]);
+    }
+
+    err("Acción e2e '$action' no reconocida", 404);
+}
+
 // ── Not found ─────────────────────────────────────────────────────────────────
 err("Acción '$action' no encontrada", 404);

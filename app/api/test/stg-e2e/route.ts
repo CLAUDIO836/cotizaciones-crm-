@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const E2E_TOKEN = process.env.E2E_TEST_TOKEN ?? 'e2e_sofia_staging_nov2026'
-const RUNNER_URL = 'https://erp.transccl.cl/stg_test_runner.php'
+const RUNNER_URL = 'https://erp.transccl.cl/crm-api.php'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,7 +29,14 @@ export async function GET(req: NextRequest) {
 
   try {
     const res = await fetch(`${RUNNER_URL}?${params.toString()}`, {
-      headers: { 'User-Agent': 'CRM-E2E-Test/1.0' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-e2e-token': E2E_TOKEN,
+        'x-user-id': 'e2e-test-runner',
+        'x-user-role': 'admin',
+        'User-Agent': 'CRM-Vercel/1.0',
+        'Origin': 'https://crm.transccl.cl',
+      },
       next: { revalidate: 0 },
     })
     const text = await res.text()
