@@ -4549,6 +4549,26 @@ REGLAS:
 if ($action === 'wa_approvals_get') {
     $user   = requireAuth();
     $convId = $_GET['conv_id'] ?? body()['conv_id'] ?? '';
+
+    // Migraciones lazy
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN wa_draft_quote_id VARCHAR(36) NULL"); } catch (PDOException $e) {}
+    try { db()->exec("CREATE TABLE IF NOT EXISTS wa_quote_approvals (
+        id           VARCHAR(36)  PRIMARY KEY,
+        conv_id      VARCHAR(36)  NOT NULL,
+        quotation_id VARCHAR(36)  NOT NULL,
+        created_by   VARCHAR(36)  NULL,
+        created_at   DATETIME     DEFAULT CURRENT_TIMESTAMP,
+        approved_by  VARCHAR(36)  NULL,
+        approved_at  DATETIME     NULL,
+        quote_total  DECIMAL(12,0) NULL,
+        quote_snapshot JSON       NULL,
+        status       ENUM('pending','approved','rejected','invalidated','sent') DEFAULT 'pending',
+        sent_at      DATETIME     NULL,
+        sent_result  JSON         NULL,
+        notes        TEXT         NULL,
+        INDEX idx_wqa_conv (conv_id),
+        INDEX idx_wqa_status (status)
+    )"); } catch (PDOException $e) {}
     if (!$convId) err('conv_id requerido');
 
     $stmt = db()->prepare("
