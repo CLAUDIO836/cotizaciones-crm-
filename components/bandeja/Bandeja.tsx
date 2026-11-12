@@ -30,6 +30,37 @@ interface Conversation {
   service_type: string | null
   service_vehicle: string | null
   created_at: string | null
+  wa_draft_quote_id: string | null
+}
+
+interface WaApproval {
+  id: string
+  conv_id: string
+  quotation_id: string
+  status: 'pending' | 'approved' | 'rejected' | 'sent'
+  quote_number: string
+  quote_total_bd: string
+  desde: string | null
+  hasta: string | null
+  distancia_km: number | null
+  fecha_salida: string | null
+  hora_salida: string | null
+  vehicle_type: string | null
+  pasajeros: string | null
+  approved_by_name: string | null
+  created_by_name: string | null
+  approved_at: string | null
+  sent_at: string | null
+}
+
+interface SofiaMetrics {
+  prospectos_bot: number
+  formularios_completados: number
+  borradores_creados: number
+  aprobadas_enviadas: number
+  rechazadas: number
+  intervenciones_humanas: number
+  ganados_sofia: number
 }
 
 interface Message {
@@ -178,6 +209,14 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [backfilling, setBackfilling] = useState(false)
   const [reactivating, setReactivating] = useState(false)
 
+  // Sofía: aprobación de cotización pendiente
+  const [approval, setApproval]           = useState<WaApproval | null>(null)
+  const [loadingApproval, setLoadingApproval] = useState(false)
+  const [decidingApproval, setDecidingApproval] = useState(false)
+  // Sofía: métricas (solo admin)
+  const [sofiaMetrics, setSofiaMetrics]   = useState<SofiaMetrics | null>(null)
+  const [showMetrics, setShowMetrics]     = useState(false)
+
 
   // Sync right panel when activeConv updated by polling (bot fills fields)
   useEffect(() => {
@@ -198,6 +237,48 @@ export default function Bandeja({ user }: { user: UserSession }) {
     const iv = setInterval(() => setNow(Date.now()), 30000)
     return () => clearInterval(iv)
   }, [])
+
+  // Cargar aprobación pendiente cuando cambia la conversación activa
+  useEffect(() => {
+    if (!activeConv?.wa_draft_quote_id) { setApproval(null); return }
+    setLoadingApproval(true)
+    fetch(`/api/whatsapp/cloud/approvals?conv_id=${activeConv.id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { setApproval(d?.approval ?? null); setLoadingApproval(false) })
+      .catch(() => setLoadingApproval(false))
+  }, [activeConv?.id, activeConv?.wa_draft_quote_id])
+
+  // Cargar métricas de Sofía (solo admin, cuando se activa el panel)
+  useEffect(() => {
+    if (!isAdmin || !showMetrics) return
+    fetch('/api/whatsapp/cloud/metrics')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.metrics) setSofiaMetrics(d.metrics) })
+      .catch(() => {})
+  }, [isAdmin, showMetrics])
+
+  async function decideApproval(decision: 'approved' | 'rejected', notes = '') {
+    if (!activeConv || decidingApproval) return
+    setDecidingApproval(true)
+    try {
+      const r = await fetch('/api/whatsapp/cloud/approvals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conv_id: activeConv.id, decision, notes }),
+      })
+      const d = await r.json()
+      if (d.aprobado || d.rechazado) {
+        // Reload approval and conversation list
+        setApproval(null)
+        const refreshed = await fetch(`/api/whatsapp/cloud/approvals?conv_id=${activeConv.id}`)
+        const rd = await refreshed.json()
+        setApproval(rd?.approval ?? null)
+        // Update conv list to reflect new wa_draft_quote_id = null (after reject)
+        loadConversations()
+      }
+    } catch { /* silent */ }
+    setDecidingApproval(false)
+  }
 
   // Scroll refs
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -578,14 +659,23 @@ export default function Bandeja({ user }: { user: UserSession }) {
             </div>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               {isAdmin && (
-                <button
-                  onClick={runBackfill}
-                  disabled={backfilling}
-                  title="Rellenar fichas desde historial de chats"
-                  style={{ fontSize: 11, padding: '3px 7px', borderRadius: 4, border: '1px solid #d1d5db', background: backfilling ? '#f3f4f6' : '#fff', color: '#6b7280', cursor: backfilling ? 'default' : 'pointer' }}
-                >
-                  {backfilling ? '⏳' : '🔄'}
-                </button>
+                <>
+                  <button
+                    onClick={runBackfill}
+                    disabled={backfilling}
+                    title="Rellenar fichas desde historial de chats"
+                    style={{ fontSize: 11, padding: '3px 7px', borderRadius: 4, border: '1px solid #d1d5db', background: backfilling ? '#f3f4f6' : '#fff', color: '#6b7280', cursor: backfilling ? 'default' : 'pointer' }}
+                  >
+                    {backfilling ? '⏳' : '🔄'}
+                  </button>
+                  <button
+                    onClick={() => setShowMetrics(v => !v)}
+                    title="Métricas de Sofía"
+                    style={{ fontSize: 11, padding: '3px 7px', borderRadius: 4, border: `1px solid ${showMetrics ? '#7c3aed' : '#d1d5db'}`, background: showMetrics ? '#f5f3ff' : '#fff', color: showMetrics ? '#7c3aed' : '#6b7280', cursor: 'pointer' }}
+                  >
+                    🤖
+                  </button>
+                </>
               )}
               <button onClick={() => setView('list')}   style={viewBtn(view === 'list')}>☰</button>
               <button onClick={() => setView('kanban')} style={viewBtn(view === 'kanban')}>⊞</button>
@@ -609,6 +699,32 @@ export default function Bandeja({ user }: { user: UserSession }) {
             {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </div>
+
+        {/* Strip métricas Sofía (solo admin) */}
+        {isAdmin && showMetrics && (
+          <div style={{ padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#f5f3ff' }}>
+            {!sofiaMetrics ? (
+              <div style={{ fontSize: 12, color: '#9ca3af' }}>Cargando métricas...</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 10px' }}>
+                {[
+                  { label: 'Prospectos',   v: sofiaMetrics.prospectos_bot },
+                  { label: 'Formularios',  v: sofiaMetrics.formularios_completados },
+                  { label: 'Borradores',   v: sofiaMetrics.borradores_creados },
+                  { label: 'Enviadas',     v: sofiaMetrics.aprobadas_enviadas },
+                  { label: 'Rechazadas',   v: sofiaMetrics.rechazadas },
+                  { label: 'Intervenc.',   v: sofiaMetrics.intervenciones_humanas },
+                  { label: 'Ganados',      v: sofiaMetrics.ganados_sofia },
+                ].map(m => (
+                  <div key={m.label}>
+                    <div style={{ fontSize: 10, color: '#7c3aed', fontWeight: 600 }}>{m.label}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: '#111', lineHeight: 1.1 }}>{m.v}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* List or Kanban */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -791,6 +907,59 @@ export default function Bandeja({ user }: { user: UserSession }) {
       {/* ── Right panel ────────────────────────────────────────────────────── */}
       {activeConv && (
         <div style={{ width: 260, borderLeft: '1px solid #e5e7eb', background: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto' }}>
+
+          {/* Panel aprobación Sofía */}
+          {(activeConv.wa_draft_quote_id || loadingApproval || approval) && (
+            <div style={{ padding: '12px 16px', borderBottom: '2px solid #7c3aed', background: '#f5f3ff' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 13 }}>🤖</span>
+                <span style={{ fontWeight: 700, fontSize: 12, color: '#7c3aed' }}>Sofía — Cotización pendiente</span>
+              </div>
+              {loadingApproval && <div style={{ fontSize: 12, color: '#9ca3af' }}>Cargando...</div>}
+              {!loadingApproval && approval && (
+                <>
+                  <div style={{ fontSize: 12, color: '#374151', marginBottom: 6 }}>
+                    <div><span style={{ color: '#9ca3af' }}>Cotización:</span> <strong>{approval.quote_number}</strong></div>
+                    <div><span style={{ color: '#9ca3af' }}>Monto:</span> <strong style={{ color: '#1B8A4B' }}>${Number(approval.quote_total_bd).toLocaleString('es-CL')}</strong></div>
+                    {approval.desde && <div><span style={{ color: '#9ca3af' }}>Desde:</span> {approval.desde}</div>}
+                    {approval.hasta && <div><span style={{ color: '#9ca3af' }}>Hasta:</span> {approval.hasta}</div>}
+                    {approval.distancia_km && <div><span style={{ color: '#9ca3af' }}>Distancia:</span> {approval.distancia_km} km</div>}
+                    {approval.fecha_salida && <div><span style={{ color: '#9ca3af' }}>Fecha:</span> {approval.fecha_salida}{approval.hora_salida ? ` ${approval.hora_salida}` : ''}</div>}
+                    {approval.vehicle_type && <div><span style={{ color: '#9ca3af' }}>Vehículo:</span> {approval.vehicle_type}</div>}
+                    {approval.pasajeros && <div><span style={{ color: '#9ca3af' }}>Pasajeros:</span> {approval.pasajeros}</div>}
+                  </div>
+                  {approval.status === 'pending' && (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        onClick={() => decideApproval('approved')}
+                        disabled={decidingApproval}
+                        style={{ flex: 1, padding: '6px 0', background: decidingApproval ? '#e5e7eb' : '#1B8A4B', color: decidingApproval ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: decidingApproval ? 'not-allowed' : 'pointer' }}
+                      >
+                        {decidingApproval ? '...' : '✅ Aprobar'}
+                      </button>
+                      <button
+                        onClick={() => decideApproval('rejected')}
+                        disabled={decidingApproval}
+                        style={{ flex: 1, padding: '6px 0', background: decidingApproval ? '#e5e7eb' : '#fef2f2', color: decidingApproval ? '#9ca3af' : '#dc2626', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: decidingApproval ? 'not-allowed' : 'pointer' }}
+                      >
+                        ❌ Rechazar
+                      </button>
+                    </div>
+                  )}
+                  {approval.status === 'sent' && (
+                    <div style={{ fontSize: 11, color: '#1B8A4B', fontWeight: 600 }}>✅ Enviada al cliente</div>
+                  )}
+                  {approval.status === 'rejected' && (
+                    <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>❌ Rechazada{approval.approved_by_name ? ` por ${approval.approved_by_name}` : ''}</div>
+                  )}
+                </>
+              )}
+              {!loadingApproval && !approval && activeConv.wa_draft_quote_id && (
+                <div style={{ fontSize: 12, color: '#9ca3af' }}>Cotización borrador (sin registro de aprobación aún)</div>
+              )}
+            </div>
+          )}
+
           <div style={{ padding: '14px 16px', borderBottom: '1px solid #e5e7eb' }}>
             <div style={{ fontWeight: 700, fontSize: 13, color: '#111', marginBottom: 12 }}>Ficha del cliente</div>
 
@@ -1130,6 +1299,9 @@ function ConvSection({ title, items, activeId, onSelect, userId }: {
                         display: 'inline-block',
                       }}
                     />
+                  )}
+                  {c.wa_draft_quote_id && (
+                    <span title="Cotización pendiente de aprobación" style={{ fontSize: 11, flexShrink: 0 }}>🤖</span>
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, marginLeft: 8 }}>

@@ -3680,6 +3680,7 @@ if ($action === 'wa_cloud_list') {
                c.stage, c.source, c.last_msg_at, c.last_customer_msg_at,
                c.unread_count, c.notes, c.contact_rut, c.service_date, c.created_at,
                c.contact_email, c.service_origin, c.service_destination, c.service_passengers, c.service_type, c.service_vehicle,
+               c.wa_draft_quote_id,
                p.name AS assigned_name,
                m.content AS last_message
         FROM wa_cloud_conversations c
@@ -4542,6 +4543,126 @@ REGLAS:
        ->execute([$convId]);
 
     ok(['bot_active' => true, 'message' => $botMsg]);
+}
+
+// ── Sofía: obtener aprobación pendiente de una conversación ──────────────────
+if ($action === 'wa_approvals_get') {
+    $user   = requireAuth();
+    $convId = $_GET['conv_id'] ?? body()['conv_id'] ?? '';
+    if (!$convId) err('conv_id requerido');
+
+    $stmt = db()->prepare("
+        SELECT wqa.id, wqa.conv_id, wqa.quotation_id, wqa.status,
+               wqa.created_at, wqa.approved_at, wqa.sent_at,
+               wqa.approved_by, wqa.notes, wqa.quote_total,
+               q.number AS quote_number, q.total AS quote_total_bd,
+               q.desde, q.hasta, q.distancia_km, q.fecha_salida, q.hora_salida,
+               q.fecha_retorno, q.hora_retorno, q.vehicle_type,
+               JSON_VALUE(q.observaciones, '$.pasajeros') AS pasajeros,
+               p.name AS approved_by_name,
+               pc.name AS created_by_name
+        FROM wa_quote_approvals wqa
+        JOIN quotations q ON q.id = wqa.quotation_id
+        LEFT JOIN profiles p  ON p.id  = wqa.approved_by
+        LEFT JOIN profiles pc ON pc.id = wqa.created_by
+        WHERE wqa.conv_id = ?
+        ORDER BY wqa.created_at DESC
+        LIMIT 1
+    ");
+    $stmt->execute([$convId]);
+    $row = $stmt->fetch();
+    ok(['approval' => $row ?: null]);
+}
+
+// ── Sofía: aprobar o rechazar borrador ────────────────────────────────────────
+if ($action === 'wa_approvals_decide') {
+    $user = requireAuth();
+    $b    = body();
+    $convId    = $b['conv_id']     ?? '';
+    $decision  = $b['decision']    ?? ''; // 'approved' | 'rejected'
+    $notes     = trim($b['notes']  ?? '');
+    if (!$convId || !in_array($decision, ['approved', 'rejected'])) err('conv_id y decision requeridos');
+
+    // Obtener aprobación pendiente
+    $ap = db()->prepare("SELECT id, quotation_id FROM wa_quote_approvals WHERE conv_id = ? AND status = 'pending' LIMIT 1");
+    $ap->execute([$convId]);
+    $apRow = $ap->fetch();
+    if (!$apRow) err('No hay cotización pendiente de aprobación', 404);
+
+    if ($decision === 'rejected') {
+        db()->prepare("UPDATE wa_quote_approvals SET status='rejected', approved_by=?, approved_at=NOW(), notes=? WHERE id=?")
+            ->execute([$user['id'], $notes ?: null, $apRow['id']]);
+        db()->prepare("UPDATE quotations SET etapa='borrador_wa_rechazado' WHERE id=?")
+            ->execute([$apRow['quotation_id']]);
+        db()->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=NULL WHERE id=?")
+            ->execute([$convId]);
+        ok(['rechazado' => true]);
+    }
+
+    // Aprobar: marcar como sent y actualizar cotización
+    db()->prepare("UPDATE wa_quote_approvals SET status='sent', approved_by=?, approved_at=NOW(), sent_at=NOW(), notes=?, sent_result=? WHERE id=?")
+        ->execute([$user['id'], $notes ?: null, json_encode(['simulado' => true, 'ts' => date('c')]), $apRow['id']]);
+    db()->prepare("UPDATE quotations SET etapa='cotizacion', status='open' WHERE id=?")
+        ->execute([$apRow['quotation_id']]);
+
+    // Obtener datos de la cotización para simular mensaje
+    $q = db()->prepare("SELECT number, total, desde, hasta, fecha_salida FROM quotations WHERE id=?");
+    $q->execute([$apRow['quotation_id']]);
+    $qRow = $q->fetch();
+    $monto = '$' . number_format((float)($qRow['total'] ?? 0), 0, ',', '.');
+    $ruta  = ($qRow['desde'] ?? '?') . ' → ' . ($qRow['hasta'] ?? '?');
+    $fecha = !empty($qRow['fecha_salida']) ? date('d/m/Y', strtotime($qRow['fecha_salida'])) : '—';
+    $msgSimulado = "Hola 👋 Te enviamos la cotización oficial TransCCL N° {$qRow['number']}.\n\n"
+                 . "📍 Ruta: {$ruta}\n📅 Fecha: {$fecha}\n💰 Total: {$monto}\n\n"
+                 . "Para confirmar el servicio, responde CONFIRMO o contáctanos. ¡Gracias! 🚌";
+
+    ok(['aprobado' => true, 'simulado' => true, 'mensaje_enviado' => $msgSimulado, 'quote_number' => $qRow['number']]);
+}
+
+// ── Sofía: métricas agregadas ─────────────────────────────────────────────────
+if ($action === 'wa_sofia_metrics') {
+    requireAuth();
+    $desde = $_GET['desde'] ?? date('Y-m-01');
+    $hasta = $_GET['hasta'] ?? date('Y-m-t');
+
+    $m = [];
+
+    // Prospectos atendidos por bot (tuvieron bot_active = 1 alguna vez)
+    $r = db()->prepare("SELECT COUNT(DISTINCT conversation_id) FROM wa_cloud_messages WHERE sender_type = 'bot' AND created_at BETWEEN ? AND ?");
+    $r->execute([$desde . ' 00:00:00', $hasta . ' 23:59:59']);
+    $m['prospectos_bot'] = (int)$r->fetchColumn();
+
+    // Formularios completados
+    $r2 = db()->prepare("SELECT COUNT(*) FROM wa_cloud_conversations WHERE stage IN ('formulario_completo','cotizando','ganado') AND created_at BETWEEN ? AND ?");
+    $r2->execute([$desde . ' 00:00:00', $hasta . ' 23:59:59']);
+    $m['formularios_completados'] = (int)$r2->fetchColumn();
+
+    // Borradores creados por Sofía
+    $r3 = db()->prepare("SELECT COUNT(*) FROM wa_quote_approvals WHERE created_at BETWEEN ? AND ?");
+    $r3->execute([$desde . ' 00:00:00', $hasta . ' 23:59:59']);
+    $m['borradores_creados'] = (int)$r3->fetchColumn();
+
+    // Aprobadas y enviadas
+    $r4 = db()->prepare("SELECT COUNT(*) FROM wa_quote_approvals WHERE status = 'sent' AND sent_at BETWEEN ? AND ?");
+    $r4->execute([$desde . ' 00:00:00', $hasta . ' 23:59:59']);
+    $m['aprobadas_enviadas'] = (int)$r4->fetchColumn();
+
+    // Rechazadas
+    $r5 = db()->prepare("SELECT COUNT(*) FROM wa_quote_approvals WHERE status = 'rejected' AND approved_at BETWEEN ? AND ?");
+    $r5->execute([$desde . ' 00:00:00', $hasta . ' 23:59:59']);
+    $m['rechazadas'] = (int)$r5->fetchColumn();
+
+    // Intervenciones humanas (bot → humano)
+    $r6 = db()->prepare("SELECT COUNT(DISTINCT c.id) FROM wa_cloud_conversations c WHERE c.bot_active = 0 AND c.wa_draft_quote_id IS NOT NULL AND c.created_at BETWEEN ? AND ?");
+    $r6->execute([$desde . ' 00:00:00', $hasta . ' 23:59:59']);
+    $m['intervenciones_humanas'] = (int)$r6->fetchColumn();
+
+    // Ganados originados desde bot
+    $r7 = db()->prepare("SELECT COUNT(*) FROM wa_cloud_conversations WHERE stage = 'ganado' AND wa_draft_quote_id IS NOT NULL AND created_at BETWEEN ? AND ?");
+    $r7->execute([$desde . ' 00:00:00', $hasta . ' 23:59:59']);
+    $m['ganados_sofia'] = (int)$r7->fetchColumn();
+
+    ok(['metrics' => $m, 'periodo' => ['desde' => $desde, 'hasta' => $hasta]]);
 }
 
 // ── Not found ─────────────────────────────────────────────────────────────────
