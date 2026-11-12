@@ -4230,6 +4230,15 @@ if ($action === 'wa_migrate_vehicle') {
 if ($action === 'wa_form_get') {
     $phone = preg_replace('/\D/', '', body()['phone'] ?? ($_GET['phone'] ?? ''));
     if (!$phone) err('phone requerido');
+
+    // Migraciones lazy para columnas de Google Maps (pueden no existir aún)
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin_place_id VARCHAR(255) NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin_lat DOUBLE NULL");           } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin_lng DOUBLE NULL");           } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_place_id VARCHAR(255) NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_lat DOUBLE NULL");      } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_lng DOUBLE NULL");      } catch (PDOException $e) {}
+
     $stmt = db()->prepare(
         "SELECT contact_name, contact_email, contact_rut,
                 service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
