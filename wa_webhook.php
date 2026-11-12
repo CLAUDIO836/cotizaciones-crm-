@@ -206,30 +206,8 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             $pdo->prepare("INSERT INTO wa_cloud_conversations (id, phone, contact_name, bot_active, last_msg_at, last_message) VALUES (?,?,?,1,NOW(),?)")
                 ->execute([$convId, $phone, $name ?: null, mb_substr($text, 0, 500)]);
 
-            // Auto-assign: ejecutiva con menos conversaciones activas entre las tres comerciales
-            $pool = [
-                'fe6e5e4b-854a-11f1-adc3-56000529c2a9', // Danae Moscoso
-                'beb2594e-be75-11f1-adc3-56000529c2a9', // Javiera Aguilera
-                '9263684f-854a-11f1-adc3-56000529c2a9', // Jhocisbell Santana
-            ];
-            $placeholders = implode(',', array_fill(0, count($pool), '?'));
-            $counts = $pdo->prepare(
-                "SELECT assigned_to, COUNT(*) AS n FROM wa_cloud_conversations
-                 WHERE assigned_to IN ($placeholders) GROUP BY assigned_to"
-            );
-            $counts->execute($pool);
-            $countMap = array_column($counts->fetchAll(PDO::FETCH_ASSOC), 'n', 'assigned_to');
-            $minExec  = null;
-            $minN     = PHP_INT_MAX;
-            foreach ($pool as $execId) {
-                $n = (int)($countMap[$execId] ?? 0);
-                if ($n < $minN) { $minN = $n; $minExec = $execId; }
-            }
-            if ($minExec) {
-                $pdo->prepare("UPDATE wa_cloud_conversations SET assigned_to = ? WHERE id = ?")
-                    ->execute([$minExec, $convId]);
-                error_log("[wa_webhook] AUTO-ASSIGN conv={$convId} exec={$minExec}");
-            }
+            // Round-robin estricto entre las tres ejecutivas comerciales Meta
+            assignRoundRobin($pdo, $convId, $phone, $name);
         }
 
         // Guardar mensaje entrante (INSERT IGNORE deduplica)
@@ -249,7 +227,13 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         if (!$isNew) { error_log("[wa_webhook] SKIP dup wamid={$wamid} phone={$phone}"); return; }
 
         // Si la conversación estaba cerrada y el cliente escribe de nuevo → reactivar
+        // G-1 FIX: si hay handoff activo (ejecutiva tomó el control), no reactivar automáticamente.
+        // La reactivación debe ser expresa desde la bandeja CRM ("liberar a bot").
         if (!$botActive) {
+            if (!empty($conv['handoff_requested_at'])) {
+                error_log("[wa_webhook] HANDOFF_HOLD phone={$phone} conv={$convId} handoff_at={$conv['handoff_requested_at']} — reactivación bloqueada, ejecutiva mantiene control");
+                return; // mensaje ya guardado; ejecutiva responde desde la bandeja CRM
+            }
             $pdo->prepare(
                 "UPDATE wa_cloud_conversations
                  SET bot_active = 1,
@@ -411,29 +395,46 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
 }
 
 function assignRoundRobin(PDO $pdo, string $convId, string $clientPhone, ?string $clientName): void {
-    // Ejecutiva con wa_last_assigned_at más antigua (NULL primero = nunca asignada)
-    $stmt = $pdo->query("
-        SELECT id, name, celular
-        FROM profiles
-        WHERE active = 1
-          AND role NOT IN ('admin', 'superadmin')
-          AND (suspended = 0 OR suspended IS NULL)
-        ORDER BY wa_last_assigned_at IS NOT NULL ASC,
-                 wa_last_assigned_at ASC
-        LIMIT 1
-    ");
-    $exec = $stmt->fetch();
-    if (!$exec) return;
+    // Pool fijo: solo estas tres ejecutivas reciben prospectos Meta (orden de prioridad inicial)
+    $pool = [
+        '9263684f-854a-11f1-adc3-56000529c2a9', // Jhocisbell Santana  (turno 1)
+        'beb2594e-be75-11f1-adc3-56000529c2a9', // Javiera Aguilera    (turno 2)
+        'fe6e5e4b-854a-11f1-adc3-56000529c2a9', // Danae Moscoso       (turno 3)
+    ];
+    $ph = implode(',', array_fill(0, count($pool), '?'));
 
-    $pdo->prepare("UPDATE wa_cloud_conversations SET assigned_to = ? WHERE id = ?")
-        ->execute([$exec['id'], $convId]);
+    // FOR UPDATE previene asignación doble cuando llegan mensajes simultáneos
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT id, name, celular FROM profiles
+             WHERE id IN ($ph)
+             ORDER BY wa_last_assigned_at IS NOT NULL ASC,
+                      wa_last_assigned_at ASC,
+                      FIELD(id, ?, ?, ?) ASC
+             LIMIT 1
+             FOR UPDATE"
+        );
+        $stmt->execute(array_merge($pool, $pool));
+        $exec = $stmt->fetch();
+        if (!$exec) { $pdo->rollBack(); return; }
 
-    $pdo->prepare("UPDATE profiles SET wa_last_assigned_at = NOW() WHERE id = ?")
-        ->execute([$exec['id']]);
+        $pdo->prepare("UPDATE wa_cloud_conversations SET assigned_to = ? WHERE id = ?")
+            ->execute([$exec['id'], $convId]);
+        $pdo->prepare("UPDATE profiles SET wa_last_assigned_at = NOW(6) WHERE id = ?")
+            ->execute([$exec['id']]);
+
+        $pdo->commit();
+        error_log("[wa_webhook] ROUND-ROBIN conv={$convId} exec={$exec['id']} ({$exec['name']})");
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        error_log('[assignRoundRobin] ERROR: ' . $e->getMessage());
+        return;
+    }
 
     // Notificar a la ejecutiva por WhatsApp si tiene celular registrado
     if ($exec['celular'] && _WA_TOKEN && _WA_PHONE) {
-        $cel = preg_replace('/\D/', '', $exec['celular']); // solo dígitos
+        $cel = preg_replace('/\D/', '', $exec['celular']);
         if (strlen($cel) >= 8) {
             $display = $clientName ? "{$clientName} (+{$clientPhone})" : "+{$clientPhone}";
             $msg = "🔔 Nueva consulta WA asignada a ti: {$display}\n" .
