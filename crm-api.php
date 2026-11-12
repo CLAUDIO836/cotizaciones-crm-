@@ -4709,7 +4709,7 @@ if (str_starts_with($action, 'e2e_')) {
         try {
             $stgpdo = new PDO(
                 'mysql:host=localhost;dbname=transccl_crm_staging;charset=utf8mb4',
-                'transccl_staging_user', '993657223977c7f0!Stg26',
+                'transccl_staging_user', '993657223977c7f0_Stg26',
                 [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
             );
         } catch (PDOException $e) {
@@ -4719,6 +4719,25 @@ if (str_starts_with($action, 'e2e_')) {
 
     function stg(): PDO { global $stgpdo; return $stgpdo; }
     function stguuid(): string { return stg()->query("SELECT UUID() AS u")->fetch()['u']; }
+
+    // Fix staging: wa_cloud_conversations puede ser copia de quotations (sin columna phone)
+    // Solución: agregar columnas WA que faltan sin tocar las existentes
+    $wa_fix_cols = [
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN phone VARCHAR(20) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN channel VARCHAR(20) DEFAULT 'whatsapp'",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN bot_active TINYINT(1) DEFAULT 1",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN assigned_to VARCHAR(36) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN contact_name VARCHAR(200) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN contact_email VARCHAR(200) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN contact_rut VARCHAR(20) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin VARCHAR(300) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination VARCHAR(300) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_date DATE NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_passengers INT NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_type VARCHAR(50) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN stage VARCHAR(50) NULL",
+    ];
+    foreach ($wa_fix_cols as $fix) { try { stg()->exec($fix); } catch (PDOException $e) {} }
 
     // Migraciones lazy en staging
     $stg_migrations = [
@@ -4742,6 +4761,41 @@ if (str_starts_with($action, 'e2e_')) {
     ];
     foreach ($stg_migrations as $smig) { try { stg()->exec($smig); } catch (PDOException $e) {} }
 
+    // ── e2e_debug_seed ─────────────────────────────────────────────────────
+    if ($action === 'e2e_debug_seed') {
+        $cols_wcc = stg()->query("SHOW COLUMNS FROM wa_cloud_conversations")->fetchAll(PDO::FETCH_COLUMN);
+        $has_svc  = in_array('service_vehicle', $cols_wcc);
+        $has_soi  = in_array('service_origin_place_id', $cols_wcc);
+        $has_phone = in_array('phone', $cols_wcc);
+        $has_status = in_array('status', $cols_wcc);
+
+        // Test INSERT mínimo
+        $test_id  = stguuid();
+        $test_phone = '56000000099';
+        $ins_err = null;
+        try {
+            stg()->prepare("INSERT INTO wa_cloud_conversations (id, phone, status) VALUES (?,?,'open')")->execute([$test_id, $test_phone]);
+            stg()->prepare("DELETE FROM wa_cloud_conversations WHERE id=?")->execute([$test_id]);
+        } catch (PDOException $e) { $ins_err = $e->getMessage(); }
+
+        ok([
+            'cols_first_10' => array_slice($cols_wcc, 0, 10),
+            'cols_wa' => array_intersect($cols_wcc, ['phone','channel','status','service_origin','service_vehicle','wa_draft_quote_id']),
+            'has_phone' => $has_phone,
+            'has_status' => $has_status,
+            'has_svc' => $has_svc,
+            'has_soi' => $has_soi,
+            'minimal_insert_error' => $ins_err,
+        ]);
+    }
+
+    // ── e2e_describe ───────────────────────────────────────────────────────
+    if ($action === 'e2e_describe') {
+        $table = $_GET['table'] ?? 'quotations';
+        $cols  = stg()->query("SHOW FULL COLUMNS FROM `$table`")->fetchAll();
+        ok(['table' => $table, 'columns' => array_map(fn($c) => ['Field'=>$c['Field'],'Type'=>$c['Type'],'Null'=>$c['Null']], $cols)]);
+    }
+
     // ── e2e_status ─────────────────────────────────────────────────────────
     if ($action === 'e2e_status') {
         $tables = stg()->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
@@ -4762,39 +4816,62 @@ if (str_starts_with($action, 'e2e_')) {
         $appr_id    = stguuid();
         $exec_id    = 'beb2594e-be75-11f1-adc3-56000529c2a9'; // Javiera Aguilera
 
-        stg()->prepare("
-            INSERT INTO wa_cloud_conversations
-                (id, phone, channel, status, assigned_to, contact_name, contact_email, contact_rut,
-                 service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
-                 service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
-                 service_date, service_passengers, service_type, service_vehicle, wa_draft_quote_id, created_at)
-            VALUES (?,?,'whatsapp','active',?,
-                'Empresa Test S.A.','test@empresa.cl','12.345.678-9',
-                'Las Condes, Santiago','ChIJN1t_tDeuEmsRUsoyG83frY4',-33.4150,-70.5869,
-                'Viña del Mar, Valparaíso','ChIJhWj3mVeCYJYRJUMHmOKWwBc',-33.0247,-71.5518,
-                DATE_ADD(NOW(),INTERVAL 3 DAY),42,'privado','Bus 45',?,NOW())
-        ")->execute([$conv_id, $phone_test, $exec_id, $quot_id]);
+        // Verificar columnas disponibles (para debug)
+        $existing_cols = stg()->query("SHOW COLUMNS FROM wa_cloud_conversations")->fetchAll(PDO::FETCH_COLUMN);
+        $has_phone     = in_array('phone', $existing_cols);
+        $has_service   = in_array('service_origin', $existing_cols);
+        $status_col    = in_array('status', $existing_cols) ? 'open' : null; // usar 'open' para el enum existente
 
-        stg()->prepare("
-            INSERT INTO quotations
-                (id,folio,assigned_to,client_name,client_rut,
-                 origin,destination,passengers,vehicle,trip_distance_km,price_per_km,
-                 net_price,tax,total_price,status,created_at)
-            VALUES (?,'STG-001',?,'Empresa Test S.A.','12.345.678-9',
-                'Las Condes, Santiago','Viña del Mar, Valparaíso',42,'Bus 45',
-                125.4,1250, 131775,25037,156812,'borrador_wa',NOW())
-        ")->execute([$quot_id, $exec_id]);
+        if (!$has_phone) {
+            err("staging: wa_cloud_conversations no tiene columna 'phone' — ALTERs fallaron. Cols: " . implode(',', array_slice($existing_cols, 0, 10)));
+        }
 
-        stg()->prepare("
-            INSERT INTO wa_quote_approvals
-                (id,conv_id,quotation_id,created_by,quote_total,quote_snapshot,status)
-            VALUES (?,?,?,?,156812,?,'pending')
-        ")->execute([$appr_id,$conv_id,$quot_id,$exec_id,json_encode([
-            'origin'=>'Las Condes, Santiago','destination'=>'Viña del Mar, Valparaíso',
-            'passengers'=>42,'vehicle'=>'Bus 45','km'=>125.4,'price_km'=>1250,'total'=>156812
-        ])]);
+        try {
+            // INSERT wa_cloud_conversations — usar 'open' para enum existente, service_vehicle si no existe se ignora
+            $cols_wcc = stg()->query("SHOW COLUMNS FROM wa_cloud_conversations")->fetchAll(PDO::FETCH_COLUMN);
+            $has_svc  = in_array('service_vehicle', $cols_wcc);
+            $has_soi  = in_array('service_origin_place_id', $cols_wcc);
 
-        ok(['conv_id'=>$conv_id,'quotation_id'=>$quot_id,'approval_id'=>$appr_id,'phone'=>$phone_test]);
+            // wa_cloud_conversations en staging usa 'stage' (no 'status'); incluir service_* si existen
+            stg()->prepare("
+                INSERT INTO wa_cloud_conversations
+                    (id, phone, channel, assigned_to, contact_name, contact_email, contact_rut,
+                     service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
+                     service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
+                     service_date, service_passengers, service_type, service_vehicle, wa_draft_quote_id, created_at)
+                VALUES (?,?,'whatsapp',?,
+                    'Empresa Test S.A.','test@empresa.cl','12.345.678-9',
+                    'Las Condes, Santiago','ChIJN1t_tDeuEmsRUsoyG83frY4',-33.4150,-70.5869,
+                    'Viña del Mar, Valparaíso','ChIJhWj3mVeCYJYRJUMHmOKWwBc',-33.0247,-71.5518,
+                    DATE_ADD(NOW(),INTERVAL 3 DAY),42,'privado','Bus 45',?,NOW())
+            ")->execute([$conv_id, $phone_test, $exec_id, $quot_id]);
+
+            stg()->prepare("
+                INSERT INTO quotations
+                    (id, number, status, etapa, company,
+                     desde, hasta, desde_lat, desde_lng, hasta_lat, hasta_lng,
+                     distancia_km, subtotal, tax_pct, total,
+                     vehicle_type, user_id, created_at)
+                VALUES (?, 'STG-E2E-001', 'open', 'borrador_wa', 'Empresa Test S.A.',
+                    'Las Condes, Santiago', 'Viña del Mar, Valparaíso',
+                    -33.4150, -70.5869, -33.0247, -71.5518,
+                    125.4, 131775, 19, 156812,
+                    'Bus 45', ?, NOW())
+            ")->execute([$quot_id, $exec_id]);
+
+            stg()->prepare("
+                INSERT INTO wa_quote_approvals
+                    (id,conv_id,quotation_id,created_by,quote_total,quote_snapshot,status)
+                VALUES (?,?,?,?,156812,?,'pending')
+            ")->execute([$appr_id,$conv_id,$quot_id,$exec_id,json_encode([
+                'origin'=>'Las Condes, Santiago','destination'=>'Viña del Mar, Valparaíso',
+                'passengers'=>42,'vehicle'=>'Bus 45','km'=>125.4,'price_km'=>1250,'total'=>156812
+            ])]);
+
+            ok(['conv_id'=>$conv_id,'quotation_id'=>$quot_id,'approval_id'=>$appr_id,'phone'=>$phone_test,'has_svc'=>$has_svc,'has_soi'=>$has_soi]);
+        } catch (PDOException $e) {
+            err('seed error: ' . $e->getMessage(), 500);
+        }
     }
 
     // ── e2e_check_form ─────────────────────────────────────────────────────
