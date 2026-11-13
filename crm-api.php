@@ -4817,7 +4817,7 @@ function crear_borrador_wa(PDO $pdo, string $conv_id): array {
             $conv['service_origin_lat']??null,$conv['service_origin_lng']??null,
             $conv['service_destination_lat']??null,$conv['service_destination_lng']??null,
             $km,$conv['service_date'],$tarifa['formato_nombre'],
-            $exec_id,'skip','skip',
+            $exec_id,'pending','pending',
         ]);
         $pdo->prepare("
             INSERT INTO wa_quote_approvals (id,conv_id,quotation_id,created_by,quote_total,quote_snapshot,status)
