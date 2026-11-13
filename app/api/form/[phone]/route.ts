@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 
 // Teléfonos de prueba staging — nunca llegan a producción DB
-const E2E_TOKEN = process.env.E2E_TEST_TOKEN ?? 'e2e_sofia_staging_nov2026'
+const E2E_TOKEN = process.env.E2E_TEST_TOKEN ?? ''
 const isStgPhone = (phone: string) => /^5691111\d{4}$/.test(phone)
 
 export async function GET(

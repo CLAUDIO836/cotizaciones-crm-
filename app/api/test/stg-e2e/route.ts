@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
-const E2E_TOKEN = process.env.E2E_TEST_TOKEN ?? 'e2e_sofia_staging_nov2026'
+const E2E_TOKEN = process.env.E2E_TEST_TOKEN ?? ''
 const RUNNER_URL = 'https://www.transccl.cl/crm-api.php'
 
 export const dynamic = 'force-dynamic'

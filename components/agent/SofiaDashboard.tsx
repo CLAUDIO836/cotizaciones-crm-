@@ -70,8 +70,12 @@ const STAGE_COLOR: Record<string, { bg: string; color: string }> = {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export default function SofiaDashboard() {
-  const [section, setSection] = useState<Section>('resumen')
+export default function SofiaDashboard({ mode = 'production' }: { mode?: 'production' | 'staging' }) {
+  const isStaging = mode === 'staging'
+  const listUrl      = isStaging ? '/api/whatsapp/cloud/staging-list'      : '/api/whatsapp/cloud/list'
+  const approvalsUrl = isStaging ? '/api/whatsapp/cloud/staging-approvals' : '/api/whatsapp/cloud/approvals'
+
+  const [section, setSection] = useState<Section>('aprobaciones')
   const [metrics, setMetrics] = useState<SofiaMetrics | null>(null)
   const [convs, setConvs]     = useState<WaConv[]>([])
   const [loading, setLoading] = useState(true)
@@ -80,22 +84,28 @@ export default function SofiaDashboard() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [mRes, cRes] = await Promise.all([
-        fetch('/api/whatsapp/cloud/metrics'),
-        fetch('/api/whatsapp/cloud/list'),
-      ])
-      if (mRes.ok) { const d = await mRes.json(); setMetrics(d.metrics ?? null) }
-      if (cRes.ok) { const d = await cRes.json(); setConvs(Array.isArray(d) ? d : []) }
+      const promises: Promise<Response>[] = [fetch(listUrl)]
+      if (!isStaging) promises.unshift(fetch('/api/whatsapp/cloud/metrics'))
+      const results = await Promise.all(promises)
+      if (!isStaging) {
+        const [mRes, cRes] = results
+        if (mRes.ok) { const d = await mRes.json(); setMetrics(d.metrics ?? null) }
+        if (cRes.ok) { const d = await cRes.json(); setConvs(Array.isArray(d) ? d : []) }
+      } else {
+        const [cRes] = results
+        if (cRes.ok) { const d = await cRes.json(); setConvs(Array.isArray(d) ? d : []) }
+      }
     } catch { /* ignore */ }
     setLoading(false)
-  }, [])
+  }, [isStaging, listUrl])
 
-  // Check webhook status
+  // Webhook status solo en producción
   useEffect(() => {
+    if (isStaging) { setWebhookOk(null); return }
     fetch('/api/whatsapp/cloud/list')
       .then(r => setWebhookOk(r.ok))
       .catch(() => setWebhookOk(false))
-  }, [])
+  }, [isStaging])
 
   useEffect(() => { load() }, [load])
 
@@ -123,17 +133,23 @@ export default function SofiaDashboard() {
 
       {/* Sidebar nav */}
       <div style={{ width: 200, borderRight: '1px solid #e5e7eb', background: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+        {/* Staging banner */}
+        {isStaging && (
+          <div style={{ background: '#7c3aed', color: '#fff', padding: '6px 12px', fontSize: 10, fontWeight: 700, textAlign: 'center', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            🧪 MODO STAGING — Solo base de datos de prueba
+          </div>
+        )}
         {/* Header */}
         <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid #e5e7eb' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
-              🤖
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: isStaging ? '#f3e8ff' : '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+              {isStaging ? '🧪' : '🤖'}
             </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 14, color: '#111' }}>Sofía</div>
-              <div style={{ fontSize: 11, color: webhookOk === true ? '#16a34a' : webhookOk === false ? '#dc2626' : '#9ca3af', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: webhookOk === true ? '#22c55e' : webhookOk === false ? '#ef4444' : '#d1d5db', display: 'inline-block' }} />
-                {webhookOk === true ? 'Activa' : webhookOk === false ? 'Sin conexión' : 'Verificando...'}
+              <div style={{ fontWeight: 700, fontSize: 14, color: '#111' }}>{isStaging ? 'Sofía · Pruebas' : 'Sofía'}</div>
+              <div style={{ fontSize: 11, color: isStaging ? '#7c3aed' : (webhookOk === true ? '#16a34a' : webhookOk === false ? '#dc2626' : '#9ca3af'), display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: isStaging ? '#a78bfa' : (webhookOk === true ? '#22c55e' : webhookOk === false ? '#ef4444' : '#d1d5db'), display: 'inline-block' }} />
+                {isStaging ? 'Staging aislado' : (webhookOk === true ? 'Activa' : webhookOk === false ? 'Sin conexión' : 'Verificando...')}
               </div>
             </div>
           </div>
@@ -236,7 +252,7 @@ export default function SofiaDashboard() {
                 {botActive.length === 0 ? (
                   <EmptyState icon="🤖" msg="Sin oportunidades activas con Sofía en este momento" />
                 ) : (
-                  <ConvTable convs={botActive} showApproval />
+                  <ConvTable convs={botActive} showApproval approvalsUrl={approvalsUrl} />
                 )}
               </>
             )}
@@ -249,10 +265,16 @@ export default function SofiaDashboard() {
                   Sofía preparó estas cotizaciones. Requieren aprobación de una ejecutiva antes de enviarse al cliente.{' '}
                   <Link href="/por-aprobar" style={{ color: '#2563eb', fontWeight: 600 }}>Ir al módulo Por Aprobar →</Link>
                 </p>
+                {isStaging && (
+                  <div style={{ background: '#faf5ff', border: '1px solid #c4b5fd', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12, color: '#6d28d9' }}>
+                    <strong>🧪 Entorno de pruebas</strong> — Los botones Aprobar y Rechazar operan exclusivamente sobre la base de datos staging.
+                    Ningún mensaje será enviado por WhatsApp. La decisión queda registrada con tu usuario y la fecha exacta.
+                  </div>
+                )}
                 {pendingApproval.length === 0 ? (
                   <EmptyState icon="✅" msg="Sin cotizaciones pendientes de aprobación" />
                 ) : (
-                  <ConvTable convs={pendingApproval} showApproval onDecide={load} />
+                  <ConvTable convs={pendingApproval} showApproval onDecide={load} approvalsUrl={approvalsUrl} />
                 )}
               </>
             )}
@@ -357,17 +379,18 @@ function EmptyState({ icon, msg }: { icon: string; msg: string }) {
   )
 }
 
-function ConvTable({ convs, showApproval, onDecide }: {
+function ConvTable({ convs, showApproval, onDecide, approvalsUrl = '/api/whatsapp/cloud/approvals' }: {
   convs: WaConv[]
   showApproval?: boolean
   onDecide?: () => void
+  approvalsUrl?: string
 }) {
   const [deciding, setDeciding] = useState<Record<string, 'approving' | 'rejecting' | 'done' | 'error'>>({})
 
   async function decide(convId: string, decision: 'approved' | 'rejected') {
     setDeciding(prev => ({ ...prev, [convId]: decision === 'approved' ? 'approving' : 'rejecting' }))
     try {
-      const res = await fetch('/api/whatsapp/cloud/approvals', {
+      const res = await fetch(approvalsUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conv_id: convId, decision }),

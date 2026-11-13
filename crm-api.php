@@ -4895,11 +4895,12 @@ if ($action === 'wa_create_borrador') {
 }
 
 // ── E2E Staging Tests (TEMPORAL — eliminar después de pruebas) ────────────────
-// Requiere header x-e2e-token: e2e_sofia_staging_nov2026
+// Requiere header x-e2e-token con valor definido en env E2E_STAGING_TOKEN (cPanel).
 // Conecta a DB staging, NO a producción.
 if (str_starts_with($action, 'e2e_')) {
-    $e2e_token = $_SERVER['HTTP_X_E2E_TOKEN'] ?? '';
-    if ($e2e_token !== 'e2e_sofia_staging_nov2026') {
+    $e2e_token          = $_SERVER['HTTP_X_E2E_TOKEN'] ?? '';
+    $e2e_token_expected = getenv('E2E_STAGING_TOKEN') ?: '';
+    if (!$e2e_token_expected || $e2e_token !== $e2e_token_expected) {
         err('e2e token inválido', 403);
     }
 
@@ -5387,6 +5388,185 @@ if (str_starts_with($action, 'e2e_')) {
                 'approvals' => $apprs,
                 'safe_to_delete' => ($msgs === 0 && empty($apprs) && stripos($conv['contact_name']??'', 'test') !== false),
             ],
+        ]);
+    }
+
+    // ── e2e_seed_borrador_phone — seed conv+borrador para teléfonos autorizados ─
+    if ($action === 'e2e_seed_borrador_phone') {
+        $b     = body();
+        $phone = $b['phone'] ?? '';
+        $whitelist = ['56911111002', '56911111003'];
+        if (!$phone || !in_array($phone, $whitelist, true)) {
+            err('Solo teléfonos autorizados: 56911111002 y 56911111003', 403);
+        }
+        $exists = stg()->prepare("SELECT id FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+        $exists->execute([$phone]);
+        if ($exists->fetch()) {
+            err("Ya existe una conversación staging para $phone. Limpiar primero.", 409);
+        }
+        $conv_id  = stguuid();
+        $exec_id  = 'beb2594e-be75-11f1-adc3-56000529c2a9';
+        try {
+            stg()->prepare("
+                INSERT INTO wa_cloud_conversations
+                    (id, phone, channel, assigned_to, contact_name,
+                     service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
+                     service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
+                     service_date, service_passengers, service_type, service_vehicle, service_km,
+                     stage, created_at)
+                VALUES (?,?,'whatsapp',?,?,
+                    ?,?,?,?,
+                    ?,?,?,?,
+                    ?,?,?,?,?,
+                    'formulario_completo',NOW())
+            ")->execute([
+                $conv_id, $phone, $exec_id,
+                $b['contact_name']  ?? 'Test Staging',
+                $b['service_origin'] ?? 'Las Condes, Santiago',
+                $b['service_origin_place_id'] ?? null,
+                (float)($b['service_origin_lat'] ?? -33.4150),
+                (float)($b['service_origin_lng'] ?? -70.5869),
+                $b['service_destination'] ?? 'Viña del Mar, Valparaíso',
+                $b['service_destination_place_id'] ?? null,
+                (float)($b['service_destination_lat'] ?? -33.0247),
+                (float)($b['service_destination_lng'] ?? -71.5518),
+                $b['service_date'] ?? date('Y-m-d', strtotime('+7 days')),
+                (int)($b['service_passengers'] ?? 42),
+                $b['service_type']    ?? 'privado',
+                $b['service_vehicle'] ?? 'bus',
+                (float)($b['service_km'] ?? 128.6),
+            ]);
+            $borrador = crear_borrador_wa(stg(), $conv_id);
+            if (isset($borrador['error'])) {
+                stg()->prepare("DELETE FROM wa_cloud_conversations WHERE id=?")->execute([$conv_id]);
+                err('Auto-crear borrador falló: ' . $borrador['error'], $borrador['code'] ?? 422);
+            }
+            ok(['conv_id'=>$conv_id,'phone'=>$phone,'has_draft'=>true,'borrador'=>$borrador,'staging'=>true]);
+        } catch (PDOException $e) {
+            err('seed_phone error: '.$e->getMessage());
+        }
+    }
+
+    // ── e2e_convs_pending_approval — lista convs staging con borrador pendiente ─
+    // Requiere sesión activa (x-user-id). Aislamiento garantizado por stg() en backend.
+    if ($action === 'e2e_convs_pending_approval') {
+        $uid  = $_SERVER['HTTP_X_USER_ID']  ?? '';
+        $role = $_SERVER['HTTP_X_USER_ROLE'] ?? '';
+        if (!$uid) err('No autorizado — se requiere sesión activa', 401);
+
+        $stmt = stg()->prepare("
+            SELECT
+                c.id, c.phone, c.contact_name, c.stage,
+                c.wa_draft_quote_id,
+                c.service_origin, c.service_destination, c.service_date,
+                c.created_at                       AS last_msg_at,
+                q.number                           AS quote_number,
+                q.total                            AS quote_total,
+                q.distancia_km                     AS quote_km,
+                a.status                           AS approval_status,
+                a.id                               AS approval_id
+            FROM wa_cloud_conversations c
+            LEFT JOIN quotations          q ON q.id     = c.wa_draft_quote_id
+            LEFT JOIN wa_quote_approvals  a ON a.conv_id = c.id AND a.status = 'pending'
+            WHERE c.wa_draft_quote_id IS NOT NULL
+            ORDER BY c.created_at DESC
+            LIMIT 50
+        ");
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $convs = array_map(function($r) {
+            $total = $r['quote_total'] ? '$'.number_format((float)$r['quote_total'],0,',','.') : '?';
+            $km    = $r['quote_km']    ? " · {$r['quote_km']} km" : '';
+            return [
+                'id'                 => $r['id'],
+                'phone'              => $r['phone'],
+                'contact_name'       => $r['contact_name'],
+                'assigned_name'      => '🧪 Staging',
+                'stage'              => $r['stage'] ?? 'formulario_completo',
+                'bot_active'         => false,
+                'wa_draft_quote_id'  => $r['wa_draft_quote_id'],
+                'last_msg_at'        => $r['last_msg_at'],
+                'last_message'       => $r['quote_number']
+                    ? "Cotización #{$r['quote_number']} — {$total}{$km}"
+                    : 'Borrador pendiente de aprobación',
+                'unread_count'       => 0,
+                'service_origin'     => $r['service_origin'],
+                'service_destination'=> $r['service_destination'],
+                'service_date'       => $r['service_date'],
+                'approval_id'        => $r['approval_id'],
+                'approval_status'    => $r['approval_status'],
+            ];
+        }, $rows);
+
+        ok(['convs'=>$convs,'staging'=>true,'count'=>count($convs)]);
+    }
+
+    // ── e2e_approvals_decide_stg — aprobar/rechazar borrador en staging ────────
+    // Requiere sesión activa + rol gerencia/supervisor. Usa stg() — nunca toca producción.
+    if ($action === 'e2e_approvals_decide_stg') {
+        $uid  = $_SERVER['HTTP_X_USER_ID']  ?? '';
+        $role = $_SERVER['HTTP_X_USER_ROLE'] ?? '';
+        if (!$uid) err('No autorizado — se requiere sesión activa', 401);
+        $allowed = ['gerencia','admin','superadmin','supervisor'];
+        if (!in_array($role, $allowed)) {
+            err('Sin permiso: solo Gerencia o supervisores autorizados pueden decidir sobre cotizaciones', 403);
+        }
+
+        $b        = body();
+        $conv_id  = $b['conv_id']  ?? '';
+        $decision = $b['decision'] ?? '';
+        $notes    = trim($b['notes'] ?? '');
+        if (!$conv_id || !in_array($decision, ['approved','rejected'])) {
+            err('conv_id y decision (approved|rejected) requeridos');
+        }
+
+        $ap = stg()->prepare("SELECT id, quotation_id, status FROM wa_quote_approvals WHERE conv_id=? ORDER BY created_at DESC LIMIT 1");
+        $ap->execute([$conv_id]);
+        $apRow = $ap->fetch();
+        if (!$apRow) err('No hay cotización de Sofía para esta conversación en staging', 404);
+        if ($apRow['status'] !== 'pending') {
+            err("Esta cotización ya fue {$apRow['status']}. No se puede $decision", 409);
+        }
+
+        $qSnap = stg()->prepare("SELECT id, number, total, etapa, distancia_km FROM quotations WHERE id=?");
+        $qSnap->execute([$apRow['quotation_id']]);
+        $snapshot = $qSnap->fetch() ?: [];
+
+        if ($decision === 'rejected') {
+            stg()->prepare("UPDATE wa_quote_approvals SET status='rejected', approved_by=?, approved_at=NOW(), notes=?, quote_snapshot=? WHERE id=?")
+                ->execute([$uid, $notes ?: null, json_encode($snapshot), $apRow['id']]);
+            stg()->prepare("UPDATE quotations SET etapa='borrador_wa_rechazado' WHERE id=?")
+                ->execute([$apRow['quotation_id']]);
+            stg()->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=NULL WHERE id=?")
+                ->execute([$conv_id]);
+            ok([
+                'rechazado'   => true,
+                'rechazado_por' => $uid,
+                'timestamp'   => date('c'),
+                'staging'     => true,
+                'nota'        => 'Acción registrada en staging — ningún mensaje enviado por WhatsApp',
+            ]);
+        }
+
+        // Aprobación (status='approved'; el envío es paso separado y requiere autorización adicional)
+        stg()->prepare("UPDATE wa_quote_approvals SET status='approved', approved_by=?, approved_at=NOW(), notes=?, quote_snapshot=? WHERE id=?")
+            ->execute([$uid, $notes ?: null, json_encode($snapshot), $apRow['id']]);
+        stg()->prepare("UPDATE quotations SET etapa='cotizacion', status='open' WHERE id=?")
+            ->execute([$apRow['quotation_id']]);
+
+        $q = stg()->prepare("SELECT number, total FROM quotations WHERE id=?");
+        $q->execute([$apRow['quotation_id']]);
+        $qRow = $q->fetch();
+        ok([
+            'aprobado'        => true,
+            'aprobado_por'    => $uid,
+            'timestamp'       => date('c'),
+            'quote_number'    => $qRow['number'] ?? null,
+            'total'           => $qRow['total']  ?? null,
+            'envio_pendiente' => true,
+            'staging'         => true,
+            'nota'            => 'Aprobación registrada en staging — ningún mensaje enviado por WhatsApp',
         ]);
     }
 
