@@ -4,6 +4,9 @@
  * Subir a: https://transccl.cl/crm-api.php (public_html)
  */
 
+// Cargar variables de entorno del servidor (crm-env.php no está en git)
+if (file_exists(__DIR__ . '/crm-env.php')) require_once __DIR__ . '/crm-env.php';
+
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');

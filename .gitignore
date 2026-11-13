@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Server-only env config (secrets, never commit)
+/crm-env.php
+
 # dependencies
 /node_modules
 /.pnp
