@@ -46,12 +46,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // ── Bifurcación staging: teléfonos autorizados van a wa_webhook_stg.php ───────
-// Agregar aquí el número de prueba cuando Gerencia lo autorice.
-// Formato: '56XXXXXXXXX' (sin +, con código de país).
-// Los demás teléfonos continúan al flujo productivo sin cambio.
 define('STG_TEST_PHONES', [
     '56974270657',  // Claudio — teléfono de prueba autorizado
 ]);
+// Token de autenticación para wa_webhook_stg.php (mismo que E2E_STAGING_TOKEN)
+define('_STG_FWD_TOKEN', '70eb01dd57fbf935a94499f5a32997f2088460da781ae58aa675fe12bb1dd7e0');
 
 $body = json_decode(file_get_contents('php://input'), true) ?? [];
 
@@ -116,6 +115,9 @@ foreach ($body['entry'] ?? [] as $entry) {
 
             // Bifurcación: si es teléfono de prueba staging, reenviar y no procesar en producción
             if (STG_TEST_PHONES && in_array($phone, STG_TEST_PHONES)) {
+                file_put_contents('/home/transccl/logs/wa_stg_forward.log',
+                    '[' . date('Y-m-d H:i:s') . '] BIFURC_MATCH phone=' . $phone . ' wamid=' . $wamid . "\n",
+                    FILE_APPEND | LOCK_EX);
                 stgForward($body);
                 continue;
             }
@@ -129,13 +131,18 @@ exit;
 // ─────────────────────────────────────────────────────────────────────────────
 
 function stgForward(array $body): void {
+    $logFile  = '/home/transccl/logs/wa_stg_forward.log';
     $stgUrl   = 'https://www.transccl.cl/wa_webhook_stg.php';
-    $stgToken = defined('CRM_E2E_TOKEN')      ? CRM_E2E_TOKEN
-              : (getenv('E2E_STAGING_TOKEN')  ?: getenv('CRM_E2E_TOKEN') ?: '');
+    $stgToken = defined('_STG_FWD_TOKEN') ? _STG_FWD_TOKEN : '';
+
+    $ts = date('Y-m-d H:i:s');
+    file_put_contents($logFile, "[{$ts}] stgForward CALLED token=" . (strlen($stgToken) > 10 ? substr($stgToken,0,8).'...' : 'EMPTY') . "\n", FILE_APPEND | LOCK_EX);
+
     if (!$stgToken) {
-        error_log('[wa_webhook] STG_FORWARD no token disponible');
+        file_put_contents($logFile, "[{$ts}] stgForward ABORT no token\n", FILE_APPEND | LOCK_EX);
         return;
     }
+
     $json = json_encode($body);
     $ch   = curl_init($stgUrl);
     curl_setopt_array($ch, [
@@ -155,9 +162,9 @@ function stgForward(array $body): void {
     curl_close($ch);
 
     if ($curlErr || $status < 200 || $status >= 300) {
-        error_log("[wa_webhook] STG_FORWARD_ERR status={$status} err={$curlErr}");
+        file_put_contents($logFile, "[{$ts}] STG_FORWARD_ERR status={$status} err={$curlErr}\n", FILE_APPEND | LOCK_EX);
     } else {
-        error_log("[wa_webhook] STG_FORWARD_OK status={$status}");
+        file_put_contents($logFile, "[{$ts}] STG_FORWARD_OK status={$status}\n", FILE_APPEND | LOCK_EX);
     }
 }
 
