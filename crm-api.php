@@ -4242,12 +4242,19 @@ if ($action === 'wa_form_get') {
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_place_id VARCHAR(255) NULL"); } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_lat DOUBLE NULL");      } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_lng DOUBLE NULL");      } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN company_name VARCHAR(255) NULL");           } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN client_type ENUM('natural','empresa') NULL DEFAULT 'natural'"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN quote_send_email VARCHAR(255) NULL");       } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour TIME NULL");                   } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL");            } catch (PDOException $e) {}
 
     $stmt = db()->prepare(
         "SELECT contact_name, contact_email, contact_rut,
+                client_type, company_name, quote_send_email,
                 service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
                 service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
-                service_date, service_passengers, service_type, service_vehicle
+                service_date, service_hour, service_hour_return,
+                service_passengers, service_type, service_vehicle, observaciones
          FROM wa_cloud_conversations WHERE phone = ? LIMIT 1"
     );
     $stmt->execute([$phone]);
@@ -4279,13 +4286,15 @@ if ($action === 'wa_form_save') {
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN quote_send_email VARCHAR(255) NULL");       } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour TIME NULL");                   } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL");            } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN observaciones TEXT NULL");                  } catch (PDOException $e) {}
 
     $allowed = ['contact_name','contact_email','contact_rut',
                 'client_type','company_name','quote_send_email',
                 'service_origin','service_origin_place_id','service_origin_lat','service_origin_lng',
                 'service_destination','service_destination_place_id','service_destination_lat','service_destination_lng',
-                'service_date','service_passengers','service_type','service_vehicle','service_km',
-                'service_hour','service_hour_return'];
+                'service_date','service_hour','service_hour_return',
+                'service_passengers','service_type','service_vehicle','service_km',
+                'observaciones'];
     $sets = []; $vals = [];
     foreach ($allowed as $col) {
         if (array_key_exists($col, $b)) {
@@ -4432,25 +4441,7 @@ if ($action === 'wa_form_save') {
         }
     }
 
-    // Auto-crear borrador de cotización a partir del formulario
-    $borradorResult = null;
-    $borradorError  = null;
-    $convIdForBorrador = $prev['id'] ?? null;
-    if ($convIdForBorrador) {
-        try {
-            $borradorResult = crear_borrador_wa(db(), $convIdForBorrador, ['use_client_lookup' => true]);
-            if (isset($borradorResult['error'])) {
-                $borradorError = $borradorResult['error'];
-                $borradorCode  = $borradorResult['code'] ?? 'unknown';
-                error_log("[wa_form_save] borrador no creado ($borradorCode): $borradorError");
-            }
-        } catch (Throwable $ex) {
-            error_log("[wa_form_save] borrador exception: " . $ex->getMessage());
-            $borradorError = $ex->getMessage();
-        }
-    }
-
-    ok(['saved' => true, 'borrador' => $borradorResult, 'borrador_error' => $borradorError]);
+    ok(['saved' => true]);
 }
 
 // ── wa_bot_reactivate ─────────────────────────────────────────────────────────
@@ -5173,6 +5164,7 @@ if (str_starts_with($action, 'e2e_')) {
         "ALTER TABLE wa_cloud_conversations ADD COLUMN quote_send_email VARCHAR(200) NULL COMMENT 'Email confirmado para envío'",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour TIME NULL COMMENT 'Hora de salida HH:MM'",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL COMMENT 'Hora de regreso aproximada HH:MM'",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN observaciones TEXT NULL COMMENT 'Observaciones del servicio'",
         // ── Fase 1: historial de invalidaciones en wa_quote_approvals ─────────
         "ALTER TABLE wa_quote_approvals ADD COLUMN invalidated_reason TEXT NULL",
         "ALTER TABLE wa_quote_approvals ADD COLUMN invalidated_at DATETIME NULL",
@@ -5470,11 +5462,20 @@ if (str_starts_with($action, 'e2e_')) {
     if ($action === 'e2e_form_get') {
         $phone = $_GET['phone'] ?? '';
         if (!$phone) err('phone requerido');
-        $stmt = stg()->prepare("SELECT id,phone,contact_name,contact_email,contact_rut,service_origin,service_origin_place_id,service_origin_lat,service_origin_lng,service_destination,service_destination_place_id,service_destination_lat,service_destination_lng,service_date,service_passengers,service_type,service_vehicle,service_km,stage FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+        $stmt = stg()->prepare(
+            "SELECT contact_name, contact_email, contact_rut,
+                    client_type, company_name, quote_send_email,
+                    service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
+                    service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
+                    service_date, service_hour, service_hour_return,
+                    service_passengers, service_type, service_vehicle, service_km, observaciones, stage
+             FROM wa_cloud_conversations WHERE phone=? LIMIT 1"
+        );
         $stmt->execute([$phone]);
         $conv = $stmt->fetch();
         if (!$conv) err('Conversación de staging no encontrada para ' . $phone, 404);
-        ok(['conv' => $conv, 'staging' => true]);
+        // Respuesta plana (igual que wa_form_get) para que el formulario funcione igual en staging y producción
+        ok(array_merge($conv, ['staging' => true]));
     }
 
     // ── e2e_form_save_borrador — staging de wa_form_save + trigger automático ─
@@ -5492,7 +5493,12 @@ if (str_starts_with($action, 'e2e_')) {
         if (!$conv) err('Conversación de staging no encontrada. Usar e2e_seed_borrador primero.', 404);
         $conv_id = $conv['id'];
 
-        $allowed = ['contact_name','contact_email','contact_rut','service_origin','service_origin_place_id','service_origin_lat','service_origin_lng','service_destination','service_destination_place_id','service_destination_lat','service_destination_lng','service_date','service_passengers','service_type','service_vehicle','service_km'];
+        $allowed = ['contact_name','contact_email','contact_rut',
+                    'client_type','company_name','quote_send_email',
+                    'service_origin','service_origin_place_id','service_origin_lat','service_origin_lng',
+                    'service_destination','service_destination_place_id','service_destination_lat','service_destination_lng',
+                    'service_date','service_hour','service_hour_return',
+                    'service_passengers','service_type','service_vehicle','service_km','observaciones'];
         $sets = []; $vals = [];
         foreach ($allowed as $col) {
             if (array_key_exists($col, $b)) {
@@ -5508,12 +5514,16 @@ if (str_starts_with($action, 'e2e_')) {
         stg()->prepare("UPDATE wa_cloud_conversations SET " . implode(', ', $sets) . " WHERE id=?")->execute($vals);
 
         // Trigger automático: crear borrador si wa_draft_quote_id es NULL
-        $checkDraft = stg()->prepare("SELECT wa_draft_quote_id FROM wa_cloud_conversations WHERE id=?");
-        $checkDraft->execute([$conv_id]);
-        $hasDraft = $checkDraft->fetchColumn();
+        $stateStmt = stg()->prepare("SELECT wa_draft_quote_id, contact_rut FROM wa_cloud_conversations WHERE id=?");
+        $stateStmt->execute([$conv_id]);
+        $stateRow        = $stateStmt->fetch(PDO::FETCH_ASSOC);
+        $existingDraftId = $stateRow['wa_draft_quote_id'] ?? null;
+        $rutGuardado     = trim($stateRow['contact_rut'] ?? '');
         $borrador_result = null;
-        if (!$hasDraft) {
-            $borrador_result = crear_borrador_wa(stg(), $conv_id);
+        if (!$existingDraftId) {
+            // Activar use_client_lookup si hay RUT (permite crear/buscar clientes y contactos)
+            $opts = $rutGuardado ? ['use_client_lookup' => true] : [];
+            $borrador_result = crear_borrador_wa(stg(), $conv_id, $opts);
         }
         ok(['saved'=>true,'staging'=>true,'conv_id'=>$conv_id,'borrador'=>$borrador_result,'nota'=>'Staging only']);
     }

@@ -190,6 +190,7 @@ export default function FormPage() {
   const [pax,       setPax]      = useState('')
   const [tipo,      setTipo]     = useState('')
   const [vehiculo,  setVehiculo] = useState('')
+  const [observaciones, setObservaciones] = useState('')
   const [serviceKm, setServiceKm]   = useState<number | null>(null)
   const [kmLoading, setKmLoading]   = useState(false)
 
@@ -241,6 +242,7 @@ export default function FormPage() {
           if (f.service_passengers)  setPax(String(f.service_passengers))
           if (f.service_type)        setTipo(f.service_type)
           if (f.service_vehicle)     setVehiculo(f.service_vehicle)
+          if (f.observaciones)       setObservaciones(f.observaciones)
         }
         setStep('form')
       })
@@ -287,6 +289,7 @@ export default function FormPage() {
           service_type: tipo,
           service_vehicle: vehiculo || null,
           service_km: serviceKm,
+          observaciones: observaciones.trim() || null,
         }),
       })
       const d = await r.json()
@@ -561,6 +564,19 @@ export default function FormPage() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Observaciones */}
+          <div style={{ marginBottom: 24 }}>
+            <label style={labelStyle}>
+              Observaciones <span style={{ color: '#a0aec0', fontWeight: 400 }}>(opcional)</span>
+            </label>
+            <textarea
+              style={{ ...inputStyle, minHeight: 80, resize: 'vertical' as const }}
+              value={observaciones}
+              onChange={e => setObservaciones(e.target.value)}
+              placeholder="Detalles adicionales del servicio, instrucciones especiales, etc."
+            />
           </div>
 
           <button
