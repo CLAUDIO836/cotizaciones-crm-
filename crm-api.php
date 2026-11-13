@@ -4664,6 +4664,32 @@ if ($action === 'wa_approvals_decide') {
     ]);
 }
 
+// ── Sofía: invalidar aprobación para permitir nueva versión ───────────────────
+if ($action === 'wa_invalidate_approval') {
+    $user = requireAuth();
+    $allowedRoles = ['gerencia', 'admin', 'superadmin', 'supervisor'];
+    if (!in_array($user['role'] ?? '', $allowedRoles)) {
+        err('Sin permiso: solo Gerencia o supervisores pueden invalidar aprobaciones', 403);
+    }
+    $b      = body();
+    $convId = $b['conv_id'] ?? '';
+    $motivo = trim($b['motivo'] ?? 'Invalidado manualmente por supervisor');
+    if (!$convId) err('conv_id requerido');
+
+    $ap = db()->prepare("SELECT id, status, quotation_id FROM wa_quote_approvals WHERE conv_id=? AND status IN ('approved','pending') ORDER BY created_at DESC LIMIT 1");
+    $ap->execute([$convId]);
+    $apRow = $ap->fetch();
+    if (!$apRow) err('No hay aprobación activa (approved/pending) para invalidar', 404);
+
+    db()->prepare("UPDATE wa_quote_approvals SET status='invalidated', approved_by=?, approved_at=NOW(), notes=? WHERE id=?")
+        ->execute([$user['id'], $motivo, $apRow['id']]);
+    db()->prepare("UPDATE quotations SET etapa='borrador_wa_invalidado' WHERE id=?")
+        ->execute([$apRow['quotation_id']]);
+    db()->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=NULL WHERE id=?")
+        ->execute([$convId]);
+    ok(['invalidado'=>true,'status_anterior'=>$apRow['status'],'invalidado_por'=>$user['id'],'timestamp'=>date('c')]);
+}
+
 // ── Sofía: métricas agregadas ─────────────────────────────────────────────────
 if ($action === 'wa_sofia_metrics') {
     requireAuth();
@@ -4775,21 +4801,36 @@ function crear_borrador_wa(PDO $pdo, string $conv_id): array {
     if ($pax > 90) return ['error'=>"$pax pasajeros: requiere cotización a medida (máx 90)",'code'=>422,'tipo'=>'a_medida'];
     if ($km > 150) return ['error'=>"{$km} km supera el límite de 150 km para borrador automático",'code'=>422,'tipo'=>'a_medida'];
 
-    // Idempotencia: si existe borrador pendiente → retornar el existente
+    // Idempotencia y bloqueo por aprobación existente
     $draft_id = $conv['wa_draft_quote_id'] ?? null;
     if ($draft_id) {
         try {
-            $sa = $pdo->prepare("SELECT id FROM wa_quote_approvals WHERE quotation_id=? AND status='pending' ORDER BY created_at DESC LIMIT 1");
+            $sa = $pdo->prepare("SELECT id, status FROM wa_quote_approvals WHERE quotation_id=? ORDER BY created_at DESC LIMIT 1");
             $sa->execute([$draft_id]);
             $ex = $sa->fetch(PDO::FETCH_ASSOC);
-            if ($ex) return ['ok'=>true,'idempotent'=>true,'quotation_id'=>$draft_id,'approval_id'=>$ex['id']];
+            if ($ex) {
+                if ($ex['status'] === 'pending') {
+                    // Idempotente: borrador pendiente existente, no duplicar
+                    return ['ok'=>true,'idempotent'=>true,'quotation_id'=>$draft_id,'approval_id'=>$ex['id']];
+                }
+                if (in_array($ex['status'], ['approved', 'sent'])) {
+                    // Aprobación vigente: no permitir nuevo borrador sin invalidación previa
+                    return [
+                        'error' => "Esta cotización ya fue {$ex['status']}. Para crear una nueva versión, el supervisor debe invalidar la aprobación anterior.",
+                        'code'  => 409,
+                        'approval_status' => $ex['status'],
+                        'approval_id'     => $ex['id'],
+                    ];
+                }
+                // status=rejected/invalidated → se puede crear nuevo borrador
+            }
         } catch (PDOException $e) {}
     }
 
     $formato_id = php_map_vehiculo($conv['service_vehicle'] ?? '', $pax);
     $tarifa = php_calcular_tarifa_salida($formato_id, $km);
 
-    // Invalidar aprobaciones pendientes anteriores
+    // Invalidar aprobaciones anteriores en estado pending o invalidated (no approved/sent)
     try {
         $pdo->prepare("UPDATE wa_quote_approvals SET status='invalidated',notes='Reemplazado por nuevo borrador' WHERE conv_id=? AND status='pending'")->execute([$conv_id]);
     } catch (PDOException $e) {}
