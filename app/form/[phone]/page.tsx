@@ -144,14 +144,28 @@ export default function FormPage() {
   const [step, setStep]     = useState<'loading' | 'form' | 'done' | 'error'>('loading')
   const [saving, setSaving] = useState(false)
 
-  const [name,     setName]     = useState('')
-  const [email,    setEmail]    = useState('')
-  const [origin,   setOrigin]   = useState<PlaceField>(emptyPlace())
-  const [dest,     setDest]     = useState<PlaceField>(emptyPlace())
-  const [date,     setDate]     = useState('')
-  const [pax,      setPax]      = useState('')
-  const [tipo,     setTipo]     = useState('')
-  const [vehiculo, setVehiculo] = useState('')
+  const [name,      setName]     = useState('')
+  const [email,     setEmail]    = useState('')
+  const [origin,    setOrigin]   = useState<PlaceField>(emptyPlace())
+  const [dest,      setDest]     = useState<PlaceField>(emptyPlace())
+  const [date,      setDate]     = useState('')
+  const [pax,       setPax]      = useState('')
+  const [tipo,      setTipo]     = useState('')
+  const [vehiculo,  setVehiculo] = useState('')
+  const [serviceKm, setServiceKm]   = useState<number | null>(null)
+  const [kmLoading, setKmLoading]   = useState(false)
+
+  useEffect(() => {
+    if (!origin.validated || !dest.validated || !origin.placeId || !dest.placeId) {
+      setServiceKm(null); return
+    }
+    setKmLoading(true)
+    fetch(`/api/places?origin=${encodeURIComponent(origin.placeId)}&destination=${encodeURIComponent(dest.placeId)}`)
+      .then(r => r.json())
+      .then(d => { if (d.distance_m) setServiceKm(Math.round(d.distance_m / 100) / 10) })
+      .catch(() => setServiceKm(null))
+      .finally(() => setKmLoading(false))
+  }, [origin.placeId, origin.validated, dest.placeId, dest.validated])
 
   useEffect(() => {
     if (!phone) { setStep('error'); return }
@@ -209,6 +223,7 @@ export default function FormPage() {
           service_passengers: parseInt(pax) || null,
           service_type: tipo,
           service_vehicle: vehiculo || null,
+          service_km: serviceKm,
         }),
       })
       const d = await r.json()
@@ -310,6 +325,16 @@ export default function FormPage() {
                 inputStyle={inputStyle} labelStyle={labelStyle}
               />
             </div>
+
+            {(kmLoading || serviceKm !== null) && (
+              <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 13, color: kmLoading ? '#718096' : '#2b6cb0',
+                  background: kmLoading ? '#edf2f7' : '#ebf8ff',
+                  borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>
+                  {kmLoading ? '📍 Calculando distancia…' : `🛣 ${serviceKm} km por ruta`}
+                </span>
+              </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
               <div>

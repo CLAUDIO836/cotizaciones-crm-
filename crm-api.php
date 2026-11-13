@@ -4262,23 +4262,25 @@ if ($action === 'wa_form_save') {
     $stmt->execute([$phone]);
     if (!$stmt->fetch()) err('Conversación no encontrada', 404);
 
-    // Migraciones columnas Google Maps
+    // Migraciones columnas Google Maps + km
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin_place_id VARCHAR(255) NULL"); } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin_lat DOUBLE NULL");           } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_origin_lng DOUBLE NULL");           } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_place_id VARCHAR(255) NULL"); } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_lat DOUBLE NULL");      } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_lng DOUBLE NULL");      } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_km DECIMAL(8,2) NULL");             } catch (PDOException $e) {}
 
     $allowed = ['contact_name','contact_email','contact_rut',
                 'service_origin','service_origin_place_id','service_origin_lat','service_origin_lng',
                 'service_destination','service_destination_place_id','service_destination_lat','service_destination_lng',
-                'service_date','service_passengers','service_type','service_vehicle'];
+                'service_date','service_passengers','service_type','service_vehicle','service_km'];
     $sets = []; $vals = [];
     foreach ($allowed as $col) {
         if (array_key_exists($col, $b)) {
             $v = $b[$col] === '' ? null : $b[$col];
             if ($col === 'service_passengers' && $v !== null) $v = (int)$v ?: null;
+            if ($col === 'service_km'         && $v !== null) $v = round((float)$v, 2) ?: null;
             $sets[] = "$col = ?";
             $vals[] = $v;
         }
@@ -4694,6 +4696,149 @@ if ($action === 'wa_sofia_metrics') {
     ok(['metrics' => $m, 'periodo' => ['desde' => $desde, 'hasta' => $hasta]]);
 }
 
+// ── PHP Tarifario (mirror exacto de lib/tarifario.ts v2026-11-01) ────────────
+// NUNCA cambiar sin actualizar el TypeScript también.
+// escalera(m) => fijo = m - 19*3100 = m - 58900 , valorKm = 3100
+$PHP_TARIFARIO = [
+    'bus45'     => ['pax'=>45,'minimo'=>184500,'fijo'=>118500,'valorKm'=>3560,'disposicion'=>100000,'costoTramo'=>64750],
+    'taxibus30' => ['pax'=>30,'minimo'=>175800,'fijo'=>116900,'valorKm'=>3100,'disposicion'=>90000, 'costoTramo'=>60000],
+    'taxibus25' => ['pax'=>25,'minimo'=>167800,'fijo'=>108900,'valorKm'=>3100,'disposicion'=>90000, 'costoTramo'=>55000],
+    'minibus19' => ['pax'=>19,'minimo'=>159100,'fijo'=>100200,'valorKm'=>3100,'disposicion'=>90000, 'costoTramo'=>42500],
+    'minibus17' => ['pax'=>17,'minimo'=>151100,'fijo'=>92200, 'valorKm'=>3100,'disposicion'=>80000, 'costoTramo'=>40000],
+    'minibus15' => ['pax'=>15,'minimo'=>142400,'fijo'=>83500, 'valorKm'=>3100,'disposicion'=>80000, 'costoTramo'=>34750],
+    'van11'     => ['pax'=>11,'minimo'=>134400,'fijo'=>75500, 'valorKm'=>3100,'disposicion'=>80000, 'costoTramo'=>32500],
+];
+function php_formato_por_pasajeros(int $pax): string {
+    global $PHP_TARIFARIO;
+    $t = $PHP_TARIFARIO; uasort($t, fn($a,$b)=>$a['pax']<=>$b['pax']);
+    foreach ($t as $id=>$f) { if ($f['pax']>=$pax) return $id; }
+    return 'bus45';
+}
+function php_formato_nombre(string $id): string {
+    return match($id) {
+        'bus45'=>'Bus 45','taxibus30'=>'Taxibús 30','taxibus25'=>'Taxibús 25',
+        'minibus19'=>'Minibús 19','minibus17'=>'Minibús 17','minibus15'=>'Minibús 15','van11'=>'Van 11',
+        default=>$id,
+    };
+}
+function php_map_vehiculo(string $v, int $pax): string {
+    $v = strtolower(trim($v));
+    $direct = ['bus45','taxibus30','taxibus25','minibus19','minibus17','minibus15','van11'];
+    if (in_array($v, $direct)) return $v;
+    if ($v==='bus'||str_starts_with($v,'bus ')) return 'bus45';
+    if ($v==='van11'||$v==='van'||str_starts_with($v,'van ')) return 'van11';
+    return php_formato_por_pasajeros($pax);
+}
+function php_calcular_tarifa_salida(string $formato_id, float $km): array {
+    global $PHP_TARIFARIO;
+    $f = $PHP_TARIFARIO[$formato_id] ?? $PHP_TARIFARIO['bus45'];
+    $lista = (int)max($f['minimo'], $f['fijo'] + $f['valorKm'] * $km);
+    $minimo = (int)round($lista * (0.65 / 0.70));  // margenLista=0.35, margenMinimo=0.30
+    return [
+        'formato_id'    => $formato_id,
+        'formato_nombre'=> php_formato_nombre($formato_id),
+        'km'            => $km,
+        'precio_lista'  => $lista,
+        'precio_minimo' => $minimo,
+    ];
+}
+
+// ── crear_borrador_wa — crea cotización borrador a partir de conversación WA ──
+function crear_borrador_wa(PDO $pdo, string $conv_id): array {
+    $stmt = $pdo->prepare("SELECT * FROM wa_cloud_conversations WHERE id=? LIMIT 1");
+    $stmt->execute([$conv_id]);
+    $conv = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$conv) return ['error'=>'Conversación no encontrada','code'=>404];
+
+    foreach (['service_origin','service_destination','service_passengers','service_date'] as $f) {
+        if (empty($conv[$f])) return ['error'=>"Campo requerido: $f",'code'=>422,'missing'=>$f];
+    }
+    $km = isset($conv['service_km']) && (float)$conv['service_km'] > 0 ? (float)$conv['service_km'] : null;
+    if (!$km) return ['error'=>'Distancia no calculada (service_km vacío)','code'=>422,'missing'=>'service_km'];
+
+    $pax = (int)$conv['service_passengers'];
+    if ($pax < 1) return ['error'=>'Número de pasajeros inválido','code'=>422];
+    if ($pax > 90) return ['error'=>"$pax pasajeros: requiere cotización a medida (máx 90)",'code'=>422,'tipo'=>'a_medida'];
+    if ($km > 150) return ['error'=>"{$km} km supera el límite de 150 km para borrador automático",'code'=>422,'tipo'=>'a_medida'];
+
+    // Idempotencia: si existe borrador pendiente → retornar el existente
+    $draft_id = $conv['wa_draft_quote_id'] ?? null;
+    if ($draft_id) {
+        try {
+            $sa = $pdo->prepare("SELECT id FROM wa_quote_approvals WHERE quotation_id=? AND status='pending' ORDER BY created_at DESC LIMIT 1");
+            $sa->execute([$draft_id]);
+            $ex = $sa->fetch(PDO::FETCH_ASSOC);
+            if ($ex) return ['ok'=>true,'idempotent'=>true,'quotation_id'=>$draft_id,'approval_id'=>$ex['id']];
+        } catch (PDOException $e) {}
+    }
+
+    $formato_id = php_map_vehiculo($conv['service_vehicle'] ?? '', $pax);
+    $tarifa = php_calcular_tarifa_salida($formato_id, $km);
+
+    // Invalidar aprobaciones pendientes anteriores
+    try {
+        $pdo->prepare("UPDATE wa_quote_approvals SET status='invalidated',notes='Reemplazado por nuevo borrador' WHERE conv_id=? AND status='pending'")->execute([$conv_id]);
+    } catch (PDOException $e) {}
+
+    $quot_id = $pdo->query("SELECT UUID() AS u")->fetch(PDO::FETCH_ASSOC)['u'];
+    $appr_id = $pdo->query("SELECT UUID() AS u")->fetch(PDO::FETCH_ASSOC)['u'];
+    $exec_id = $conv['assigned_to'] ?? null;
+    $number  = 'BWA-' . date('Ymd') . '-' . str_pad(rand(1000,9999), 4, '0', STR_PAD_LEFT);
+    $obs     = sprintf('Borrador automático Sofía. Vehículo: %s. Distancia: %s km. Pasajeros: %d. Servicio: salida / mismo día.',
+                 $tarifa['formato_nombre'], $km, $pax);
+    $snapshot = ['origin'=>$conv['service_origin'],'destination'=>$conv['service_destination'],
+                 'passengers'=>$pax,'vehicle'=>$tarifa['formato_nombre'],'km'=>$km,
+                 'precio_lista'=>$tarifa['precio_lista'],'modalidad'=>'mismo_dia','servicio'=>'salida',
+                 'generado'=>date('c')];
+
+    try {
+        $pdo->prepare("
+            INSERT INTO quotations
+                (id,number,status,etapa,company,
+                 issue_date,expiry_date,
+                 subtotal,tax_pct,total,
+                 notes,observaciones,
+                 desde,hasta,desde_lat,desde_lng,hasta_lat,hasta_lng,
+                 distancia_km,fecha_salida,vehicle_type,
+                 user_id,pd_sync_status,pdf_upload_status,created_at)
+            VALUES (?,?,?,?,?,
+                    ?,?,
+                    ?,?,?,
+                    ?,?,
+                    ?,?,?,?,?,?,
+                    ?,?,?,
+                    ?,?,?,NOW())
+        ")->execute([
+            $quot_id,$number,'open','borrador_wa',$conv['contact_name']??'Sin nombre',
+            date('Y-m-d'),date('Y-m-d',strtotime('+7 days')),
+            $tarifa['precio_lista'],0,$tarifa['precio_lista'],
+            'Borrador automático WA — pendiente de revisión y aprobación',$obs,
+            $conv['service_origin'],$conv['service_destination'],
+            $conv['service_origin_lat']??null,$conv['service_origin_lng']??null,
+            $conv['service_destination_lat']??null,$conv['service_destination_lng']??null,
+            $km,$conv['service_date'],$tarifa['formato_nombre'],
+            $exec_id,'skip','skip',
+        ]);
+        $pdo->prepare("
+            INSERT INTO wa_quote_approvals (id,conv_id,quotation_id,created_by,quote_total,quote_snapshot,status)
+            VALUES (?,?,?,?,?,?,'pending')
+        ")->execute([$appr_id,$conv_id,$quot_id,$exec_id,$tarifa['precio_lista'],json_encode($snapshot)]);
+        $pdo->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=? WHERE id=?")->execute([$quot_id,$conv_id]);
+        return ['ok'=>true,'quotation_id'=>$quot_id,'approval_id'=>$appr_id,'number'=>$number,'tarifa'=>$tarifa];
+    } catch (PDOException $e) {
+        return ['error'=>'DB error: '.$e->getMessage(),'code'=>500];
+    }
+}
+
+// ── wa_create_borrador ────────────────────────────────────────────────────────
+if ($action === 'wa_create_borrador') {
+    $conv_id = body()['conv_id'] ?? ($_GET['conv_id'] ?? '');
+    if (!$conv_id) err('conv_id requerido');
+    $result = crear_borrador_wa(db(), $conv_id);
+    if (isset($result['error'])) err($result['error'], $result['code'] ?? 422);
+    ok($result);
+}
+
 // ── E2E Staging Tests (TEMPORAL — eliminar después de pruebas) ────────────────
 // Requiere header x-e2e-token: e2e_sofia_staging_nov2026
 // Conecta a DB staging, NO a producción.
@@ -4758,6 +4903,7 @@ if (str_starts_with($action, 'e2e_')) {
             sent_at DATETIME NULL, sent_result JSON NULL, notes TEXT NULL,
             INDEX idx_wqa_conv (conv_id), INDEX idx_wqa_status (status)
         )",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_km DECIMAL(8,2) NULL",
     ];
     foreach ($stg_migrations as $smig) { try { stg()->exec($smig); } catch (PDOException $e) {} }
 
@@ -4838,12 +4984,12 @@ if (str_starts_with($action, 'e2e_')) {
                     (id, phone, channel, assigned_to, contact_name, contact_email, contact_rut,
                      service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
                      service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
-                     service_date, service_passengers, service_type, service_vehicle, wa_draft_quote_id, created_at)
+                     service_date, service_passengers, service_type, service_vehicle, service_km, wa_draft_quote_id, created_at)
                 VALUES (?,?,'whatsapp',?,
                     'Empresa Test S.A.','test@empresa.cl','12.345.678-9',
                     'Las Condes, Santiago','ChIJN1t_tDeuEmsRUsoyG83frY4',-33.4150,-70.5869,
                     'Viña del Mar, Valparaíso','ChIJhWj3mVeCYJYRJUMHmOKWwBc',-33.0247,-71.5518,
-                    DATE_ADD(NOW(),INTERVAL 3 DAY),42,'privado','Bus 45',?,NOW())
+                    DATE_ADD(NOW(),INTERVAL 3 DAY),42,'privado','Bus 45',128.6,?,NOW())
             ")->execute([$conv_id, $phone_test, $exec_id, $quot_id]);
 
             stg()->prepare("
@@ -4983,8 +5129,82 @@ if (str_starts_with($action, 'e2e_')) {
     if ($action === 'e2e_cleanup') {
         stg()->exec("DELETE FROM wa_quote_approvals WHERE conv_id IN (SELECT id FROM wa_cloud_conversations WHERE phone IN ('56911111001','56911111002'))");
         stg()->exec("DELETE FROM wa_cloud_conversations WHERE phone IN ('56911111001','56911111002')");
-        stg()->exec("DELETE FROM quotations WHERE folio LIKE 'STG-%'");
+        stg()->exec("DELETE FROM quotations WHERE number LIKE 'STG-%' OR number LIKE 'BWA-%'");
         ok(['cleanup'=>'done','staging_db'=>'transccl_crm_staging']);
+    }
+
+    // ── e2e_seed_borrador — conversación sin borrador previo ───────────────
+    if ($action === 'e2e_seed_borrador') {
+        $phone = '56911111002';
+        $conv_id = stguuid();
+        $exec_id = 'beb2594e-be75-11f1-adc3-56000529c2a9';
+        try {
+            stg()->prepare("
+                INSERT INTO wa_cloud_conversations
+                    (id, phone, channel, assigned_to, contact_name,
+                     service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
+                     service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
+                     service_date, service_passengers, service_type, service_vehicle, service_km, created_at)
+                VALUES (?,?,'whatsapp',?,'Empresa Borrador Test S.A.',
+                    'Las Condes, Santiago','ChIJN1t_tDeuEmsRUsoyG83frY4',-33.4150,-70.5869,
+                    'Viña del Mar, Valparaíso','ChIJhWj3mVeCYJYRJUMHmOKWwBc',-33.0247,-71.5518,
+                    DATE_ADD(NOW(),INTERVAL 5 DAY),42,'privado','bus',128.6,NOW())
+            ")->execute([$conv_id, $phone, $exec_id]);
+            ok(['conv_id'=>$conv_id,'phone'=>$phone,'has_draft'=>false]);
+        } catch (PDOException $e) {
+            err('seed_borrador error: '.$e->getMessage());
+        }
+    }
+
+    // ── e2e_create_borrador ────────────────────────────────────────────────
+    if ($action === 'e2e_create_borrador') {
+        $conv_id = body()['conv_id'] ?? ($_GET['conv_id'] ?? '');
+        if (!$conv_id) err('conv_id requerido');
+        $result = crear_borrador_wa(stg(), $conv_id);
+        if (isset($result['error'])) err($result['error'], $result['code'] ?? 422);
+        ok($result);
+    }
+
+    // ── e2e_borrador_duplicado — idempotencia ──────────────────────────────
+    if ($action === 'e2e_borrador_duplicado') {
+        $conv_id = body()['conv_id'] ?? ($_GET['conv_id'] ?? '');
+        if (!$conv_id) err('conv_id requerido');
+        $r1 = crear_borrador_wa(stg(), $conv_id);
+        if (isset($r1['error'])) err('Primer borrador falló: '.$r1['error']);
+        $r2 = crear_borrador_wa(stg(), $conv_id);
+        $is_idempotent = ($r2['idempotent'] ?? false) === true
+                      && ($r2['quotation_id'] === $r1['quotation_id']);
+        ok([
+            'test'         => 'borrador_duplicado',
+            'primer_id'    => $r1['quotation_id'],
+            'segundo_id'   => $r2['quotation_id'] ?? null,
+            'idempotent'   => $r2['idempotent'] ?? false,
+            'ids_iguales'  => ($r2['quotation_id'] ?? null) === $r1['quotation_id'],
+            'resultado'    => $is_idempotent ? 'PASS' : 'FAIL',
+        ]);
+    }
+
+    // ── e2e_borrador_incompleto — datos faltantes ──────────────────────────
+    if ($action === 'e2e_borrador_incompleto') {
+        // Crear conversación sin service_km
+        $conv_id = stguuid();
+        stg()->prepare("
+            INSERT INTO wa_cloud_conversations
+                (id, phone, channel, assigned_to, contact_name,
+                 service_origin, service_destination, service_date, service_passengers, created_at)
+            VALUES (?,?,'whatsapp',?,'Test Incompleto',
+                'Las Condes, Santiago','Viña del Mar',DATE_ADD(NOW(),INTERVAL 5 DAY),10,NOW())
+        ")->execute([$conv_id, '56911111099', 'beb2594e-be75-11f1-adc3-56000529c2a9']);
+        $result = crear_borrador_wa(stg(), $conv_id);
+        // Limpiar conv temporal
+        stg()->prepare("DELETE FROM wa_cloud_conversations WHERE id=?")->execute([$conv_id]);
+        $expected_error = isset($result['error']) && str_contains($result['error'], 'service_km');
+        ok([
+            'test'           => 'borrador_incompleto',
+            'error_recibido' => $result['error'] ?? null,
+            'missing'        => $result['missing'] ?? null,
+            'resultado'      => $expected_error ? 'PASS' : 'FAIL',
+        ]);
     }
 
     // ── e2e_inspect_prod_incident ──────────────────────────────────────────
