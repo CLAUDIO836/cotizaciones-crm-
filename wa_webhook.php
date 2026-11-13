@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // Formato: '56XXXXXXXXX' (sin +, con código de país).
 // Los demás teléfonos continúan al flujo productivo sin cambio.
 define('STG_TEST_PHONES', [
-    // '56912345678',  // ejemplo — reemplazar con número real autorizado
+    '56974270657',  // Claudio — teléfono de prueba autorizado
 ]);
 
 $body = json_decode(file_get_contents('php://input'), true) ?? [];

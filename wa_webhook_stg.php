@@ -45,13 +45,13 @@ define('TEST_PHONES', [
     '56900000003',  // Test Bot C
     '56912345678',  // Test manual (curl)
     '56999999999',  // Test CI/CD
-    // '56XXXXXXXXX',  // Teléfono de prueba real — agregar cuando Gerencia lo autorice
+    '56974270657',  // Claudio — teléfono de prueba autorizado
 ]);
 
 // Teléfonos que reciben mensajes WA reales (subset de TEST_PHONES).
 // Si está vacío, todos los TEST_PHONES operan en DRY-RUN.
 define('REAL_SEND_PHONES', [
-    // '56XXXXXXXXX',  // mismo número que en STG_TEST_PHONES de wa_webhook.php
+    '56974270657',  // Claudio — teléfono de prueba autorizado
 ]);
 
 // ── Log de staging ─────────────────────────────────────────────────────────────
