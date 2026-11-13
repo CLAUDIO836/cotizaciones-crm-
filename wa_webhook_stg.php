@@ -45,6 +45,13 @@ define('TEST_PHONES', [
     '56900000003',  // Test Bot C
     '56912345678',  // Test manual (curl)
     '56999999999',  // Test CI/CD
+    // '56XXXXXXXXX',  // Teléfono de prueba real — agregar cuando Gerencia lo autorice
+]);
+
+// Teléfonos que reciben mensajes WA reales (subset de TEST_PHONES).
+// Si está vacío, todos los TEST_PHONES operan en DRY-RUN.
+define('REAL_SEND_PHONES', [
+    // '56XXXXXXXXX',  // mismo número que en STG_TEST_PHONES de wa_webhook.php
 ]);
 
 // ── Log de staging ─────────────────────────────────────────────────────────────
@@ -363,8 +370,18 @@ function stgProcessMessage(string $wamid, string $phone, string $text, ?string $
         $visible = preg_replace('/\[FICHA_JSON:.*?\]/s', '', $claude);
         $visible = trim($visible);
 
-        // ★ DRY-RUN: NO se envía WhatsApp real — solo se registra
-        stgLog("DRY_RUN_SEND conv=$convId to=$phone msg=" . substr($visible, 0, 80));
+        // Envío real solo para REAL_SEND_PHONES; resto mantiene DRY-RUN
+        if (REAL_SEND_PHONES && in_array($phone, REAL_SEND_PHONES)) {
+            $wamidOut = stgSendWA($phone, $visible);
+            stgLog("REAL_SEND conv=$convId to=$phone wamid=" . ($wamidOut ?? 'NULL') . " msg=" . substr($visible, 0, 80));
+            if ($wamidOut) {
+                // Actualizar wamid de salida con el real
+                stgDb()->prepare("UPDATE wa_cloud_messages SET wamid=? WHERE conversation_id=? AND direction='out' ORDER BY created_at DESC LIMIT 1")
+                    ->execute([$wamidOut, $convId]);
+            }
+        } else {
+            stgLog("DRY_RUN_SEND conv=$convId to=$phone msg=" . substr($visible, 0, 80));
+        }
 
         // Guardar mensaje de salida en staging DB
         $outId = stgDbUuid();
@@ -380,6 +397,47 @@ function stgProcessMessage(string $wamid, string $phone, string $text, ?string $
     } catch (Throwable $e) {
         stgLog("ERROR " . $e->getMessage() . " in " . $e->getFile() . ':' . $e->getLine());
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// stgSendWA: envío real via Meta Cloud API (solo para REAL_SEND_PHONES)
+// Usa los mismos tokens de producción (META_WA_TOKEN / META_WA_PHONE_NUMBER_ID)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function stgSendWA(string $phone, string $text): ?string {
+    $token   = defined('META_WA_TOKEN')           ? META_WA_TOKEN           : (getenv('WHATSAPP_TOKEN') ?: '');
+    $phoneId = defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : (getenv('WHATSAPP_PHONE_NUMBER_ID') ?: '');
+    if (!$token || !$phoneId) {
+        stgLog("REAL_SEND_ERR no META_WA_TOKEN / META_WA_PHONE_NUMBER_ID");
+        return null;
+    }
+    $payload = [
+        'messaging_product' => 'whatsapp',
+        'to'                => $phone,
+        'type'              => 'text',
+        'text'              => ['body' => $text, 'preview_url' => false],
+    ];
+    $ch = curl_init("https://graph.facebook.com/v21.0/{$phoneId}/messages");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => [
+            'Authorization: Bearer ' . $token,
+            'Content-Type: application/json',
+        ],
+        CURLOPT_POSTFIELDS => json_encode($payload),
+        CURLOPT_TIMEOUT    => 15,
+    ]);
+    $resp    = curl_exec($ch);
+    $status  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
+    curl_close($ch);
+    if ($resp === false || $curlErr || $status >= 300) {
+        stgLog("REAL_SEND_ERR status={$status} err={$curlErr} resp=" . substr((string)$resp, 0, 200));
+        return null;
+    }
+    $data = json_decode($resp, true);
+    return $data['messages'][0]['id'] ?? null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

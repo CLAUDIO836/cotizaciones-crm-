@@ -43,6 +43,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+// ── Bifurcación staging: teléfonos autorizados van a wa_webhook_stg.php ───────
+// Agregar aquí el número de prueba cuando Gerencia lo autorice.
+// Formato: '56XXXXXXXXX' (sin +, con código de país).
+// Los demás teléfonos continúan al flujo productivo sin cambio.
+define('STG_TEST_PHONES', [
+    // '56912345678',  // ejemplo — reemplazar con número real autorizado
+]);
+
 $body = json_decode(file_get_contents('php://input'), true) ?? [];
 
 // Responder 200 a Meta de inmediato y seguir procesando
@@ -104,11 +112,52 @@ foreach ($body['entry'] ?? [] as $entry) {
                 }
             }
 
+            // Bifurcación: si es teléfono de prueba staging, reenviar y no procesar en producción
+            if (STG_TEST_PHONES && in_array($phone, STG_TEST_PHONES)) {
+                stgForward($body);
+                continue;
+            }
+
             processMessage($wamid, $phone, $text, $name, $ts);
         }
     }
 }
 exit;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+function stgForward(array $body): void {
+    $stgUrl   = 'https://www.transccl.cl/wa_webhook_stg.php';
+    $stgToken = defined('CRM_E2E_TOKEN')      ? CRM_E2E_TOKEN
+              : (getenv('E2E_STAGING_TOKEN')  ?: getenv('CRM_E2E_TOKEN') ?: '');
+    if (!$stgToken) {
+        error_log('[wa_webhook] STG_FORWARD no token disponible');
+        return;
+    }
+    $json = json_encode($body);
+    $ch   = curl_init($stgUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => [
+            'X-Stg-Token: '  . $stgToken,
+            'Content-Type: application/json',
+            'X-Fwd-From-Prod: 1',
+        ],
+        CURLOPT_POSTFIELDS => $json,
+        CURLOPT_TIMEOUT    => 90,
+    ]);
+    $resp    = curl_exec($ch);
+    $status  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
+    curl_close($ch);
+
+    if ($curlErr || $status < 200 || $status >= 300) {
+        error_log("[wa_webhook] STG_FORWARD_ERR status={$status} err={$curlErr}");
+    } else {
+        error_log("[wa_webhook] STG_FORWARD_OK status={$status}");
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
