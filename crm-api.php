@@ -5589,6 +5589,8 @@ if (str_starts_with($action, 'e2e_')) {
             ->execute([$uid, $notes ?: null, json_encode($snapshot), $apRow['id']]);
         stg()->prepare("UPDATE quotations SET etapa='cotizacion', status='open' WHERE id=?")
             ->execute([$apRow['quotation_id']]);
+        stg()->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=NULL WHERE id=?")
+            ->execute([$conv_id]);
 
         $q = stg()->prepare("SELECT number, total FROM quotations WHERE id=?");
         $q->execute([$apRow['quotation_id']]);
