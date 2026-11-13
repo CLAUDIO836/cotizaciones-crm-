@@ -4274,11 +4274,18 @@ if ($action === 'wa_form_save') {
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_lat DOUBLE NULL");      } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_lng DOUBLE NULL");      } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_km DECIMAL(8,2) NULL");             } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN company_name VARCHAR(255) NULL");           } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN client_type ENUM('natural','empresa') NULL DEFAULT 'natural'"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN quote_send_email VARCHAR(255) NULL");       } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour TIME NULL");                   } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL");            } catch (PDOException $e) {}
 
     $allowed = ['contact_name','contact_email','contact_rut',
+                'client_type','company_name','quote_send_email',
                 'service_origin','service_origin_place_id','service_origin_lat','service_origin_lng',
                 'service_destination','service_destination_place_id','service_destination_lat','service_destination_lng',
-                'service_date','service_passengers','service_type','service_vehicle','service_km'];
+                'service_date','service_passengers','service_type','service_vehicle','service_km',
+                'service_hour','service_hour_return'];
     $sets = []; $vals = [];
     foreach ($allowed as $col) {
         if (array_key_exists($col, $b)) {
@@ -4425,7 +4432,25 @@ if ($action === 'wa_form_save') {
         }
     }
 
-    ok(['saved' => true]);
+    // Auto-crear borrador de cotización a partir del formulario
+    $borradorResult = null;
+    $borradorError  = null;
+    $convIdForBorrador = $prev['id'] ?? null;
+    if ($convIdForBorrador) {
+        try {
+            $borradorResult = crear_borrador_wa(db(), $convIdForBorrador, ['use_client_lookup' => true]);
+            if (isset($borradorResult['error'])) {
+                $borradorError = $borradorResult['error'];
+                $borradorCode  = $borradorResult['code'] ?? 'unknown';
+                error_log("[wa_form_save] borrador no creado ($borradorCode): $borradorError");
+            }
+        } catch (Throwable $ex) {
+            error_log("[wa_form_save] borrador exception: " . $ex->getMessage());
+            $borradorError = $ex->getMessage();
+        }
+    }
+
+    ok(['saved' => true, 'borrador' => $borradorResult, 'borrador_error' => $borradorError]);
 }
 
 // ── wa_bot_reactivate ─────────────────────────────────────────────────────────

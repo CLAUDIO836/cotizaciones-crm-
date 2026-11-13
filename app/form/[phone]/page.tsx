@@ -29,6 +29,30 @@ const emptyPlace = (): PlaceField => ({ address: '', validated: false })
 
 interface Prediction { description: string; place_id: string }
 
+function validateRut(raw: string): boolean {
+  const clean = raw.replace(/\./g, '').replace(/-/g, '').toUpperCase()
+  if (!/^\d{7,8}[0-9K]$/.test(clean)) return false
+  const body = clean.slice(0, -1)
+  const dv = clean.slice(-1)
+  let sum = 0, mul = 2
+  for (let i = body.length - 1; i >= 0; i--) {
+    sum += parseInt(body[i]) * mul
+    mul = mul === 7 ? 2 : mul + 1
+  }
+  const rem = 11 - (sum % 11)
+  const expected = rem === 11 ? '0' : rem === 10 ? 'K' : String(rem)
+  return dv === expected
+}
+
+function formatRut(value: string): string {
+  const clean = value.replace(/[^\dkK]/g, '').toUpperCase()
+  if (clean.length < 2) return clean
+  const body = clean.slice(0, -1)
+  const dv = clean.slice(-1)
+  const bodyFormatted = body.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${bodyFormatted}-${dv}`
+}
+
 function usePlaceAutocomplete(value: PlaceField, onChange: (v: PlaceField) => void) {
   const [suggestions, setSuggestions] = useState<Prediction[]>([])
   const [open, setOpen] = useState(false)
@@ -144,11 +168,25 @@ export default function FormPage() {
   const [step, setStep]     = useState<'loading' | 'form' | 'done' | 'error'>('loading')
   const [saving, setSaving] = useState(false)
 
+  // Tipo cliente
+  const [clientType, setClientType] = useState<'natural' | 'empresa'>('natural')
+  const [companyName, setCompanyName] = useState('')
+
+  // Datos personales
   const [name,      setName]     = useState('')
   const [email,     setEmail]    = useState('')
+  const [rut,       setRut]      = useState('')
+  const [rutError,  setRutError] = useState('')
+  const [quoteEmail, setQuoteEmail] = useState('')
+
+  // Viaje
   const [origin,    setOrigin]   = useState<PlaceField>(emptyPlace())
   const [dest,      setDest]     = useState<PlaceField>(emptyPlace())
   const [date,      setDate]     = useState('')
+  const [hour,      setHour]     = useState('')
+  const [tripType,  setTripType] = useState<'one_way' | 'round_trip'>('one_way')
+  const [returnDate, setReturnDate] = useState('')
+  const [returnHour, setReturnHour] = useState('')
   const [pax,       setPax]      = useState('')
   const [tipo,      setTipo]     = useState('')
   const [vehiculo,  setVehiculo] = useState('')
@@ -174,8 +212,12 @@ export default function FormPage() {
       .then(d => {
         if (d.ok && d.data) {
           const f = d.data
+          if (f.client_type)         setClientType(f.client_type === 'empresa' ? 'empresa' : 'natural')
+          if (f.company_name)        setCompanyName(f.company_name)
           if (f.contact_name)        setName(f.contact_name)
           if (f.contact_email)       setEmail(f.contact_email)
+          if (f.contact_rut)         setRut(f.contact_rut)
+          if (f.quote_send_email)    setQuoteEmail(f.quote_send_email)
           if (f.service_origin)      setOrigin({
             address: f.service_origin,
             placeId: f.service_origin_place_id ?? undefined,
@@ -191,6 +233,11 @@ export default function FormPage() {
             validated: !!f.service_destination_place_id,
           })
           if (f.service_date)        setDate(f.service_date)
+          if (f.service_hour)        setHour(f.service_hour.substring(0, 5))
+          if (f.service_hour_return) {
+            setTripType('round_trip')
+            setReturnHour(f.service_hour_return.substring(0, 5))
+          }
           if (f.service_passengers)  setPax(String(f.service_passengers))
           if (f.service_type)        setTipo(f.service_type)
           if (f.service_vehicle)     setVehiculo(f.service_vehicle)
@@ -200,17 +247,31 @@ export default function FormPage() {
       .catch(() => setStep('form'))
   }, [phone])
 
+  function handleRutChange(value: string) {
+    const formatted = formatRut(value)
+    setRut(formatted)
+    if (formatted.length > 3) {
+      setRutError(validateRut(formatted) ? '' : 'RUT inválido')
+    } else {
+      setRutError('')
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim() || !origin.address.trim() || !dest.address.trim() || !date || !pax || !tipo) return
+    if (rut && !validateRut(rut)) return
     setSaving(true)
     try {
       const r = await fetch(`/api/form/${phone}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          client_type: clientType,
+          company_name: clientType === 'empresa' ? companyName.trim() || null : null,
           contact_name: name.trim(),
           contact_email: email.trim() || null,
+          contact_rut: rut.trim() || null,
+          quote_send_email: quoteEmail.trim() || null,
           service_origin: origin.address.trim(),
           service_origin_place_id: origin.placeId ?? null,
           service_origin_lat: origin.lat ?? null,
@@ -220,6 +281,8 @@ export default function FormPage() {
           service_destination_lat: dest.lat ?? null,
           service_destination_lng: dest.lng ?? null,
           service_date: date,
+          service_hour: hour || null,
+          service_hour_return: tripType === 'round_trip' && returnHour ? returnHour : null,
           service_passengers: parseInt(pax) || null,
           service_type: tipo,
           service_vehicle: vehiculo || null,
@@ -242,6 +305,18 @@ export default function FormPage() {
   const labelStyle: React.CSSProperties = {
     display: 'block', fontSize: 13, fontWeight: 600, color: '#4a5568', marginBottom: 5,
   }
+
+  const rutInvalid = rut.length > 3 && !validateRut(rut)
+
+  const canSubmit = !!(
+    name.trim() &&
+    origin.address.trim() &&
+    dest.address.trim() &&
+    date && hour && pax && tipo &&
+    !rutInvalid &&
+    (clientType !== 'empresa' || companyName.trim()) &&
+    (tripType !== 'round_trip' || (returnDate && returnHour))
+  )
 
   if (step === 'loading') return (
     <div style={{ minHeight: '100svh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f7fafc' }}>
@@ -269,7 +344,14 @@ export default function FormPage() {
     </div>
   )
 
-  const canSubmit = name.trim() && origin.address.trim() && dest.address.trim() && date && pax && tipo
+  const pillBtn = (active: boolean): React.CSSProperties => ({
+    flex: 1, padding: '10px 8px', borderRadius: 8, cursor: 'pointer', textAlign: 'center' as const,
+    border: active ? '2px solid #1B8A4B' : '2px solid #e2e8f0',
+    background: active ? '#f0fff4' : '#fff',
+    fontSize: 14, fontWeight: active ? 700 : 500,
+    color: active ? '#166534' : '#4a5568',
+    transition: 'all 0.15s',
+  })
 
   return (
     <div style={{ minHeight: '100svh', background: '#f7fafc', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -289,17 +371,73 @@ export default function FormPage() {
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '24px 20px 40px' }}>
         <form onSubmit={handleSubmit}>
 
-          {/* Datos personales */}
+          {/* Tipo de cliente */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={labelStyle}>¿Cómo solicitas el servicio? <span style={{ color: '#e53e3e' }}>*</span></label>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" style={pillBtn(clientType === 'natural')} onClick={() => setClientType('natural')}>
+                👤 Persona natural
+              </button>
+              <button type="button" style={pillBtn(clientType === 'empresa')} onClick={() => setClientType('empresa')}>
+                🏢 Empresa
+              </button>
+            </div>
+          </div>
+
+          {/* Razón social — solo empresa */}
+          {clientType === 'empresa' && (
+            <div style={{ marginBottom: 18 }}>
+              <label style={labelStyle}>Razón social <span style={{ color: '#e53e3e' }}>*</span></label>
+              <input style={inputStyle} value={companyName} onChange={e => setCompanyName(e.target.value)}
+                placeholder="Nombre de la empresa" required={clientType === 'empresa'} />
+            </div>
+          )}
+
+          {/* Nombre */}
           <div style={{ marginBottom: 18 }}>
-            <label style={labelStyle}>Nombre completo <span style={{ color: '#e53e3e' }}>*</span></label>
+            <label style={labelStyle}>
+              {clientType === 'empresa' ? 'Nombre del contacto' : 'Nombre completo'}{' '}
+              <span style={{ color: '#e53e3e' }}>*</span>
+            </label>
             <input style={inputStyle} value={name} onChange={e => setName(e.target.value)}
               placeholder="Tu nombre completo" required autoComplete="name" />
           </div>
 
-          <div style={{ marginBottom: 20 }}>
+          {/* RUT */}
+          <div style={{ marginBottom: 18 }}>
+            <label style={labelStyle}>
+              RUT{' '}
+              {clientType === 'empresa'
+                ? <span style={{ color: '#e53e3e' }}>*</span>
+                : <span style={{ color: '#a0aec0', fontWeight: 400 }}>(opcional)</span>}
+            </label>
+            <input
+              style={{ ...inputStyle, borderColor: rutInvalid ? '#e53e3e' : inputStyle.borderColor }}
+              value={rut}
+              onChange={e => handleRutChange(e.target.value)}
+              placeholder="12.345.678-9"
+              inputMode="numeric"
+            />
+            {rutInvalid && (
+              <div style={{ fontSize: 12, color: '#e53e3e', marginTop: 3 }}>RUT inválido — revisa los dígitos</div>
+            )}
+          </div>
+
+          {/* Email */}
+          <div style={{ marginBottom: 18 }}>
             <label style={labelStyle}>Correo electrónico <span style={{ color: '#a0aec0', fontWeight: 400 }}>(opcional)</span></label>
             <input style={inputStyle} type="email" value={email} onChange={e => setEmail(e.target.value)}
               placeholder="correo@ejemplo.com" autoComplete="email" />
+          </div>
+
+          {/* Email para cotización */}
+          <div style={{ marginBottom: 24 }}>
+            <label style={labelStyle}>
+              Email para cotización{' '}
+              <span style={{ color: '#a0aec0', fontWeight: 400 }}>(si es diferente al tuyo)</span>
+            </label>
+            <input style={inputStyle} type="email" value={quoteEmail} onChange={e => setQuoteEmail(e.target.value)}
+              placeholder="cotizaciones@empresa.cl" autoComplete="off" />
           </div>
 
           {/* Detalles del viaje */}
@@ -336,6 +474,7 @@ export default function FormPage() {
               </div>
             )}
 
+            {/* Fecha + Hora salida */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
               <div>
                 <label style={labelStyle}>Fecha <span style={{ color: '#e53e3e' }}>*</span></label>
@@ -344,12 +483,50 @@ export default function FormPage() {
                   min={new Date().toISOString().split('T')[0]} required />
               </div>
               <div>
-                <label style={labelStyle}>N° pasajeros <span style={{ color: '#e53e3e' }}>*</span></label>
-                <input style={inputStyle} type="number" value={pax} onChange={e => setPax(e.target.value)}
-                  placeholder="Ej: 45" min={1} max={120} required />
+                <label style={labelStyle}>Hora de salida <span style={{ color: '#e53e3e' }}>*</span></label>
+                <input style={{ ...inputStyle, paddingRight: 8 }} type="time" value={hour}
+                  onChange={e => setHour(e.target.value)} required />
               </div>
             </div>
 
+            {/* Pasajeros */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>N° pasajeros <span style={{ color: '#e53e3e' }}>*</span></label>
+              <input style={inputStyle} type="number" value={pax} onChange={e => setPax(e.target.value)}
+                placeholder="Ej: 45" min={1} max={120} required />
+            </div>
+
+            {/* Ida y vuelta */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ ...labelStyle, marginBottom: 8 }}>Tipo de viaje <span style={{ color: '#e53e3e' }}>*</span></label>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="button" style={pillBtn(tripType === 'one_way')} onClick={() => setTripType('one_way')}>
+                  ➡️ Solo ida
+                </button>
+                <button type="button" style={pillBtn(tripType === 'round_trip')} onClick={() => setTripType('round_trip')}>
+                  🔄 Ida y vuelta
+                </button>
+              </div>
+            </div>
+
+            {/* Fecha + Hora retorno — solo si ida y vuelta */}
+            {tripType === 'round_trip' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                <div>
+                  <label style={labelStyle}>Fecha regreso <span style={{ color: '#e53e3e' }}>*</span></label>
+                  <input style={{ ...inputStyle, paddingRight: 8 }} type="date" value={returnDate}
+                    onChange={e => setReturnDate(e.target.value)}
+                    min={date || new Date().toISOString().split('T')[0]} required />
+                </div>
+                <div>
+                  <label style={labelStyle}>Hora regreso <span style={{ color: '#e53e3e' }}>*</span></label>
+                  <input style={{ ...inputStyle, paddingRight: 8 }} type="time" value={returnHour}
+                    onChange={e => setReturnHour(e.target.value)} required />
+                </div>
+              </div>
+            )}
+
+            {/* Tipo de servicio */}
             <div style={{ marginBottom: 14 }}>
               <label style={labelStyle}>Tipo de servicio <span style={{ color: '#e53e3e' }}>*</span></label>
               <select style={{ ...inputStyle, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23718096' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 14px center', paddingRight: 36 }}
