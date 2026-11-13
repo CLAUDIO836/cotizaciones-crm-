@@ -4989,24 +4989,44 @@ if (str_starts_with($action, 'e2e_')) {
 
     // ── e2e_inspect_prod_incident ──────────────────────────────────────────
     if ($action === 'e2e_inspect_prod_incident') {
-        // Lee en producción (db() estándar) solo lectura
         $phone = '56999000001';
-        $stmt  = db()->prepare("SELECT id, phone, contact_name, contact_rut, service_origin, service_destination, wa_draft_quote_id, created_at FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+        // Columnas que pueden existir o no en producción
+        $cols_wcc = db()->query("SHOW COLUMNS FROM wa_cloud_conversations")->fetchAll(PDO::FETCH_COLUMN);
+        $sel = array_intersect(['id','phone','contact_name','contact_rut','service_origin','service_destination','wa_draft_quote_id','created_at'], $cols_wcc);
+        $sel_sql = implode(',', $sel);
+        $stmt = db()->prepare("SELECT $sel_sql FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
         $stmt->execute([$phone]);
-        $conv  = $stmt->fetch();
+        $conv = $stmt->fetch();
         if (!$conv) ok(['prod_incident' => 'NO_EXISTE', 'phone' => $phone]);
-        $stmt2 = db()->prepare("SELECT COUNT(*) as n FROM wa_cloud_messages WHERE conv_id=?");
-        $stmt2->execute([$conv['id']]);
-        $msgs  = $stmt2->fetch()['n'];
-        $stmt3 = db()->prepare("SELECT id, status, quote_total FROM wa_quote_approvals WHERE conv_id=? LIMIT 5");
-        $stmt3->execute([$conv['id']]);
-        $apprs = $stmt3->fetchAll();
+
+        // Mensajes (tabla puede no existir)
+        $msgs = 0;
+        try {
+            $cols_msg = db()->query("SHOW COLUMNS FROM wa_cloud_messages")->fetchAll(PDO::FETCH_COLUMN);
+            $has_conv_id = in_array('conv_id', $cols_msg);
+            if ($has_conv_id) {
+                $s = db()->prepare("SELECT COUNT(*) FROM wa_cloud_messages WHERE conv_id=?");
+                $s->execute([$conv['id']]);
+                $msgs = (int)$s->fetchColumn();
+            } else {
+                $msgs = -1; // tabla existe pero sin conv_id
+            }
+        } catch (PDOException $e) { $msgs = -2; } // tabla no existe
+
+        // Aprobaciones (tabla puede no existir)
+        $apprs = [];
+        try {
+            $s3 = db()->prepare("SELECT id, status, quote_total, created_at FROM wa_quote_approvals WHERE conv_id=? LIMIT 5");
+            $s3->execute([$conv['id']]);
+            $apprs = $s3->fetchAll();
+        } catch (PDOException $e) { $apprs = ['error' => 'tabla_no_existe']; }
+
         ok([
             'prod_incident' => [
                 'conversation' => $conv,
-                'messages_count' => (int)$msgs,
+                'messages_count' => $msgs,
                 'approvals' => $apprs,
-                'safe_to_delete' => ($msgs === '0' && empty($apprs) && stripos($conv['contact_name']??'', 'test') !== false),
+                'safe_to_delete' => ($msgs === 0 && empty($apprs) && stripos($conv['contact_name']??'', 'test') !== false),
             ],
         ]);
     }
