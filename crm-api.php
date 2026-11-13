@@ -4231,13 +4231,6 @@ if ($action === 'wa_migrate_vehicle') {
 }
 
 // ── FORMULARIO PÚBLICO (sin auth) ────────────────────────────────────────────
-// diagnóstico temporal — ELIMINAR antes de producción final
-if ($action === 'wa_form_diag') {
-    $cols = db()->query("SHOW COLUMNS FROM wa_cloud_conversations")->fetchAll(PDO::FETCH_COLUMN);
-    $php  = phpversion();
-    ok(['php'=>$php,'columns'=>$cols,'count'=>count($cols)]);
-}
-
 if ($action === 'wa_form_get') {
     $phone = preg_replace('/\D/', '', body()['phone'] ?? ($_GET['phone'] ?? ''));
     if (!$phone) err('phone requerido');
