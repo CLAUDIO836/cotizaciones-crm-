@@ -1,0 +1,17 @@
+# ── Acceso restringido — CRM Staging ─────────────────────────────────────────
+# Solo equipo interno autorizado. No exponer públicamente.
+AuthType Basic
+AuthName "CRM Staging — Acceso Restringido"
+AuthUserFile /home/transccl/public_html/crm-staging/.htpasswd-crm-staging
+Require valid-user
+
+# ── Proteger archivos sensibles ───────────────────────────────────────────────
+<FilesMatch "^(crm-secrets-staging|staging-guard|\.htpasswd-crm-staging|\.env)">
+    Require all denied
+</FilesMatch>
+
+# ── CORS: solo orígenes locales en staging ────────────────────────────────────
+<IfModule mod_headers.c>
+    Header always set Access-Control-Allow-Origin "http://localhost:3001"
+    Header always set X-Staging-Mode "true"
+</IfModule>
