@@ -4910,7 +4910,8 @@ if (str_starts_with($action, 'e2e_')) {
         try {
             $stgpdo = new PDO(
                 'mysql:host=localhost;dbname=transccl_crm_staging;charset=utf8mb4',
-                'transccl_staging_user', '993657223977c7f0_Stg26',
+                getenv('STG_DB_USER') ?: '',
+                getenv('STG_DB_PASS') ?: '',
                 [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
             );
         } catch (PDOException $e) {
@@ -5448,11 +5449,15 @@ if (str_starts_with($action, 'e2e_')) {
     }
 
     // ── e2e_convs_pending_approval — lista convs staging con borrador pendiente ─
-    // Requiere sesión activa (x-user-id). Aislamiento garantizado por stg() en backend.
+    // El rol se valida contra producción DB; el header x-user-role se ignora.
     if ($action === 'e2e_convs_pending_approval') {
         $uid  = $_SERVER['HTTP_X_USER_ID']  ?? '';
-        $role = $_SERVER['HTTP_X_USER_ROLE'] ?? '';
         if (!$uid) err('No autorizado — se requiere sesión activa', 401);
+        $p = db()->prepare("SELECT role, active FROM profiles WHERE id=? LIMIT 1");
+        $p->execute([$uid]);
+        $prof = $p->fetch();
+        if (!$prof || !$prof['active']) err('No autorizado — usuario no válido o inactivo', 401);
+        $role = $prof['role'];
 
         $stmt = stg()->prepare("
             SELECT
@@ -5503,11 +5508,15 @@ if (str_starts_with($action, 'e2e_')) {
     }
 
     // ── e2e_approvals_decide_stg — aprobar/rechazar borrador en staging ────────
-    // Requiere sesión activa + rol gerencia/supervisor. Usa stg() — nunca toca producción.
+    // El rol se valida contra producción DB; el header x-user-role se ignora.
     if ($action === 'e2e_approvals_decide_stg') {
         $uid  = $_SERVER['HTTP_X_USER_ID']  ?? '';
-        $role = $_SERVER['HTTP_X_USER_ROLE'] ?? '';
         if (!$uid) err('No autorizado — se requiere sesión activa', 401);
+        $p = db()->prepare("SELECT role, active FROM profiles WHERE id=? LIMIT 1");
+        $p->execute([$uid]);
+        $prof = $p->fetch();
+        if (!$prof || !$prof['active']) err('No autorizado — usuario no válido o inactivo', 401);
+        $role = $prof['role'];
         $allowed = ['gerencia','admin','superadmin','supervisor'];
         if (!in_array($role, $allowed)) {
             err('Sin permiso: solo Gerencia o supervisores autorizados pueden decidir sobre cotizaciones', 403);
