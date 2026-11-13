@@ -4249,16 +4249,34 @@ if ($action === 'wa_form_get') {
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL");            } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN observaciones TEXT NULL");                  } catch (PDOException $e) {}
 
+    // SELECT seguro: columnas base siempre presentes + nuevas con IF
     $stmt = db()->prepare(
         "SELECT contact_name, contact_email, contact_rut,
-                client_type, company_name, quote_send_email,
                 service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
                 service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
-                service_date, service_hour, service_hour_return,
-                service_passengers, service_type, service_vehicle, observaciones
+                service_date, service_passengers, service_type, service_vehicle,
+                client_type, company_name, quote_send_email,
+                service_hour, service_hour_return, observaciones
          FROM wa_cloud_conversations WHERE phone = ? LIMIT 1"
     );
-    $stmt->execute([$phone]);
+    try {
+        $stmt->execute([$phone]);
+    } catch (PDOException $e) {
+        // Fallback: si alguna columna nueva no existe aún, usar SELECT mínimo
+        $stmt2 = db()->prepare(
+            "SELECT contact_name, contact_email, contact_rut,
+                    service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
+                    service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
+                    service_date, service_passengers, service_type, service_vehicle
+             FROM wa_cloud_conversations WHERE phone = ? LIMIT 1"
+        );
+        $stmt2->execute([$phone]);
+        $row = $stmt2->fetch() ?: [];
+        if (!empty($row['service_date'])) {
+            $row['service_date'] = date('Y-m-d', strtotime($row['service_date']));
+        }
+        ok($row);
+    }
     $row = $stmt->fetch() ?: [];
     if (!empty($row['service_date'])) {
         $row['service_date'] = date('Y-m-d', strtotime($row['service_date']));
