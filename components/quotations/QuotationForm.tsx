@@ -170,6 +170,8 @@ interface Props {
   prefilledOrigin?: string
   prefilledDestination?: string
   prefilledDate?: string
+  prefilledHoraSalida?: string
+  prefilledHoraRetorno?: string
   prefilledPassengers?: number
   prefilledVehicle?: string
   quotation?: {
@@ -244,7 +246,7 @@ const DEFAULT_DIARIO_ITEM: Item = {
   ruta_nombre: '', desde_item: '', hasta_item: '', hora_salida_item: '', hora_retorno_item: '', tiene_paradas: false, obs_paradas: '',
 }
 
-export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation, prefilledPhone, prefilledName, prefilledRUT, prefilledEmail, prefilledService, prefilledOrigin, prefilledDestination, prefilledDate, prefilledPassengers, prefilledVehicle }: Props) {
+export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation, prefilledPhone, prefilledName, prefilledRUT, prefilledEmail, prefilledService, prefilledOrigin, prefilledDestination, prefilledDate, prefilledHoraSalida, prefilledHoraRetorno, prefilledPassengers, prefilledVehicle }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
 
@@ -290,6 +292,13 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     }
     if (prefilledPassengers && prefilledPassengers > 0) {
       setItems(prev => prev.map((item, i) => i === 0 ? { ...item, pasajeros: prefilledPassengers! } : item))
+    }
+    if (prefilledHoraSalida || prefilledHoraRetorno) {
+      setItems(prev => prev.map((item, i) => i === 0 ? {
+        ...item,
+        ...(prefilledHoraSalida  ? { hora_salida_item:  prefilledHoraSalida }  : {}),
+        ...(prefilledHoraRetorno ? { hora_retorno_item: prefilledHoraRetorno } : {}),
+      } : item))
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 

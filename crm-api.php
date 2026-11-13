@@ -4113,6 +4113,7 @@ if ($action === 'wa_cloud_detail') {
         c.last_msg_at, c.last_customer_msg_at, c.unread_count, c.notes,
         c.contact_rut, c.service_date, c.contact_email,
         c.service_origin, c.service_destination, c.service_passengers, c.service_type, c.service_vehicle,
+        c.company_name, c.client_type, c.service_hour, c.service_hour_return,
         c.wa_draft_quote_id, c.created_at, p.name AS assigned_name
         FROM wa_cloud_conversations c
         LEFT JOIN profiles p ON p.id = c.assigned_to
@@ -4971,6 +4972,9 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
             $has_client_col = true;
         } catch (PDOException $e) {}
 
+        $hora_salida   = !empty($conv['service_hour'])        ? $conv['service_hour']        : null;
+        $hora_retorno  = !empty($conv['service_hour_return']) ? $conv['service_hour_return'] : null;
+
         if ($has_client_col && $client_id) {
             $pdo->prepare("
                 INSERT INTO quotations
@@ -4979,14 +4983,14 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                      subtotal,tax_pct,total,
                      notes,observaciones,
                      desde,hasta,desde_lat,desde_lng,hasta_lat,hasta_lng,
-                     distancia_km,fecha_salida,vehicle_type,
+                     distancia_km,fecha_salida,hora_salida,hora_retorno,vehicle_type,
                      client_id,contact_id,user_id,pd_sync_status,pdf_upload_status,created_at)
                 VALUES (?,?,?,?,?,
                         ?,?,
                         ?,?,?,
                         ?,?,
                         ?,?,?,?,?,?,
-                        ?,?,?,
+                        ?,?,?,?,?,
                         ?,?,?,?,?,NOW())
             ")->execute([
                 $quot_id,$number,'open','borrador_wa',$company_field,
@@ -4996,7 +5000,7 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                 $conv['service_origin'],$conv['service_destination'],
                 $conv['service_origin_lat']??null,$conv['service_origin_lng']??null,
                 $conv['service_destination_lat']??null,$conv['service_destination_lng']??null,
-                $km,$conv['service_date'],$tarifa['formato_nombre'],
+                $km,$conv['service_date'],$hora_salida,$hora_retorno,$tarifa['formato_nombre'],
                 $client_id,$contact_id,$exec_id,'pending','pending',
             ]);
         } else {
@@ -5007,14 +5011,14 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                      subtotal,tax_pct,total,
                      notes,observaciones,
                      desde,hasta,desde_lat,desde_lng,hasta_lat,hasta_lng,
-                     distancia_km,fecha_salida,vehicle_type,
+                     distancia_km,fecha_salida,hora_salida,hora_retorno,vehicle_type,
                      user_id,pd_sync_status,pdf_upload_status,created_at)
                 VALUES (?,?,?,?,?,
                         ?,?,
                         ?,?,?,
                         ?,?,
                         ?,?,?,?,?,?,
-                        ?,?,?,
+                        ?,?,?,?,?,
                         ?,?,?,NOW())
             ")->execute([
                 $quot_id,$number,'open','borrador_wa',$company_field,
@@ -5024,7 +5028,7 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                 $conv['service_origin'],$conv['service_destination'],
                 $conv['service_origin_lat']??null,$conv['service_origin_lng']??null,
                 $conv['service_destination_lat']??null,$conv['service_destination_lng']??null,
-                $km,$conv['service_date'],$tarifa['formato_nombre'],
+                $km,$conv['service_date'],$hora_salida,$hora_retorno,$tarifa['formato_nombre'],
                 $exec_id,'pending','pending',
             ]);
         }
@@ -5932,11 +5936,12 @@ if (str_starts_with($action, 'e2e_')) {
             INSERT INTO wa_cloud_conversations
                 (id, phone, channel, assigned_to, contact_name, contact_rut, contact_email,
                  company_name, client_type, quote_send_email,
-                 service_origin, service_destination, service_date, service_passengers,
-                 service_type, service_vehicle, service_km, stage, created_at)
+                 service_origin, service_destination, service_date, service_hour, service_hour_return,
+                 service_passengers, service_type, service_vehicle, service_km, stage, created_at)
             VALUES (?,?,'whatsapp',?,?,?,?,?,?,?,
                 'Las Condes, Santiago','Viña del Mar, Valparaíso',
-                DATE_ADD(NOW(),INTERVAL 7 DAY),42,'privado','bus',128.6,
+                DATE_ADD(NOW(),INTERVAL 7 DAY),?,?,
+                42,'privado','bus',128.6,
                 'formulario_completo',NOW())
         ")->execute([
             $conv_id, $phone, $exec_id,
@@ -5946,6 +5951,8 @@ if (str_starts_with($action, 'e2e_')) {
             $b['company_name']     ?? null,
             $b['client_type']      ?? 'empresa',
             $b['quote_send_email'] ?? $b['contact_email'] ?? null,
+            $b['service_hour']        ?? '09:00',
+            $b['service_hour_return'] ?? '14:30',
         ]);
         ok(['conv_id'=>$conv_id,'phone'=>$phone,'has_draft'=>false,'staging'=>true]);
     }
@@ -5984,6 +5991,76 @@ if (str_starts_with($action, 'e2e_')) {
         $result = crear_borrador_wa(stg(), $conv_id, ['use_client_lookup' => true]);
         if (isset($result['error'])) err($result['error'], $result['code'] ?? 422);
         ok($result);
+    }
+
+    // ── e2e_inject_ficha_stg — simula FICHA_JSON del webhook en staging (sin desplegar webhook) ──
+    // Aplica el mismo fichaMap que wa_webhook.php para actualizar campos de la conversación.
+    if ($action === 'e2e_inject_ficha_stg') {
+        $b = body();
+        $conv_id = $b['conv_id'] ?? '';
+        if (!$conv_id) err('conv_id requerido');
+        $ficha = $b['ficha'] ?? [];
+        if (!$ficha) err('ficha (objeto FICHA_JSON) requerido');
+        // Verificar que la conversación existe en staging
+        $chk = stg()->prepare("SELECT id FROM wa_cloud_conversations WHERE id=? LIMIT 1");
+        $chk->execute([$conv_id]);
+        if (!$chk->fetch()) err("Conversación staging no encontrada: $conv_id", 404);
+        // fichaMap idéntico al de wa_webhook.php
+        $fichaMap = [
+            'nombre'        => 'contact_name',
+            'email'         => 'contact_email',
+            'rut'           => 'contact_rut',
+            'razon_social'  => 'company_name',
+            'tipo_cliente'  => 'client_type',
+            'origen'        => 'service_origin',
+            'destino'       => 'service_destination',
+            'fecha'         => 'service_date',
+            'hora_salida'   => 'service_hour',
+            'hora_retorno'  => 'service_hour_return',
+            'pasajeros'     => 'service_passengers',
+            'tipo'          => 'service_type',
+        ];
+        $cols = []; $vals = [];
+        foreach ($fichaMap as $key => $col) {
+            if (!isset($ficha[$key]) || $ficha[$key] === '' || $ficha[$key] === null) continue;
+            $v = $ficha[$key];
+            if ($col === 'service_date' && preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $v, $pd)) {
+                $v = "{$pd[3]}-{$pd[2]}-{$pd[1]}";
+            }
+            $cols[] = "$col=?";
+            $vals[] = $v;
+        }
+        if (!$cols) err('ficha vacía — ningún campo reconocido', 422);
+        $vals[] = $conv_id;
+        stg()->prepare("UPDATE wa_cloud_conversations SET ".implode(',',$cols)." WHERE id=?")->execute($vals);
+        // Leer estado actualizado
+        $st = stg()->prepare("SELECT contact_name,contact_email,contact_rut,company_name,client_type,
+            service_origin,service_destination,service_date,service_hour,service_hour_return,
+            service_passengers,service_type,service_vehicle,wa_draft_quote_id,stage FROM wa_cloud_conversations WHERE id=?");
+        $st->execute([$conv_id]);
+        $updated = $st->fetch(PDO::FETCH_ASSOC);
+        ok(['injected'=>count($cols),'fields_set'=>array_keys($ficha),'conv_state'=>$updated,'staging'=>true]);
+    }
+
+    // ── e2e_get_conv_stg — retorna estado actual de una conversación staging ──
+    if ($action === 'e2e_get_conv_stg') {
+        $conv_id = body()['conv_id'] ?? ($_GET['conv_id'] ?? '');
+        if (!$conv_id) err('conv_id requerido');
+        $st = stg()->prepare("SELECT * FROM wa_cloud_conversations WHERE id=? LIMIT 1");
+        $st->execute([$conv_id]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row) err("Conversación staging no encontrada: $conv_id", 404);
+        // También retornar cotizaciones y aprobaciones asociadas
+        $quot = stg()->prepare("SELECT id,number,status,etapa,company,total,desde,hasta,
+            fecha_salida,hora_salida,hora_retorno,client_id,contact_id,created_at
+            FROM quotations WHERE id=? LIMIT 1");
+        $quot->execute([$row['wa_draft_quote_id'] ?? '']);
+        $quotRow = $quot->fetch(PDO::FETCH_ASSOC) ?: null;
+        $appr = stg()->prepare("SELECT id,status,approved_by,approved_at FROM wa_quote_approvals
+            WHERE conv_id=? ORDER BY created_at DESC LIMIT 3");
+        $appr->execute([$conv_id]);
+        $apprRows = $appr->fetchAll(PDO::FETCH_ASSOC);
+        ok(['conv'=>$row,'quotation'=>$quotRow,'approvals'=>$apprRows,'staging'=>true]);
     }
 
     // ── e2e_stg_quotations_update — actualiza cotización staging + invalida aprobación ─

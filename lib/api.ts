@@ -165,10 +165,14 @@ export interface WaConv {
   contact_name: string | null
   contact_rut: string | null
   contact_email: string | null
+  company_name: string | null
+  client_type: string | null
   service_type: string | null
   service_origin: string | null
   service_destination: string | null
   service_date: string | null
+  service_hour: string | null
+  service_hour_return: string | null
   service_passengers: number | null
   service_vehicle: string | null
   assigned_to: string | null

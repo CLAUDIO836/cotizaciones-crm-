@@ -59,6 +59,8 @@ export default async function NuevaCotizacionPage({
         prefilledOrigin={waConv?.service_origin ?? undefined}
         prefilledDestination={waConv?.service_destination ?? undefined}
         prefilledDate={waConv?.service_date ?? undefined}
+        prefilledHoraSalida={waConv?.service_hour ?? undefined}
+        prefilledHoraRetorno={waConv?.service_hour_return ?? undefined}
         prefilledPassengers={waConv?.service_passengers ?? undefined}
         prefilledVehicle={waConv?.service_vehicle ?? undefined}
       />
