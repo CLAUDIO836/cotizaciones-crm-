@@ -22,7 +22,8 @@ export async function GET(_req: NextRequest) {
     })
     const data = await res.json()
     if (!res.ok) return NextResponse.json(data, { status: res.status })
-    return NextResponse.json(Array.isArray(data.convs) ? data.convs : [])
+    const convs = (data as { data?: { convs?: unknown[] } }).data?.convs
+    return NextResponse.json(Array.isArray(convs) ? convs : [])
   } catch {
     return NextResponse.json({ error: 'Error de servidor' }, { status: 500 })
   }

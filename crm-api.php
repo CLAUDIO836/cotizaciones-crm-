@@ -5453,6 +5453,27 @@ if (str_starts_with($action, 'e2e_')) {
         }
     }
 
+    // ── e2e_debug_convs — diagnóstico: datos raw de teléfonos de prueba ─────────
+    if ($action === 'e2e_debug_convs') {
+        $phones = ['56911111002','56911111003'];
+        $in = implode(',', array_map(fn($p) => "'$p'", $phones));
+        $convs = stg()->query("
+            SELECT c.id, c.phone, c.contact_name, c.stage, c.wa_draft_quote_id,
+                   c.service_km, c.service_passengers, c.service_vehicle,
+                   c.created_at,
+                   q.id AS q_id, q.number AS q_number, q.status AS q_status,
+                   a.id AS a_id, a.status AS a_status
+            FROM wa_cloud_conversations c
+            LEFT JOIN quotations q ON q.id = c.wa_draft_quote_id
+            LEFT JOIN wa_quote_approvals a ON a.conv_id = c.id
+            WHERE c.phone IN ($in)
+            ORDER BY c.created_at DESC
+        ")->fetchAll(PDO::FETCH_ASSOC);
+        $all_approvals = stg()->query("SELECT * FROM wa_quote_approvals ORDER BY created_at DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+        $all_convs_with_draft = stg()->query("SELECT id, phone, wa_draft_quote_id FROM wa_cloud_conversations WHERE wa_draft_quote_id IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC);
+        ok(['convs_for_phones'=>$convs,'all_approvals'=>$all_approvals,'convs_with_draft'=>$all_convs_with_draft]);
+    }
+
     // ── e2e_convs_pending_approval — lista convs staging con borrador pendiente ─
     // El rol se valida contra producción DB; el header x-user-role se ignora.
     if ($action === 'e2e_convs_pending_approval') {
