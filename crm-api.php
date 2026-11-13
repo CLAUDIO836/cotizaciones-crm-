@@ -4247,6 +4247,7 @@ if ($action === 'wa_form_get') {
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN quote_send_email VARCHAR(255) NULL");       } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour TIME NULL");                   } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL");            } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN observaciones TEXT NULL");                  } catch (PDOException $e) {}
 
     $stmt = db()->prepare(
         "SELECT contact_name, contact_email, contact_rut,
