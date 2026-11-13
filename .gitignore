@@ -2,6 +2,15 @@
 
 # Server-only env config (secrets, never commit)
 /crm-env.php
+crm-secrets*.php
+staging/crm-secrets*.php
+
+# Backups y archivos temporales
+*.bak
+*.bak_*
+*_backup_*.json
+run_migration*.php
+run_mig*.php
 
 # dependencies
 /node_modules

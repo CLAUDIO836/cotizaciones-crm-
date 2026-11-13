@@ -1,7 +1,7 @@
 <?php
 /**
  * wa-estado.php — Dashboard de estado Sofía / Pipeline WhatsApp
- * Acceso: ?_s=ccl2026adm  (o sesión CRM válida)
+ * Acceso: sesión CRM válida (Bearer JWT) o header X-Admin-Secret desde servidor
  * No contiene datos de API externos; solo lectura de BD.
  */
 
@@ -12,12 +12,16 @@ if (!defined('DB_HOST')) {
     define('DB_PASS', getenv('CRM_DB_PASSWORD') ?: 'Claudio@1978');
 }
 
-// ── Auth ─────────────────────────────────────────────────────────────────────
-$secret = $_GET['_s'] ?? ($_SERVER['HTTP_X_ADMIN_SECRET'] ?? '');
-if ($secret !== 'ccl2026adm') {
-    // Intentar con JWT de sesión CRM
-    $auth_ok = false;
-    $token   = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+// ── Auth — sin secretos en URL (evitar filtración en logs) ───────────────────
+$auth_ok = false;
+// 1) Header X-Admin-Secret (vía proxy/servidor, no llega en URL)
+$admin_secret = $_SERVER['HTTP_X_ADMIN_SECRET'] ?? '';
+if ($admin_secret !== '' && defined('WA_ESTADO_SECRET') && hash_equals(WA_ESTADO_SECRET, $admin_secret)) {
+    $auth_ok = true;
+}
+// 2) JWT de sesión CRM
+if (!$auth_ok) {
+    $token = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
     if (str_starts_with($token, 'Bearer ') && defined('CRM_JWT_SECRET')) {
         try {
             [$h, $p, $sig] = explode('.', substr($token, 7));
@@ -25,12 +29,19 @@ if ($secret !== 'ccl2026adm') {
             if (hash_equals($check, $sig)) $auth_ok = true;
         } catch (Throwable $e) {}
     }
-    if (!$auth_ok) {
-        http_response_code(401);
-        header('Content-Type: text/plain');
-        die('Acceso no autorizado. Usa ?_s=ccl2026adm');
-    }
 }
+// 3) Sesión PHP del CRM (usuario logueado)
+if (!$auth_ok) {
+    @session_start();
+    if (!empty($_SESSION['crm_user_id'])) $auth_ok = true;
+}
+if (!$auth_ok) {
+    http_response_code(401);
+    header('Content-Type: text/plain');
+    die('Acceso no autorizado.');
+}
+// $secret se conserva como string vacío para no romper referencias posteriores
+$secret = '';
 
 // ── Datos ────────────────────────────────────────────────────────────────────
 try {
@@ -187,7 +198,7 @@ tr:hover td{background:var(--surface2);}
 <h1>Estado Sofía · Pipeline WhatsApp</h1>
 <div class="meta">
   <span>Actualizado: <?= $ts ?></span>
-  <a class="refresh-btn" href="?_s=<?= htmlspecialchars($secret) ?>">↻ Actualizar</a>
+  <a class="refresh-btn" href="?">↻ Actualizar</a>
   <span style="margin-left:auto;color:var(--fg-muted)">Solo conversaciones activas</span>
 </div>
 
