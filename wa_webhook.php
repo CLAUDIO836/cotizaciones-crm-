@@ -9,6 +9,8 @@
 // Carga secrets si no están ya cargados por auto_prepend
 $_s = '/home/transccl/crm-secrets.php';
 if (file_exists($_s) && !defined('META_WA_TOKEN')) require_once $_s;
+$_e = __DIR__ . '/crm-env.php';
+if (file_exists($_e)) require_once $_e;
 
 date_default_timezone_set('America/Santiago');
 
