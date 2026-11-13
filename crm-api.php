@@ -5500,6 +5500,7 @@ if (str_starts_with($action, 'e2e_')) {
             LEFT JOIN quotations          q ON q.id     = c.wa_draft_quote_id
             LEFT JOIN wa_quote_approvals  a ON a.conv_id = c.id AND a.status = 'pending'
             WHERE c.wa_draft_quote_id IS NOT NULL
+              AND a.id IS NOT NULL
             ORDER BY c.created_at DESC
             LIMIT 50
         ");
@@ -5589,8 +5590,7 @@ if (str_starts_with($action, 'e2e_')) {
             ->execute([$uid, $notes ?: null, json_encode($snapshot), $apRow['id']]);
         stg()->prepare("UPDATE quotations SET etapa='cotizacion', status='open' WHERE id=?")
             ->execute([$apRow['quotation_id']]);
-        stg()->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=NULL WHERE id=?")
-            ->execute([$conv_id]);
+        // wa_draft_quote_id se conserva para mantener trazabilidad conversación-cotización
 
         $q = stg()->prepare("SELECT number, total FROM quotations WHERE id=?");
         $q->execute([$apRow['quotation_id']]);
