@@ -5187,8 +5187,10 @@ if (str_starts_with($action, 'e2e_')) {
 
     // ── e2e_cleanup ────────────────────────────────────────────────────────
     if ($action === 'e2e_cleanup') {
-        stg()->exec("DELETE FROM wa_quote_approvals WHERE conv_id IN (SELECT id FROM wa_cloud_conversations WHERE phone IN ('56911111001','56911111002'))");
-        stg()->exec("DELETE FROM wa_cloud_conversations WHERE phone IN ('56911111001','56911111002')");
+        $phones = ['56911111001','56911111002','56911111003'];
+        $in = implode(',', array_map(fn($p) => "'$p'", $phones));
+        stg()->exec("DELETE FROM wa_quote_approvals WHERE conv_id IN (SELECT id FROM wa_cloud_conversations WHERE phone IN ($in))");
+        stg()->exec("DELETE FROM wa_cloud_conversations WHERE phone IN ($in)");
         stg()->exec("DELETE FROM quotations WHERE number LIKE 'STG-%' OR number LIKE 'BWA-%'");
         ok(['cleanup'=>'done','staging_db'=>'transccl_crm_staging']);
     }
