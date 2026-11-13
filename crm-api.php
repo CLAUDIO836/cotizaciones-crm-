@@ -4999,19 +4999,18 @@ if (str_starts_with($action, 'e2e_')) {
         $conv = $stmt->fetch();
         if (!$conv) ok(['prod_incident' => 'NO_EXISTE', 'phone' => $phone]);
 
-        // Mensajes (tabla puede no existir)
-        $msgs = 0;
+        // Mensajes (tabla puede no existir, columna puede ser conv_id o conversation_id)
+        $msgs = 0; $msg_col = null;
         try {
             $cols_msg = db()->query("SHOW COLUMNS FROM wa_cloud_messages")->fetchAll(PDO::FETCH_COLUMN);
-            $has_conv_id = in_array('conv_id', $cols_msg);
-            if ($has_conv_id) {
-                $s = db()->prepare("SELECT COUNT(*) FROM wa_cloud_messages WHERE conv_id=?");
+            if (in_array('conv_id', $cols_msg))             { $msg_col = 'conv_id'; }
+            elseif (in_array('conversation_id', $cols_msg)) { $msg_col = 'conversation_id'; }
+            if ($msg_col) {
+                $s = db()->prepare("SELECT COUNT(*) FROM wa_cloud_messages WHERE $msg_col=?");
                 $s->execute([$conv['id']]);
                 $msgs = (int)$s->fetchColumn();
-            } else {
-                $msgs = -1; // tabla existe pero sin conv_id
-            }
-        } catch (PDOException $e) { $msgs = -2; } // tabla no existe
+            } else { $msgs = -1; } // columna de conv no encontrada
+        } catch (PDOException $e) { $msgs = -2; $msg_col = 'tabla_no_existe'; }
 
         // Aprobaciones (tabla puede no existir)
         $apprs = [];
@@ -5025,6 +5024,7 @@ if (str_starts_with($action, 'e2e_')) {
             'prod_incident' => [
                 'conversation' => $conv,
                 'messages_count' => $msgs,
+                'msg_col_used' => $msg_col,
                 'approvals' => $apprs,
                 'safe_to_delete' => ($msgs === 0 && empty($apprs) && stripos($conv['contact_name']??'', 'test') !== false),
             ],
