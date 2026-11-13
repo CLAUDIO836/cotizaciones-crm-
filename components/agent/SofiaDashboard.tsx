@@ -252,7 +252,7 @@ export default function SofiaDashboard() {
                 {pendingApproval.length === 0 ? (
                   <EmptyState icon="✅" msg="Sin cotizaciones pendientes de aprobación" />
                 ) : (
-                  <ConvTable convs={pendingApproval} showApproval />
+                  <ConvTable convs={pendingApproval} showApproval onDecide={load} />
                 )}
               </>
             )}
@@ -357,57 +357,128 @@ function EmptyState({ icon, msg }: { icon: string; msg: string }) {
   )
 }
 
-function ConvTable({ convs, showApproval }: { convs: WaConv[]; showApproval?: boolean }) {
+function ConvTable({ convs, showApproval, onDecide }: {
+  convs: WaConv[]
+  showApproval?: boolean
+  onDecide?: () => void
+}) {
+  const [deciding, setDeciding] = useState<Record<string, 'approving' | 'rejecting' | 'done' | 'error'>>({})
+
+  async function decide(convId: string, decision: 'approved' | 'rejected') {
+    setDeciding(prev => ({ ...prev, [convId]: decision === 'approved' ? 'approving' : 'rejecting' }))
+    try {
+      const res = await fetch('/api/whatsapp/cloud/approvals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conv_id: convId, decision }),
+      })
+      const d = await res.json()
+      if (!res.ok) {
+        alert(d.error ?? 'Error al procesar la decisión')
+        setDeciding(prev => ({ ...prev, [convId]: 'error' }))
+        return
+      }
+      setDeciding(prev => ({ ...prev, [convId]: 'done' }))
+      onDecide?.()
+    } catch {
+      setDeciding(prev => ({ ...prev, [convId]: 'error' }))
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {convs.map(c => {
         const stageStyle = STAGE_COLOR[c.stage] ?? STAGE_COLOR['nuevo']
+        const state = deciding[c.id]
+        const hasDraft = showApproval && c.wa_draft_quote_id
         return (
-          <Link key={c.id} href={`/bandeja?conv=${c.id}`} style={{ textDecoration: 'none' }}>
-            <div style={{
-              background: '#fff', border: `1px solid ${c.wa_draft_quote_id ? '#fcd34d' : '#e5e7eb'}`,
-              borderRadius: 10, padding: '12px 16px',
-              display: 'flex', alignItems: 'flex-start', gap: 12,
-              cursor: 'pointer',
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                  <span style={{ fontWeight: 600, fontSize: 13, color: '#111' }}>
-                    {c.contact_name || `+${c.phone}`}
-                  </span>
-                  <span style={{ fontSize: 11, color: '#9ca3af' }}>+{c.phone}</span>
-                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: stageStyle.bg, color: stageStyle.color }}>
-                    {STAGE_LABEL[c.stage] ?? c.stage}
-                  </span>
-                  {c.bot_active && <span style={{ fontSize: 10, color: '#7c3aed', fontWeight: 600 }}>🤖 Bot activo</span>}
-                  {showApproval && c.wa_draft_quote_id && (
-                    <span style={{ fontSize: 10, fontWeight: 700, background: '#fef3c7', color: '#92400e', borderRadius: 4, padding: '2px 6px' }}>
-                      ⏳ Pend. aprobación
+          <div key={c.id} style={{
+            background: '#fff', border: `1px solid ${hasDraft ? '#fcd34d' : '#e5e7eb'}`,
+            borderRadius: 10, overflow: 'hidden',
+          }}>
+            <Link href={`/bandeja?conv=${c.id}`} style={{ textDecoration: 'none', display: 'block', padding: '12px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                    <span style={{ fontWeight: 600, fontSize: 13, color: '#111' }}>
+                      {c.contact_name || `+${c.phone}`}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>+{c.phone}</span>
+                    <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: stageStyle.bg, color: stageStyle.color }}>
+                      {STAGE_LABEL[c.stage] ?? c.stage}
+                    </span>
+                    {c.bot_active && <span style={{ fontSize: 10, color: '#7c3aed', fontWeight: 600 }}>🤖 Bot activo</span>}
+                    {hasDraft && (
+                      <span style={{ fontSize: 10, fontWeight: 700, background: '#fef3c7', color: '#92400e', borderRadius: 4, padding: '2px 6px' }}>
+                        ⏳ Pend. aprobación
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    {c.service_origin && <span>📍 {c.service_origin}</span>}
+                    {c.service_destination && <span>→ {c.service_destination}</span>}
+                    {c.service_date && <span>📅 {c.service_date}</span>}
+                  </div>
+                  {c.last_message && (
+                    <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {c.last_message}
+                    </div>
+                  )}
+                </div>
+                <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                  {c.assigned_name && <div style={{ fontSize: 11, color: '#374151', fontWeight: 600 }}>{c.assigned_name.split(' ')[0]}</div>}
+                  <div style={{ fontSize: 11, color: '#9ca3af' }}>{fmtTime(c.last_msg_at)}</div>
+                  {c.unread_count > 0 && (
+                    <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, fontWeight: 700, background: '#eab308', color: '#fff', borderRadius: 10, padding: '1px 6px' }}>
+                      {c.unread_count}
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  {c.service_origin && <span>📍 {c.service_origin}</span>}
-                  {c.service_destination && <span>→ {c.service_destination}</span>}
-                  {c.service_date && <span>📅 {c.service_date}</span>}
-                </div>
-                {c.last_message && (
-                  <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {c.last_message}
-                  </div>
-                )}
               </div>
-              <div style={{ flexShrink: 0, textAlign: 'right' }}>
-                {c.assigned_name && <div style={{ fontSize: 11, color: '#374151', fontWeight: 600 }}>{c.assigned_name.split(' ')[0]}</div>}
-                <div style={{ fontSize: 11, color: '#9ca3af' }}>{fmtTime(c.last_msg_at)}</div>
-                {c.unread_count > 0 && (
-                  <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, fontWeight: 700, background: '#eab308', color: '#fff', borderRadius: 10, padding: '1px 6px' }}>
-                    {c.unread_count}
-                  </span>
-                )}
+            </Link>
+
+            {/* Botones de aprobación — fuera del Link para evitar navegación accidental */}
+            {hasDraft && state !== 'done' && (
+              <div style={{
+                borderTop: '1px solid #fde68a', background: '#fffbeb',
+                padding: '10px 16px', display: 'flex', gap: 8, alignItems: 'center',
+              }}>
+                <span style={{ fontSize: 11, color: '#92400e', flex: 1 }}>
+                  Cotización lista — revisa antes de aprobar
+                </span>
+                <button
+                  onClick={() => decide(c.id, 'rejected')}
+                  disabled={!!state}
+                  style={{
+                    padding: '5px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, cursor: state ? 'default' : 'pointer',
+                    border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', opacity: state ? 0.5 : 1,
+                  }}
+                >
+                  {state === 'rejecting' ? 'Rechazando…' : '✕ Rechazar'}
+                </button>
+                <button
+                  onClick={() => decide(c.id, 'approved')}
+                  disabled={!!state}
+                  style={{
+                    padding: '5px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6, cursor: state ? 'default' : 'pointer',
+                    border: 'none', background: '#16a34a', color: '#fff', opacity: state ? 0.5 : 1,
+                  }}
+                >
+                  {state === 'approving' ? 'Aprobando…' : '✓ Aprobar'}
+                </button>
               </div>
-            </div>
-          </Link>
+            )}
+            {hasDraft && state === 'done' && (
+              <div style={{ borderTop: '1px solid #bbf7d0', background: '#f0fdf4', padding: '8px 16px', fontSize: 11, color: '#166534', fontWeight: 600 }}>
+                ✓ Decisión registrada — recargando…
+              </div>
+            )}
+            {hasDraft && state === 'error' && (
+              <div style={{ borderTop: '1px solid #fecaca', background: '#fef2f2', padding: '8px 16px', fontSize: 11, color: '#dc2626' }}>
+                Error al procesar. Intenta nuevamente.
+              </div>
+            )}
+          </div>
         )
       })}
     </div>

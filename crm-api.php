@@ -4608,6 +4608,13 @@ if ($action === 'wa_approvals_get') {
 // ── Sofía: aprobar o rechazar borrador ────────────────────────────────────────
 if ($action === 'wa_approvals_decide') {
     $user = requireAuth();
+
+    // Solo gerencia/admin/superadmin/supervisor pueden aprobar borradores de Sofía
+    $allowedRoles = ['gerencia', 'admin', 'superadmin', 'supervisor'];
+    if (!in_array($user['role'] ?? '', $allowedRoles)) {
+        err('Sin permiso: solo Gerencia o supervisores autorizados pueden aprobar cotizaciones de Sofía', 403);
+    }
+
     $b    = body();
     $convId    = $b['conv_id']     ?? '';
     $decision  = $b['decision']    ?? ''; // 'approved' | 'rejected'
@@ -4615,39 +4622,46 @@ if ($action === 'wa_approvals_decide') {
     if (!$convId || !in_array($decision, ['approved', 'rejected'])) err('conv_id y decision requeridos');
 
     // Obtener aprobación pendiente
-    $ap = db()->prepare("SELECT id, quotation_id FROM wa_quote_approvals WHERE conv_id = ? AND status = 'pending' LIMIT 1");
+    $ap = db()->prepare("SELECT id, quotation_id, status FROM wa_quote_approvals WHERE conv_id = ? ORDER BY created_at DESC LIMIT 1");
     $ap->execute([$convId]);
     $apRow = $ap->fetch();
-    if (!$apRow) err('No hay cotización pendiente de aprobación', 404);
+    if (!$apRow) err('No hay cotización de Sofía para esta conversación', 404);
+    if ($apRow['status'] !== 'pending') err('Esta cotización ya fue ' . $apRow['status'] . '. No se puede ' . $decision, 409);
+
+    // Capturar snapshot de la cotización en el momento de la decisión
+    $qSnap = db()->prepare("SELECT id, number, total, etapa, desde, hasta, fecha_salida, vehicle_type, distancia_km FROM quotations WHERE id=?");
+    $qSnap->execute([$apRow['quotation_id']]);
+    $snapshot = $qSnap->fetch() ?: [];
 
     if ($decision === 'rejected') {
-        db()->prepare("UPDATE wa_quote_approvals SET status='rejected', approved_by=?, approved_at=NOW(), notes=? WHERE id=?")
-            ->execute([$user['id'], $notes ?: null, $apRow['id']]);
+        db()->prepare("UPDATE wa_quote_approvals SET status='rejected', approved_by=?, approved_at=NOW(), notes=?, quote_snapshot=? WHERE id=?")
+            ->execute([$user['id'], $notes ?: null, json_encode($snapshot), $apRow['id']]);
         db()->prepare("UPDATE quotations SET etapa='borrador_wa_rechazado' WHERE id=?")
             ->execute([$apRow['quotation_id']]);
         db()->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=NULL WHERE id=?")
             ->execute([$convId]);
-        ok(['rechazado' => true]);
+        ok(['rechazado' => true, 'rechazado_por' => $user['id'], 'timestamp' => date('c')]);
     }
 
-    // Aprobar: marcar como sent y actualizar cotización
-    db()->prepare("UPDATE wa_quote_approvals SET status='sent', approved_by=?, approved_at=NOW(), sent_at=NOW(), notes=?, sent_result=? WHERE id=?")
-        ->execute([$user['id'], $notes ?: null, json_encode(['simulado' => true, 'ts' => date('c')]), $apRow['id']]);
+    // Aprobar: status='approved' (el envío es un paso separado)
+    // La ejecutiva comercial NO cambia — solo se registra quién autorizó
+    db()->prepare("UPDATE wa_quote_approvals SET status='approved', approved_by=?, approved_at=NOW(), notes=?, quote_snapshot=? WHERE id=?")
+        ->execute([$user['id'], $notes ?: null, json_encode($snapshot), $apRow['id']]);
+    // Mover cotización de borrador a lista para envío
     db()->prepare("UPDATE quotations SET etapa='cotizacion', status='open' WHERE id=?")
         ->execute([$apRow['quotation_id']]);
 
-    // Obtener datos de la cotización para simular mensaje
     $q = db()->prepare("SELECT number, total, desde, hasta, fecha_salida FROM quotations WHERE id=?");
     $q->execute([$apRow['quotation_id']]);
     $qRow = $q->fetch();
-    $monto = '$' . number_format((float)($qRow['total'] ?? 0), 0, ',', '.');
-    $ruta  = ($qRow['desde'] ?? '?') . ' → ' . ($qRow['hasta'] ?? '?');
-    $fecha = !empty($qRow['fecha_salida']) ? date('d/m/Y', strtotime($qRow['fecha_salida'])) : '—';
-    $msgSimulado = "Hola 👋 Te enviamos la cotización oficial TransCCL N° {$qRow['number']}.\n\n"
-                 . "📍 Ruta: {$ruta}\n📅 Fecha: {$fecha}\n💰 Total: {$monto}\n\n"
-                 . "Para confirmar el servicio, responde CONFIRMO o contáctanos. ¡Gracias! 🚌";
-
-    ok(['aprobado' => true, 'simulado' => true, 'mensaje_enviado' => $msgSimulado, 'quote_number' => $qRow['number']]);
+    ok([
+        'aprobado'       => true,
+        'aprobado_por'   => $user['id'],
+        'timestamp'      => date('c'),
+        'quote_number'   => $qRow['number'] ?? null,
+        'total'          => $qRow['total']  ?? null,
+        'envio_pendiente'=> true, // El envío WA es un paso posterior independiente
+    ]);
 }
 
 // ── Sofía: métricas agregadas ─────────────────────────────────────────────────
@@ -5181,6 +5195,38 @@ if (str_starts_with($action, 'e2e_')) {
             'idempotent'   => $r2['idempotent'] ?? false,
             'ids_iguales'  => ($r2['quotation_id'] ?? null) === $r1['quotation_id'],
             'resultado'    => $is_idempotent ? 'PASS' : 'FAIL',
+        ]);
+    }
+
+    // ── e2e_form_complete_borrador — simula envío de formulario + trigger auto ─
+    // Equivale a: cliente envía formulario → wa_form_save → crear_borrador_wa()
+    // Todo sobre staging DB (stg()), nunca toca producción.
+    if ($action === 'e2e_form_complete_borrador') {
+        $conv_id = body()['conv_id'] ?? ($_GET['conv_id'] ?? '');
+        if (!$conv_id) err('conv_id requerido');
+
+        // Verificar que la conv existe en staging y tiene los campos mínimos
+        $check = stg()->prepare("SELECT id, phone, service_km, service_passengers, service_vehicle, service_origin, service_destination, service_date, wa_draft_quote_id FROM wa_cloud_conversations WHERE id=?");
+        $check->execute([$conv_id]);
+        $conv = $check->fetch();
+        if (!$conv) err('Conversación no encontrada en staging', 404);
+        if ($conv['wa_draft_quote_id']) err('Ya existe un borrador activo para esta conversación. Limpiar primero.', 409);
+
+        // Paso 1: simular wa_form_save → marcar stage y form_submitted_at
+        stg()->prepare("UPDATE wa_cloud_conversations SET stage='formulario_completo', form_submitted_at=COALESCE(form_submitted_at,NOW()) WHERE id=?")
+            ->execute([$conv_id]);
+
+        // Paso 2: trigger automático — crear borrador (lo que wa_form_save llamará en producción)
+        $borrador = crear_borrador_wa(stg(), $conv_id);
+        if (isset($borrador['error'])) err('Auto-crear borrador falló: ' . $borrador['error'], $borrador['code'] ?? 422);
+
+        ok([
+            'test'            => 'form_complete_borrador',
+            'conv_id'         => $conv_id,
+            'stage_updated'   => 'formulario_completo',
+            'form_submitted'  => true,
+            'borrador'        => $borrador,
+            'nota'            => 'Staging only — no modifica producción',
         ]);
     }
 
