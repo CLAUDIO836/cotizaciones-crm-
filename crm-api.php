@@ -4113,7 +4113,7 @@ if ($action === 'wa_cloud_detail') {
         c.last_msg_at, c.last_customer_msg_at, c.unread_count, c.notes,
         c.contact_rut, c.service_date, c.contact_email,
         c.service_origin, c.service_destination, c.service_passengers, c.service_type, c.service_vehicle,
-        c.created_at, p.name AS assigned_name
+        c.wa_draft_quote_id, c.created_at, p.name AS assigned_name
         FROM wa_cloud_conversations c
         LEFT JOIN profiles p ON p.id = c.assigned_to
         WHERE c.id = ?");
@@ -4787,7 +4787,10 @@ function php_calcular_tarifa_salida(string $formato_id, float $km): array {
 }
 
 // ── crear_borrador_wa — crea cotización borrador a partir de conversación WA ──
-function crear_borrador_wa(PDO $pdo, string $conv_id): array {
+// $opts['use_client_lookup'] = true  → busca/crea cliente por RUT (staging Fase 1)
+function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
+    $use_client_lookup = $opts['use_client_lookup'] ?? false;
+
     $stmt = $pdo->prepare("SELECT * FROM wa_cloud_conversations WHERE id=? LIMIT 1");
     $stmt->execute([$conv_id]);
     $conv = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -4804,8 +4807,120 @@ function crear_borrador_wa(PDO $pdo, string $conv_id): array {
     if ($pax > 90) return ['error'=>"$pax pasajeros: requiere cotización a medida (máx 90)",'code'=>422,'tipo'=>'a_medida'];
     if ($km > 150) return ['error'=>"{$km} km supera el límite de 150 km para borrador automático",'code'=>422,'tipo'=>'a_medida'];
 
-    // Idempotencia y bloqueo por aprobación existente
-    $draft_id = $conv['wa_draft_quote_id'] ?? null;
+    // ── Fase 1: identificación de cliente por RUT ────────────────────────────
+    $client_id  = null;
+    $contact_id = null;
+    $company_field = $conv['contact_name'] ?? 'Sin nombre'; // default actual
+
+    if ($use_client_lookup) {
+        $rut = trim($conv['contact_rut'] ?? '');
+        $client_type = $conv['client_type'] ?? null;
+
+        if (!$rut || !validateRut($rut)) {
+            // Sin RUT válido: marcar datos incompletos, no crear cotización
+            try {
+                $pdo->prepare("UPDATE wa_cloud_conversations SET stage='datos_incompletos' WHERE id=?")
+                    ->execute([$conv_id]);
+            } catch (PDOException $e) {}
+            return ['error'=>'RUT no recopilado o inválido. Sofía debe solicitar el RUT antes de cotizar.',
+                    'code'=>422,'missing'=>'contact_rut','stage'=>'datos_incompletos'];
+        }
+
+        $email = trim($conv['quote_send_email'] ?? $conv['contact_email'] ?? '');
+        if (!$email) {
+            try {
+                $pdo->prepare("UPDATE wa_cloud_conversations SET stage='datos_incompletos' WHERE id=?")
+                    ->execute([$conv_id]);
+            } catch (PDOException $e) {}
+            return ['error'=>'Email no recopilado. Sofía debe solicitar el correo del cliente antes de cotizar.',
+                    'code'=>422,'missing'=>'contact_email','stage'=>'datos_incompletos'];
+        }
+
+        $rut_norm = normalizeRut($rut);
+        $rut_key  = rutKey($rut);
+
+        // Buscar cliente existente por RUT
+        $sc = $pdo->prepare("SELECT id, name, email FROM clients WHERE REPLACE(REPLACE(rut,'.',''),'-','') = ? LIMIT 1");
+        $sc->execute([$rut_key]);
+        $existing_client = $sc->fetch(PDO::FETCH_ASSOC);
+
+        if ($existing_client) {
+            $client_id    = $existing_client['id'];
+            $company_field = $existing_client['name'];
+
+            // Buscar contacto correcto por email (nunca auto-seleccionar primero)
+            $contact_email_to_use = $email;
+            $sc2 = $pdo->prepare("SELECT id, name FROM contacts WHERE client_id=? AND email=? LIMIT 1");
+            $sc2->execute([$client_id, $contact_email_to_use]);
+            $ct = $sc2->fetch(PDO::FETCH_ASSOC);
+            if ($ct) {
+                $contact_id = $ct['id'];
+            } else {
+                // Verificar si hay múltiples contactos (ambigüedad)
+                $ct_count = $pdo->prepare("SELECT COUNT(*) AS n FROM contacts WHERE client_id=?");
+                $ct_count->execute([$client_id]);
+                $n = (int)$ct_count->fetch(PDO::FETCH_ASSOC)['n'];
+                if ($n > 0) {
+                    // Ambigüedad: hay contactos pero ninguno coincide con el email
+                    // Escalar a ejecutiva sin crear cotización
+                    return ['error'=>'El cliente tiene contactos registrados pero ninguno coincide con el correo proporcionado. Verificar con ejecutiva.',
+                            'code'=>422,'missing'=>'contact_match','client_id'=>$client_id,'n_contacts'=>$n,'escalate'=>true];
+                }
+                // No hay contactos: crear uno nuevo si es empresa
+                if ($client_type === 'empresa' && !empty($conv['contact_name'])) {
+                    $new_ct_id = $pdo->query("SELECT UUID() AS u")->fetch(PDO::FETCH_ASSOC)['u'];
+                    $pdo->prepare("INSERT INTO contacts (id,client_id,name,email,phone_mobile) VALUES (?,?,?,?,?)")
+                        ->execute([$new_ct_id, $client_id, $conv['contact_name'], $email, $conv['phone'] ?? null]);
+                    $contact_id = $new_ct_id;
+                }
+            }
+        } else {
+            // Cliente nuevo: crear solo si tiene datos suficientes
+            $nombre_cliente = $conv['company_name'] ?? $conv['contact_name'] ?? '';
+            if (!$nombre_cliente) {
+                return ['error'=>'Nombre o razón social no recopilado.',
+                        'code'=>422,'missing'=>'company_name','stage'=>'datos_incompletos'];
+            }
+            $new_cl_id = $pdo->query("SELECT UUID() AS u")->fetch(PDO::FETCH_ASSOC)['u'];
+            try {
+                $pdo->prepare("INSERT INTO clients (id,name,rut,email,phone,created_at) VALUES (?,?,?,?,?,NOW())")
+                    ->execute([$new_cl_id, $nombre_cliente, $rut_norm, $email, $conv['phone'] ?? null]);
+                $client_id    = $new_cl_id;
+                $company_field = $nombre_cliente;
+
+                // Crear contacto si es empresa y hay nombre de contacto diferente a la razón social
+                if ($client_type === 'empresa' && !empty($conv['contact_name']) && $conv['contact_name'] !== $nombre_cliente) {
+                    $new_ct_id = $pdo->query("SELECT UUID() AS u")->fetch(PDO::FETCH_ASSOC)['u'];
+                    $pdo->prepare("INSERT INTO contacts (id,client_id,name,email,phone_mobile) VALUES (?,?,?,?,?)")
+                        ->execute([$new_ct_id, $new_cl_id, $conv['contact_name'], $email, $conv['phone'] ?? null]);
+                    $contact_id = $new_ct_id;
+                }
+            } catch (PDOException $e) {
+                // Manejar race condition: otro request insertó el mismo RUT primero
+                if ($e->getCode() == 23000 || strpos($e->getMessage(), 'Duplicate') !== false) {
+                    $sc3 = $pdo->prepare("SELECT id, name FROM clients WHERE REPLACE(REPLACE(rut,'.',''),'-','') = ? LIMIT 1");
+                    $sc3->execute([$rut_key]);
+                    $winner = $sc3->fetch(PDO::FETCH_ASSOC);
+                    if ($winner) { $client_id = $winner['id']; $company_field = $winner['name']; }
+                } else {
+                    return ['error'=>'Error al crear cliente: '.$e->getMessage(),'code'=>500];
+                }
+            }
+        }
+    }
+
+    // ── Idempotencia y bloqueo por aprobación existente ──────────────────────
+    // Usar FOR UPDATE si client_lookup está activo (previene race condition)
+    if ($use_client_lookup) {
+        try { $pdo->beginTransaction(); } catch (PDOException $e) {}
+        $lock = $pdo->prepare("SELECT wa_draft_quote_id FROM wa_cloud_conversations WHERE id=? FOR UPDATE");
+        $lock->execute([$conv_id]);
+        $conv_locked = $lock->fetch(PDO::FETCH_ASSOC);
+        $draft_id = $conv_locked['wa_draft_quote_id'] ?? null;
+    } else {
+        $draft_id = $conv['wa_draft_quote_id'] ?? null;
+    }
+
     if ($draft_id) {
         try {
             $sa = $pdo->prepare("SELECT id, status FROM wa_quote_approvals WHERE quotation_id=? ORDER BY created_at DESC LIMIT 1");
@@ -4813,11 +4928,11 @@ function crear_borrador_wa(PDO $pdo, string $conv_id): array {
             $ex = $sa->fetch(PDO::FETCH_ASSOC);
             if ($ex) {
                 if ($ex['status'] === 'pending') {
-                    // Idempotente: borrador pendiente existente, no duplicar
+                    if ($use_client_lookup) { try { $pdo->rollBack(); } catch (PDOException $e) {} }
                     return ['ok'=>true,'idempotent'=>true,'quotation_id'=>$draft_id,'approval_id'=>$ex['id']];
                 }
                 if (in_array($ex['status'], ['approved', 'sent'])) {
-                    // Aprobación vigente: no permitir nuevo borrador sin invalidación previa
+                    if ($use_client_lookup) { try { $pdo->rollBack(); } catch (PDOException $e) {} }
                     return [
                         'error' => "Esta cotización ya fue {$ex['status']}. Para crear una nueva versión, el supervisor debe invalidar la aprobación anterior.",
                         'code'  => 409,
@@ -4825,7 +4940,6 @@ function crear_borrador_wa(PDO $pdo, string $conv_id): array {
                         'approval_id'     => $ex['id'],
                     ];
                 }
-                // status=rejected/invalidated → se puede crear nuevo borrador
             }
         } catch (PDOException $e) {}
     }
@@ -4850,40 +4964,80 @@ function crear_borrador_wa(PDO $pdo, string $conv_id): array {
                  'generado'=>date('c')];
 
     try {
-        $pdo->prepare("
-            INSERT INTO quotations
-                (id,number,status,etapa,company,
-                 issue_date,expiry_date,
-                 subtotal,tax_pct,total,
-                 notes,observaciones,
-                 desde,hasta,desde_lat,desde_lng,hasta_lat,hasta_lng,
-                 distancia_km,fecha_salida,vehicle_type,
-                 user_id,pd_sync_status,pdf_upload_status,created_at)
-            VALUES (?,?,?,?,?,
-                    ?,?,
-                    ?,?,?,
-                    ?,?,
-                    ?,?,?,?,?,?,
-                    ?,?,?,
-                    ?,?,?,NOW())
-        ")->execute([
-            $quot_id,$number,'open','borrador_wa',$conv['contact_name']??'Sin nombre',
-            date('Y-m-d'),date('Y-m-d',strtotime('+7 days')),
-            $tarifa['precio_lista'],0,$tarifa['precio_lista'],
-            'Borrador automático WA — pendiente de revisión y aprobación',$obs,
-            $conv['service_origin'],$conv['service_destination'],
-            $conv['service_origin_lat']??null,$conv['service_origin_lng']??null,
-            $conv['service_destination_lat']??null,$conv['service_destination_lng']??null,
-            $km,$conv['service_date'],$tarifa['formato_nombre'],
-            $exec_id,'pending','pending',
-        ]);
+        // Columnas client_id/contact_id solo si existen (producción puede no tenerlas aún)
+        $has_client_col = false;
+        try {
+            $pdo->query("SELECT client_id FROM quotations LIMIT 0");
+            $has_client_col = true;
+        } catch (PDOException $e) {}
+
+        if ($has_client_col && $client_id) {
+            $pdo->prepare("
+                INSERT INTO quotations
+                    (id,number,status,etapa,company,
+                     issue_date,expiry_date,
+                     subtotal,tax_pct,total,
+                     notes,observaciones,
+                     desde,hasta,desde_lat,desde_lng,hasta_lat,hasta_lng,
+                     distancia_km,fecha_salida,vehicle_type,
+                     client_id,contact_id,user_id,pd_sync_status,pdf_upload_status,created_at)
+                VALUES (?,?,?,?,?,
+                        ?,?,
+                        ?,?,?,
+                        ?,?,
+                        ?,?,?,?,?,?,
+                        ?,?,?,
+                        ?,?,?,?,?,NOW())
+            ")->execute([
+                $quot_id,$number,'open','borrador_wa',$company_field,
+                date('Y-m-d'),date('Y-m-d',strtotime('+7 days')),
+                $tarifa['precio_lista'],0,$tarifa['precio_lista'],
+                'Borrador automático WA — pendiente de revisión y aprobación',$obs,
+                $conv['service_origin'],$conv['service_destination'],
+                $conv['service_origin_lat']??null,$conv['service_origin_lng']??null,
+                $conv['service_destination_lat']??null,$conv['service_destination_lng']??null,
+                $km,$conv['service_date'],$tarifa['formato_nombre'],
+                $client_id,$contact_id,$exec_id,'pending','pending',
+            ]);
+        } else {
+            $pdo->prepare("
+                INSERT INTO quotations
+                    (id,number,status,etapa,company,
+                     issue_date,expiry_date,
+                     subtotal,tax_pct,total,
+                     notes,observaciones,
+                     desde,hasta,desde_lat,desde_lng,hasta_lat,hasta_lng,
+                     distancia_km,fecha_salida,vehicle_type,
+                     user_id,pd_sync_status,pdf_upload_status,created_at)
+                VALUES (?,?,?,?,?,
+                        ?,?,
+                        ?,?,?,
+                        ?,?,
+                        ?,?,?,?,?,?,
+                        ?,?,?,
+                        ?,?,?,NOW())
+            ")->execute([
+                $quot_id,$number,'open','borrador_wa',$company_field,
+                date('Y-m-d'),date('Y-m-d',strtotime('+7 days')),
+                $tarifa['precio_lista'],0,$tarifa['precio_lista'],
+                'Borrador automático WA — pendiente de revisión y aprobación',$obs,
+                $conv['service_origin'],$conv['service_destination'],
+                $conv['service_origin_lat']??null,$conv['service_origin_lng']??null,
+                $conv['service_destination_lat']??null,$conv['service_destination_lng']??null,
+                $km,$conv['service_date'],$tarifa['formato_nombre'],
+                $exec_id,'pending','pending',
+            ]);
+        }
         $pdo->prepare("
             INSERT INTO wa_quote_approvals (id,conv_id,quotation_id,created_by,quote_total,quote_snapshot,status)
             VALUES (?,?,?,?,?,?,'pending')
         ")->execute([$appr_id,$conv_id,$quot_id,$exec_id,$tarifa['precio_lista'],json_encode($snapshot)]);
         $pdo->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=? WHERE id=?")->execute([$quot_id,$conv_id]);
-        return ['ok'=>true,'quotation_id'=>$quot_id,'approval_id'=>$appr_id,'number'=>$number,'tarifa'=>$tarifa];
+        if ($use_client_lookup) { try { $pdo->commit(); } catch (PDOException $e) {} }
+        return ['ok'=>true,'quotation_id'=>$quot_id,'approval_id'=>$appr_id,'number'=>$number,'tarifa'=>$tarifa,
+                'client_id'=>$client_id,'contact_id'=>$contact_id,'client_created'=>!($existing_client??null)];
     } catch (PDOException $e) {
+        if ($use_client_lookup) { try { $pdo->rollBack(); } catch (PDOException $ex) {} }
         return ['error'=>'DB error: '.$e->getMessage(),'code'=>500];
     }
 }
@@ -4964,6 +5118,38 @@ if (str_starts_with($action, 'e2e_')) {
             INDEX idx_wqa_conv (conv_id), INDEX idx_wqa_status (status)
         )",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN service_km DECIMAL(8,2) NULL",
+        // ── Fase 1: tablas de clientes/contactos en staging ──────────────────
+        "CREATE TABLE IF NOT EXISTS clients (
+            id CHAR(36) PRIMARY KEY,
+            name VARCHAR(200) NOT NULL,
+            rut VARCHAR(20) NULL,
+            email VARCHAR(200) NULL,
+            phone VARCHAR(50) NULL,
+            address TEXT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB",
+        "CREATE TABLE IF NOT EXISTS contacts (
+            id CHAR(36) PRIMARY KEY,
+            client_id CHAR(36) NOT NULL,
+            name VARCHAR(200) NOT NULL,
+            email VARCHAR(200) NULL,
+            phone_mobile VARCHAR(50) NULL,
+            phone_landline VARCHAR(50) NULL,
+            cargo VARCHAR(100) NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB",
+        // ── Fase 1: columnas nuevas en wa_cloud_conversations ─────────────────
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN company_name VARCHAR(200) NULL COMMENT 'Razón social empresa'",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN client_type ENUM('natural','empresa') NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN quote_send_email VARCHAR(200) NULL COMMENT 'Email confirmado para envío'",
+        // ── Fase 1: historial de invalidaciones en wa_quote_approvals ─────────
+        "ALTER TABLE wa_quote_approvals ADD COLUMN invalidated_reason TEXT NULL",
+        "ALTER TABLE wa_quote_approvals ADD COLUMN invalidated_at DATETIME NULL",
+        "ALTER TABLE wa_quote_approvals ADD COLUMN invalidated_by VARCHAR(36) NULL",
+        "ALTER TABLE wa_quote_approvals ADD COLUMN previous_approval_id VARCHAR(36) NULL COMMENT 'FK a aprobación anterior invalidada'",
+        // ── Fase 1: client_id y contact_id en cotizaciones staging ────────────
+        "ALTER TABLE quotations ADD COLUMN client_id CHAR(36) NULL",
+        "ALTER TABLE quotations ADD COLUMN contact_id CHAR(36) NULL",
     ];
     foreach ($stg_migrations as $smig) { try { stg()->exec($smig); } catch (PDOException $e) {} }
 
@@ -5605,6 +5791,216 @@ if (str_starts_with($action, 'e2e_')) {
             'staging'         => true,
             'nota'            => 'Aprobación registrada en staging — ningún mensaje enviado por WhatsApp',
         ]);
+    }
+
+    // ── e2e_fase1_verify — verificación pre-migración ─────────────────────────
+    if ($action === 'e2e_fase1_verify') {
+        $version = stg()->query("SELECT VERSION() AS v")->fetch()['v'];
+        $engines = stg()->query("SHOW TABLE STATUS WHERE Engine IS NOT NULL")->fetchAll();
+        $eng_map = [];
+        foreach ($engines as $t) $eng_map[$t['Name']] = $t['Engine'] ?? '?';
+        // Confirmar aislamiento: staging usa DB distinta a producción
+        $stg_db = stg()->query("SELECT DATABASE() AS d")->fetch()['d'];
+        $prod_db = db()->query("SELECT DATABASE() AS d")->fetch()['d'];
+        ok([
+            'mysql_version' => $version,
+            'staging_db'    => $stg_db,
+            'prod_db'       => $prod_db,
+            'isolated'      => $stg_db !== $prod_db,
+            'table_engines' => $eng_map,
+            'add_col_if_not_exists_supported' => version_compare($version, '8.0.0', '>='),
+        ]);
+    }
+
+    // ── e2e_fase1_backup — respalda tablas afectadas en staging ───────────────
+    if ($action === 'e2e_fase1_backup') {
+        $ts = date('Ymd_His');
+        $tables = ['clients','contacts','wa_cloud_conversations','wa_quote_approvals','quotations'];
+        $results = [];
+        foreach ($tables as $t) {
+            $backup = "{$t}_bk_{$ts}";
+            try {
+                stg()->exec("CREATE TABLE {$backup} AS SELECT * FROM {$t}");
+                $cnt = stg()->query("SELECT COUNT(*) AS n FROM {$backup}")->fetch()['n'];
+                $results[$t] = ['backup_table' => $backup, 'rows_backed_up' => $cnt, 'ok' => true];
+            } catch (PDOException $e) {
+                $results[$t] = ['ok' => false, 'error' => $e->getMessage()];
+            }
+        }
+        ok(['timestamp' => $ts, 'backups' => $results]);
+    }
+
+    // ── e2e_fase1_rut_audit — auditoría de RUT duplicados en staging ──────────
+    if ($action === 'e2e_fase1_rut_audit') {
+        $duplicates = stg()->query("
+            SELECT REPLACE(REPLACE(rut,'.',''),'-','') AS rut_key,
+                   COUNT(*) AS n, GROUP_CONCAT(id) AS ids, GROUP_CONCAT(name) AS nombres
+            FROM clients
+            WHERE rut IS NOT NULL AND rut != ''
+            GROUP BY rut_key HAVING COUNT(*) > 1
+        ")->fetchAll();
+        $nulls = stg()->query("SELECT COUNT(*) AS n FROM clients WHERE rut IS NULL OR rut=''")->fetch()['n'];
+        $total = stg()->query("SELECT COUNT(*) AS n FROM clients")->fetch()['n'];
+        $can_add_unique = count($duplicates) === 0;
+        ok([
+            'total_clients'    => $total,
+            'rut_nulls'        => $nulls,
+            'rut_duplicates'   => $duplicates,
+            'can_add_unique'   => $can_add_unique,
+            'message'          => $can_add_unique
+                ? 'Sin duplicados — se puede aplicar el UNIQUE index'
+                : 'HAY DUPLICADOS — detener migración y reportar a Gerencia',
+        ]);
+    }
+
+    // ── e2e_fase1_apply_unique — aplica UNIQUE index en clients.rut (staging) ──
+    if ($action === 'e2e_fase1_apply_unique') {
+        // Solo proceder si la auditoría fue ejecutada primero
+        $dup_check = stg()->query("
+            SELECT COUNT(*) AS n FROM (
+                SELECT REPLACE(REPLACE(rut,'.',''),'-','') AS k
+                FROM clients WHERE rut IS NOT NULL AND rut != ''
+                GROUP BY k HAVING COUNT(*) > 1
+            ) t
+        ")->fetch()['n'];
+        if ((int)$dup_check > 0) {
+            err('Existen RUT duplicados. Ejecutar e2e_fase1_rut_audit y resolver antes de continuar.', 409);
+        }
+        try {
+            stg()->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_rut_normalized
+                ON clients ((REPLACE(REPLACE(rut,'.',''),'-','')))
+                COMMENT 'Fase 1: previene RUT duplicados'");
+            ok(['unique_index_applied' => true, 'index' => 'idx_clients_rut_normalized']);
+        } catch (PDOException $e) {
+            err('Error al crear UNIQUE index: ' . $e->getMessage(), 500);
+        }
+    }
+
+    // ── e2e_fase1_seed_client — siembra cliente/contacto para pruebas Fase 1 ──
+    if ($action === 'e2e_fase1_seed_client') {
+        $b = body();
+        $cl_id = stg()->query("SELECT UUID() AS u")->fetch()['u'];
+        stg()->prepare("INSERT IGNORE INTO clients (id,name,rut,email,phone) VALUES (?,?,?,?,?)")
+            ->execute([$cl_id, $b['name']??'Empresa Test S.A.', $b['rut']??'76.000.001-K',
+                       $b['email']??'contacto@empresatest.cl', $b['phone']??'+56912345678']);
+        $ct_id = null;
+        if (!empty($b['contact_name'])) {
+            $ct_id = stg()->query("SELECT UUID() AS u")->fetch()['u'];
+            stg()->prepare("INSERT IGNORE INTO contacts (id,client_id,name,email,phone_mobile) VALUES (?,?,?,?,?)")
+                ->execute([$ct_id, $cl_id, $b['contact_name'], $b['contact_email']??$b['email']??'', $b['phone']??null]);
+        }
+        ok(['client_id'=>$cl_id,'contact_id'=>$ct_id]);
+    }
+
+    // ── e2e_fase1_borrador_con_cliente — crea borrador Fase 1 con lookup ─────
+    if ($action === 'e2e_fase1_borrador_con_cliente') {
+        $b = body();
+        $conv_id = $b['conv_id'] ?? '';
+        if (!$conv_id) err('conv_id requerido');
+        // Actualizar campos de cliente en la conversación antes de crear borrador
+        $upd_fields = ['contact_rut','contact_email','contact_name','company_name','client_type','quote_send_email'];
+        $set = []; $params = [];
+        foreach ($upd_fields as $f) {
+            if (array_key_exists($f, $b)) { $set[] = "$f=?"; $params[] = $b[$f]; }
+        }
+        if ($set) {
+            $params[] = $conv_id;
+            stg()->prepare("UPDATE wa_cloud_conversations SET ".implode(',',$set)." WHERE id=?")->execute($params);
+        }
+        $result = crear_borrador_wa(stg(), $conv_id, ['use_client_lookup' => true]);
+        if (isset($result['error'])) err($result['error'], $result['code'] ?? 422);
+        ok($result);
+    }
+
+    // ── e2e_stg_quotations_update — actualiza cotización staging + invalida aprobación ─
+    if ($action === 'e2e_stg_quotations_update') {
+        $uid = $_SERVER['HTTP_X_USER_ID'] ?? '';
+        if (!$uid) err('x-user-id requerido', 401);
+
+        $b  = body();
+        $id = $b['id'] ?? '';
+        if (!$id) err('id requerido');
+
+        // Campos críticos que disparan invalidación de aprobación
+        $critical_fields = ['total','subtotal','desde','hasta','distancia_km','fecha_salida',
+                            'hora_salida','fecha_retorno','hora_retorno','vehicle_type','client_id','contact_id'];
+
+        // Leer estado actual antes del UPDATE
+        $current = stg()->prepare("SELECT total,subtotal,desde,hasta,distancia_km,fecha_salida,hora_salida,fecha_retorno,hora_retorno,vehicle_type,client_id,contact_id FROM quotations WHERE id=? LIMIT 1");
+        $current->execute([$id]);
+        $cur = $current->fetch(PDO::FETCH_ASSOC);
+        if (!$cur) err('Cotización no encontrada', 404);
+
+        // Detectar si cambia algún campo crítico de cabecera
+        $changed_fields = [];
+        foreach ($critical_fields as $f) {
+            if (array_key_exists($f, $b) && (string)($cur[$f]??'') !== (string)$b[$f]) {
+                $changed_fields[] = "$f: '{$cur[$f]}' → '{$b[$f]}'";
+            }
+        }
+        $items_changed = isset($b['items']) && is_array($b['items']);
+        $has_critical_change = count($changed_fields) > 0 || $items_changed;
+
+        // Verificar aprobación vigente
+        $ap = stg()->prepare("SELECT id, status FROM wa_quote_approvals WHERE quotation_id=? AND status IN ('approved','sent') ORDER BY created_at DESC LIMIT 1");
+        $ap->execute([$id]);
+        $ap_row = $ap->fetch(PDO::FETCH_ASSOC);
+
+        if ($has_critical_change && $ap_row) {
+            if ($ap_row['status'] === 'sent') {
+                err('Esta cotización ya fue enviada al cliente y no puede modificarse.', 409);
+            }
+            // Invalidar aprobación vigente
+            $invalidation_reason = count($changed_fields) > 0
+                ? 'Campos modificados: ' . implode('; ', $changed_fields)
+                : 'Ítems de cotización modificados';
+            if ($items_changed) $invalidation_reason .= ' (ítems reemplazados)';
+
+            stg()->prepare("UPDATE wa_quote_approvals SET status='invalidated', invalidated_reason=?, invalidated_at=NOW(), invalidated_by=? WHERE id=?")
+                ->execute([$invalidation_reason, $uid, $ap_row['id']]);
+
+            // Leer snapshot post-modificación (lo hacemos después del UPDATE)
+        }
+
+        // Ejecutar UPDATE de cotización
+        $fields_map = ['number','status','etapa','company','issue_date','expiry_date','subtotal','tax_pct','total',
+                       'notes','terms','desde','hasta','desde_lat','desde_lng','hasta_lat','hasta_lng',
+                       'distancia_km','fecha_salida','hora_salida','fecha_retorno','hora_retorno',
+                       'client_id','contact_id','vehicle_type','observaciones'];
+        $set = []; $params = [];
+        foreach ($fields_map as $f) {
+            if (array_key_exists($f, $b)) { $set[] = "$f=?"; $params[] = $b[$f]; }
+        }
+        if ($set) {
+            $params[] = $id;
+            stg()->prepare("UPDATE quotations SET ".implode(',',$set)." WHERE id=?")->execute($params);
+        }
+
+        // Reemplazar ítems si vienen
+        if ($items_changed) {
+            stg()->prepare("DELETE FROM quotation_items WHERE quotation_id=?")->execute([$id]);
+            if (stg()->query("SHOW TABLES LIKE 'quotation_items'")->rowCount() > 0) {
+                $ist = stg()->prepare("INSERT INTO quotation_items (id,quotation_id,description,pasajeros,quantity,unit_price,subtotal,sort_order) VALUES (?,?,?,?,?,?,?,?)");
+                foreach ($b['items'] as $i => $item) {
+                    $qty = $item['quantity'] ?? 1; $up = $item['unit_price'] ?? 0;
+                    $ist->execute([stg()->query("SELECT UUID() AS u")->fetch()['u'], $id,
+                        $item['description']??'', $item['pasajeros']??null, $qty, $up,
+                        $item['subtotal'] ?? $qty*$up, $item['sort_order'] ?? $i]);
+                }
+            }
+        }
+
+        // Crear nueva aprobación pendiente si hubo invalidación
+        if ($has_critical_change && $ap_row && $ap_row['status'] === 'approved') {
+            $new_ap_id = stg()->query("SELECT UUID() AS u")->fetch()['u'];
+            $q_snap = stg()->prepare("SELECT total,desde,hasta,distancia_km,fecha_salida,vehicle_type FROM quotations WHERE id=?");
+            $q_snap->execute([$id]);
+            $snap = $q_snap->fetch(PDO::FETCH_ASSOC) ?: [];
+            stg()->prepare("INSERT INTO wa_quote_approvals (id,conv_id,quotation_id,created_by,quote_total,quote_snapshot,status,previous_approval_id) SELECT ?,conv_id,?,?, ?,?,?,id FROM wa_quote_approvals WHERE id=?")
+                ->execute([$new_ap_id, $id, $uid, $snap['total']??null, json_encode($snap), 'pending', $ap_row['id']]);
+        }
+
+        ok(['updated'=>true,'critical_change'=>$has_critical_change,'invalidated'=>($has_critical_change && $ap_row && $ap_row['status']==='approved'),'changed_fields'=>$changed_fields,'items_changed'=>$items_changed]);
     }
 
     err("Acción e2e '$action' no reconocida", 404);

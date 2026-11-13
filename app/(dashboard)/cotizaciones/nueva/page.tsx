@@ -24,6 +24,16 @@ export default async function NuevaCotizacionPage({
   const session = await getSession()
   if (!session) redirect('/login')
   const params = await searchParams
+
+  // Si hay una conversación con borrador activo, redirigir a editar (no crear duplicado)
+  if (params.conv_id) {
+    const waConvCheck = await fetchWaConv(params.conv_id)
+    if (waConvCheck?.wa_draft_quote_id) {
+      const draftId = waConvCheck.wa_draft_quote_id
+      redirect(`/cotizaciones/${draftId}/editar?conv_id=${params.conv_id}`)
+    }
+  }
+
   const [clients, sellers, companies, pipelines, waConv] = await Promise.all([
     fetchClients(),
     fetchProfiles(),

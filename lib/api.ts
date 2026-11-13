@@ -175,6 +175,7 @@ export interface WaConv {
   assigned_name: string | null
   stage: string
   bot_active: boolean
+  wa_draft_quote_id: string | null
 }
 
 export async function fetchWaConv(convId: string, token?: string): Promise<WaConv | null> {
