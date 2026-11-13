@@ -5142,6 +5142,8 @@ if (str_starts_with($action, 'e2e_')) {
         "ALTER TABLE wa_cloud_conversations ADD COLUMN company_name VARCHAR(200) NULL COMMENT 'Razón social empresa'",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN client_type ENUM('natural','empresa') NULL",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN quote_send_email VARCHAR(200) NULL COMMENT 'Email confirmado para envío'",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour TIME NULL COMMENT 'Hora de salida HH:MM'",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL COMMENT 'Hora de regreso aproximada HH:MM'",
         // ── Fase 1: historial de invalidaciones en wa_quote_approvals ─────────
         "ALTER TABLE wa_quote_approvals ADD COLUMN invalidated_reason TEXT NULL",
         "ALTER TABLE wa_quote_approvals ADD COLUMN invalidated_at DATETIME NULL",

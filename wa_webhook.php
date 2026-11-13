@@ -163,6 +163,8 @@ function ensureTables(): void {
         "ALTER TABLE wa_cloud_conversations ADD COLUMN handoff_requested_at DATETIME NULL",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN company_name VARCHAR(200) NULL",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN client_type VARCHAR(10) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour TIME NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL",
     ] as $sql) {
         try { $pdo->exec($sql); } catch (PDOException $e) {
             if ($e->getCode() !== '42S21') throw $e;
@@ -278,6 +280,7 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             'contact_name','contact_email','contact_rut',
             'company_name','client_type',
             'service_origin','service_destination','service_date',
+            'service_hour','service_hour_return',
             'service_passengers','service_type','service_vehicle',
             'form_submitted_at',
         ])) : [];
@@ -294,16 +297,18 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             $ficha = json_decode($fichaMatch[1], true) ?? [];
             $fichaFields = []; $fichaVals = [];
             $fichaMap = [
-                'nombre'       => 'contact_name',
-                'email'        => 'contact_email',
-                'rut'          => 'contact_rut',
-                'razon_social' => 'company_name',
-                'tipo_cliente' => 'client_type',
-                'origen'       => 'service_origin',
-                'destino'      => 'service_destination',
-                'fecha'        => 'service_date',
-                'pasajeros'    => 'service_passengers',
-                'tipo'         => 'service_type',
+                'nombre'        => 'contact_name',
+                'email'         => 'contact_email',
+                'rut'           => 'contact_rut',
+                'razon_social'  => 'company_name',
+                'tipo_cliente'  => 'client_type',
+                'origen'        => 'service_origin',
+                'destino'       => 'service_destination',
+                'fecha'         => 'service_date',
+                'hora_salida'   => 'service_hour',
+                'hora_retorno'  => 'service_hour_return',
+                'pasajeros'     => 'service_passengers',
+                'tipo'          => 'service_type',
             ];
             foreach ($fichaMap as $key => $col) {
                 if (!empty($ficha[$key])) {
@@ -745,9 +750,12 @@ function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?str
            "'¡Contamos con excelentes ofertas para tu servicio! 🎉 Para ver si calificas y prepararte la cotización exacta, llena este formulario que toma 1 minuto 😊\n" .
            "https://crm.transccl.cl/form/{$phone}\n" .
            "Además, por completar el formulario te regalamos un 5% de descuento adicional en tu cotización 🚌'\n\n" .
-           "PASO 2 — FICHA PASO 2 (datos del servicio completos, falta tipo de cliente):\n" .
+           "PASO 2 — FICHA PASO 2 (datos del servicio completos, falta hora y/o tipo de cliente):\n" .
            "Aplica cuando: (a) el cliente completó el formulario, O (b) ya te dio origen, destino, fecha, pax y tipo de servicio en el chat.\n" .
-           "Reacciona con entusiasmo ('¡Perfecto, ya tengo todos los datos del servicio! 😊') y luego pregunta:\n" .
+           "Primero verifica si ya tienes hora_salida y hora_retorno. Si no las tienes, pregúntalas ANTES de preguntar tipo de cliente:\n" .
+           "'¿A qué hora salen del colegio y a qué hora aproximada regresan?'\n" .
+           "Cuando tengas horarios, incluye en FICHA_JSON: {\"hora_salida\":\"HH:MM\",\"hora_retorno\":\"HH:MM\"}\n" .
+           "Luego pregunta tipo de cliente:\n" .
            "'¿Cotizas a nombre de un colegio o empresa, o como persona particular?'\n" .
            "Según la respuesta, incluye en el FICHA_JSON: {\"tipo_cliente\":\"empresa\"} o {\"tipo_cliente\":\"personal\"}\n\n" .
            "PASO 3 — FICHA EMPRESA (faltan datos de la empresa):\n" .
@@ -766,7 +774,7 @@ function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?str
            "PASO 5 — FICHA COMPLETA EMPRESA / FICHA COMPLETA PERSONA NATURAL:\n" .
            "Confirma con un resumen amigable de TODOS los datos (servicio + datos de cotización) y pregunta si está correcto.\n" .
            "Ejemplo empresa: '¡Perfecto, tengo todo listo! 😊\n" .
-           "Servicio: [tipo] para [pax] personas, [origen] → [destino], [fecha]\n" .
+           "Servicio: [tipo] para [pax] personas, [origen] → [destino], [fecha], salida [hora_salida] - regreso aprox. [hora_retorno]\n" .
            "Empresa: [razón social], RUT [rut], contacto: [nombre], [email]\n" .
            "¿Está todo correcto?'\n" .
            "Al confirmar → [ESCALAR_A_HUMANO]\n\n" .
@@ -776,7 +784,7 @@ function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?str
            "Está PROHIBIDO INICIAR preguntas de: fecha, origen, destino, pasajeros o tipo de servicio en el chat si aún no tienes ningún dato.\n" .
            "EXCEPCIÓN: Si el cliente ya te fue dando estos datos en la conversación de forma natural, ACÉPTALOS y guárdalos en FICHA_JSON. No hagas que llene el formulario de nuevo si ya te lo dijo todo.\n\n" .
            "EXCEPCIÓN — Formulario no funciona:\n" .
-           "Si el cliente dice que no pudo llenar el formulario, SÍ puedes pedir los datos del servicio por chat: origen, destino, fecha, hora, pasajeros y nombre.\n\n" .
+           "Si el cliente dice que no pudo llenar el formulario, SÍ puedes pedir los datos del servicio por chat: origen, destino, fecha, hora de salida, hora de regreso aproximada, pasajeros y nombre.\n\n" .
            "EXCEPCIÓN — Cliente da datos en conversación:\n" .
            "Si el cliente ya conversó contigo y te fue dando origen, destino, fecha, pax y tipo, ya tienes todo lo del formulario. Pasa directamente al PASO 2 sin insistir en el formulario.\n\n" .
            "EXCEPCIÓN — Van o minibús con chofer:\n" .
@@ -786,7 +794,7 @@ function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?str
            buildFichaContext($ficha) .
            "## FICHA_JSON (MUY IMPORTANTE)\n" .
            "Al final de CADA respuesta tuya, si en la conversación ya conoces alguno de estos datos, incluye obligatoriamente este bloque exacto (sin espacios extra, al final del texto, en una nueva línea):\n" .
-           "[FICHA_JSON:{\"nombre\":\"...\",\"email\":\"...\",\"rut\":\"...\",\"razon_social\":\"...\",\"tipo_cliente\":\"...\",\"origen\":\"...\",\"destino\":\"...\",\"fecha\":\"...\",\"pasajeros\":\"...\",\"tipo\":\"...\"}]\n\n" .
+           "[FICHA_JSON:{\"nombre\":\"...\",\"email\":\"...\",\"rut\":\"...\",\"razon_social\":\"...\",\"tipo_cliente\":\"...\",\"origen\":\"...\",\"destino\":\"...\",\"fecha\":\"...\",\"hora_salida\":\"...\",\"hora_retorno\":\"...\",\"pasajeros\":\"...\",\"tipo\":\"...\"}]\n\n" .
            "Reglas del FICHA_JSON:\n" .
            "- Incluye SOLO los campos que YA conoces; omite los desconocidos (no pongas \"\" ni null).\n" .
            "- \"nombre\": nombre completo de la persona de contacto (quien coordina el servicio).\n" .
@@ -797,6 +805,8 @@ function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?str
            "- \"origen\": dirección exacta de salida.\n" .
            "- \"destino\": nombre/dirección del destino.\n" .
            "- \"fecha\": fecha del servicio (dd/mm/yyyy).\n" .
+           "- \"hora_salida\": hora de salida en formato HH:MM (24h). Ejemplo: '09:00'.\n" .
+           "- \"hora_retorno\": hora aproximada de regreso al colegio/empresa en formato HH:MM (24h). Ejemplo: '15:00'. Puede ser aproximada.\n" .
            "- \"pasajeros\": número de pasajeros (solo el número).\n" .
            "- \"tipo\": tipo de servicio (ej. \"salida educativa\", \"arriendo\", \"traslado personal\").\n" .
            "- Si no hay NINGÚN dato aún, no incluyas el bloque.\n\n" .
