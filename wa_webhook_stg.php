@@ -89,8 +89,20 @@ $rawInput = file_get_contents('php://input');
 $body = json_decode($rawInput, true) ?? [];
 
 // ── Modo prueba directa (sin Meta): header X-Stg-Token ───────────────────────
-$directToken = $_SERVER['HTTP_X_STG_TOKEN'] ?? '';
-$isDirect = (STG_E2E_TOKEN !== '' && hash_equals(STG_E2E_TOKEN, $directToken));
+$directToken  = $_SERVER['HTTP_X_STG_TOKEN'] ?? '';
+$isFwdFromProd = !empty($_SERVER['HTTP_X_FWD_FROM_PROD']);
+$isDirect = (!$isFwdFromProd && STG_E2E_TOKEN !== '' && hash_equals(STG_E2E_TOKEN, $directToken));
+
+// Validar token cuando viene de producción (bifurcación wa_webhook.php)
+if ($isFwdFromProd) {
+    if (STG_E2E_TOKEN === '' || !hash_equals(STG_E2E_TOKEN, $directToken)) {
+        stgLog("FWD_FROM_PROD token inválido");
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'error' => 'token inválido']);
+        exit;
+    }
+    // Token válido: cae al procesamiento Meta webhook (línea siguiente)
+}
 
 if ($isDirect) {
     // Payload simplificado: {"phone":"569...","text":"Hola","name":"Test"}
