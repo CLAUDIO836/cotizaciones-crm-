@@ -6154,6 +6154,106 @@ if (str_starts_with($action, 'e2e_')) {
         ok(['updated'=>true,'critical_change'=>$has_critical_change,'invalidated'=>($has_critical_change && $ap_row && $ap_row['status']==='approved'),'changed_fields'=>$changed_fields,'items_changed'=>$items_changed]);
     }
 
+    // ── e2e_fase1_seed_conv_stg — seed conversación en staging con teléfono libre ──
+    if ($action === 'e2e_fase1_seed_conv_stg') {
+        $b = body();
+        $phone = $b['phone'] ?? '';
+        if (!$phone) err('phone requerido');
+        // Limpiar conv previa del mismo teléfono si existe
+        $stg_pdo = stg();
+        $ex = $stg_pdo->prepare("SELECT id FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+        $ex->execute([$phone]);
+        $old = $ex->fetch();
+        if ($old) {
+            $stg_pdo->prepare("DELETE FROM wa_cloud_messages WHERE conversation_id=?")->execute([$old['id']]);
+            $stg_pdo->prepare("DELETE FROM wa_quote_approvals WHERE conv_id=?")->execute([$old['id']]);
+            $stg_pdo->prepare("DELETE FROM wa_cloud_conversations WHERE id=?")->execute([$old['id']]);
+        }
+        $conv_id = stguuid();
+        $exec_id = 'beb2594e-be75-11f1-adc3-56000529c2a9';
+        $origin  = $b['service_origin']      ?? null;
+        $dest    = $b['service_destination'] ?? null;
+        $sdate   = $b['service_date']        ?? null;
+        $service_km = isset($b['service_km']) ? (float)$b['service_km'] : null;
+        $stg_pdo->prepare("
+            INSERT INTO wa_cloud_conversations
+                (id, phone, assigned_to, contact_name, contact_rut, contact_email,
+                 company_name, client_type,
+                 service_origin, service_destination, service_date,
+                 service_hour, service_hour_return,
+                 service_passengers, service_type, service_vehicle, service_km,
+                 stage, bot_active, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'nuevo',1,NOW())
+        ")->execute([
+            $conv_id, $phone, $exec_id,
+            $b['contact_name']        ?? null,
+            $b['contact_rut']         ?? null,
+            $b['contact_email']       ?? null,
+            $b['company_name']        ?? null,
+            $b['client_type']         ?? null,
+            $origin, $dest, $sdate,
+            $b['service_hour']        ?? null,
+            $b['service_hour_return'] ?? null,
+            isset($b['service_passengers']) ? (int)$b['service_passengers'] : null,
+            $b['service_type']        ?? null,
+            $b['service_vehicle']     ?? null,
+            $service_km,
+        ]);
+        ok(['conv_id'=>$conv_id,'phone'=>$phone,'staging'=>true]);
+    }
+
+    // ── e2e_crear_borrador_stg — llama crear_borrador_wa() sobre staging DB ──
+    if ($action === 'e2e_crear_borrador_stg') {
+        $b = body();
+        $conv_id = $b['conv_id'] ?? '';
+        if (!$conv_id) err('conv_id requerido');
+        $chk = stg()->prepare("SELECT id FROM wa_cloud_conversations WHERE id=? LIMIT 1");
+        $chk->execute([$conv_id]);
+        if (!$chk->fetch()) err("Conversación staging no encontrada: $conv_id", 404);
+        $result = crear_borrador_wa(stg(), $conv_id, ['use_client_lookup' => true]);
+        if (isset($result['error'])) err($result['error'], $result['code'] ?? 422);
+        ok($result);
+    }
+
+    // ── e2e_seed_approval_stg — crea aprobación ficticia en staging ──
+    if ($action === 'e2e_seed_approval_stg') {
+        $b = body();
+        $conv_id     = $b['conv_id']      ?? '';
+        $quotation_id = $b['quotation_id'] ?? '';
+        $status      = $b['status']       ?? 'approved';
+        $approved_by = $b['approved_by']  ?? 'test_user';
+        if (!$conv_id || !$quotation_id) err('conv_id y quotation_id requeridos');
+        $ap_id = stguuid();
+        // Leer total de la cotización
+        $qt = stg()->prepare("SELECT total FROM quotations WHERE id=? LIMIT 1");
+        $qt->execute([$quotation_id]);
+        $qt_row = $qt->fetch(PDO::FETCH_ASSOC);
+        $total = $qt_row['total'] ?? 0;
+        stg()->prepare("INSERT INTO wa_quote_approvals
+            (id, conv_id, quotation_id, status, approved_by, approved_at, created_by, quote_total, quote_snapshot)
+            VALUES (?,?,?,?,?,NOW(),?,?,?)")
+            ->execute([$ap_id, $conv_id, $quotation_id, $status, $approved_by, $approved_by,
+                       $total, json_encode(['auto_seed'=>true,'total'=>$total])]);
+        ok(['approval_id'=>$ap_id,'status'=>$status,'staging'=>true]);
+    }
+
+    // ── e2e_last_bot_msg_stg — último mensaje 'out' de wa_cloud_messages en staging ──
+    if ($action === 'e2e_last_bot_msg_stg') {
+        $b = body();
+        $phone = $b['phone'] ?? ($_GET['phone'] ?? '');
+        if (!$phone) err('phone requerido');
+        $conv = stg()->prepare("SELECT id FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+        $conv->execute([$phone]);
+        $c = $conv->fetch(PDO::FETCH_ASSOC);
+        if (!$c) err("No hay conversación para $phone", 404);
+        $msg = stg()->prepare("SELECT content, created_at FROM wa_cloud_messages
+            WHERE conversation_id=? AND direction='out'
+            ORDER BY created_at DESC LIMIT 1");
+        $msg->execute([$c['id']]);
+        $m = $msg->fetch(PDO::FETCH_ASSOC) ?: null;
+        ok(['conv_id'=>$c['id'], 'last_bot_msg'=>$m]);
+    }
+
     err("Acción e2e '$action' no reconocida", 404);
 }
 
