@@ -5239,6 +5239,58 @@ if (str_starts_with($action, 'e2e_')) {
         ]);
     }
 
+    // ── e2e_form_get — versión staging de wa_form_get (para test formulario real) ─
+    if ($action === 'e2e_form_get') {
+        $phone = $_GET['phone'] ?? '';
+        if (!$phone) err('phone requerido');
+        $stmt = stg()->prepare("SELECT id,phone,contact_name,contact_email,contact_rut,service_origin,service_origin_place_id,service_origin_lat,service_origin_lng,service_destination,service_destination_place_id,service_destination_lat,service_destination_lng,service_date,service_passengers,service_type,service_vehicle,service_km,stage FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+        $stmt->execute([$phone]);
+        $conv = $stmt->fetch();
+        if (!$conv) err('Conversación de staging no encontrada para ' . $phone, 404);
+        ok(['conv' => $conv, 'staging' => true]);
+    }
+
+    // ── e2e_form_save_borrador — staging de wa_form_save + trigger automático ─
+    if ($action === 'e2e_form_save_borrador') {
+        $b = body();
+        $phone = $b['phone'] ?? '';
+        if (!$phone) err('phone requerido');
+
+        // Verificar que es un teléfono de prueba (5691111xxxx)
+        if (!preg_match('/^5691111\d{4}$/', $phone)) err('Solo teléfonos de prueba 5691111xxxx', 403);
+
+        $stmt = stg()->prepare("SELECT id FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+        $stmt->execute([$phone]);
+        $conv = $stmt->fetch();
+        if (!$conv) err('Conversación de staging no encontrada. Usar e2e_seed_borrador primero.', 404);
+        $conv_id = $conv['id'];
+
+        $allowed = ['contact_name','contact_email','contact_rut','service_origin','service_origin_place_id','service_origin_lat','service_origin_lng','service_destination','service_destination_place_id','service_destination_lat','service_destination_lng','service_date','service_passengers','service_type','service_vehicle','service_km'];
+        $sets = []; $vals = [];
+        foreach ($allowed as $col) {
+            if (array_key_exists($col, $b)) {
+                $v = $b[$col] === '' ? null : $b[$col];
+                if ($col === 'service_passengers' && $v !== null) $v = (int)$v ?: null;
+                if ($col === 'service_km'         && $v !== null) $v = round((float)$v, 2) ?: null;
+                $sets[] = "$col = ?"; $vals[] = $v;
+            }
+        }
+        $sets[] = "stage = 'formulario_completo'";
+        $sets[] = "form_submitted_at = COALESCE(form_submitted_at,NOW())";
+        $vals[] = $conv_id;
+        stg()->prepare("UPDATE wa_cloud_conversations SET " . implode(', ', $sets) . " WHERE id=?")->execute($vals);
+
+        // Trigger automático: crear borrador si wa_draft_quote_id es NULL
+        $checkDraft = stg()->prepare("SELECT wa_draft_quote_id FROM wa_cloud_conversations WHERE id=?");
+        $checkDraft->execute([$conv_id]);
+        $hasDraft = $checkDraft->fetchColumn();
+        $borrador_result = null;
+        if (!$hasDraft) {
+            $borrador_result = crear_borrador_wa(stg(), $conv_id);
+        }
+        ok(['saved'=>true,'staging'=>true,'conv_id'=>$conv_id,'borrador'=>$borrador_result,'nota'=>'Staging only']);
+    }
+
     // ── e2e_form_complete_borrador — simula envío de formulario + trigger auto ─
     // Equivale a: cliente envía formulario → wa_form_save → crear_borrador_wa()
     // Todo sobre staging DB (stg()), nunca toca producción.
