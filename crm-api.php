@@ -5373,11 +5373,14 @@ if (str_starts_with($action, 'e2e_')) {
 
     // ── e2e_cleanup ────────────────────────────────────────────────────────
     if ($action === 'e2e_cleanup') {
-        $phones = ['56911111001','56911111002','56911111003'];
+        $phones = ['56911111001','56911111002','56911111003','56911111004','56911111005',
+                   '56911111006','56911111007','56911111008','56911111009','56911111010','56911111011'];
         $in = implode(',', array_map(fn($p) => "'$p'", $phones));
         stg()->exec("DELETE FROM wa_quote_approvals WHERE conv_id IN (SELECT id FROM wa_cloud_conversations WHERE phone IN ($in))");
         stg()->exec("DELETE FROM wa_cloud_conversations WHERE phone IN ($in)");
         stg()->exec("DELETE FROM quotations WHERE number LIKE 'STG-%' OR number LIKE 'BWA-%'");
+        stg()->exec("DELETE FROM contacts WHERE client_id IN (SELECT id FROM clients WHERE email LIKE '%test%' OR email LIKE '%staging%' OR name LIKE '%Test%')");
+        stg()->exec("DELETE FROM clients WHERE email LIKE '%test%' OR email LIKE '%staging%' OR name LIKE '%Test%' OR rut LIKE '76.000.1%'");
         ok(['cleanup'=>'done','staging_db'=>'transccl_crm_staging']);
     }
 
@@ -5587,9 +5590,10 @@ if (str_starts_with($action, 'e2e_')) {
     if ($action === 'e2e_seed_borrador_phone') {
         $b     = body();
         $phone = $b['phone'] ?? '';
-        $whitelist = ['56911111002', '56911111003'];
+        $whitelist = ['56911111001','56911111002','56911111003','56911111004','56911111005',
+                      '56911111006','56911111007','56911111008','56911111009','56911111010','56911111011'];
         if (!$phone || !in_array($phone, $whitelist, true)) {
-            err('Solo teléfonos autorizados: 56911111002 y 56911111003', 403);
+            err('Solo teléfonos de prueba autorizados (56911111001–011)', 403);
         }
         $exists = stg()->prepare("SELECT id FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
         $exists->execute([$phone]);
@@ -5793,6 +5797,35 @@ if (str_starts_with($action, 'e2e_')) {
         ]);
     }
 
+    // ── e2e_force_approve_stg — aprueba borrador staging directamente (solo tests) ──
+    if ($action === 'e2e_force_approve_stg') {
+        $b = body();
+        $ap_id = $b['approval_id'] ?? '';
+        if (!$ap_id) err('approval_id requerido');
+        $ap = stg()->prepare("SELECT id, quotation_id, status FROM wa_quote_approvals WHERE id=? LIMIT 1");
+        $ap->execute([$ap_id]);
+        $row = $ap->fetch();
+        if (!$row) err('Aprobación no encontrada', 404);
+        if (!in_array($row['status'], ['pending'])) err("Estado actual: {$row['status']} — solo pending puede aprobarse", 409);
+        stg()->prepare("UPDATE wa_quote_approvals SET status='approved', approved_by='e2e_test', approved_at=NOW() WHERE id=?")
+            ->execute([$ap_id]);
+        stg()->prepare("UPDATE quotations SET etapa='cotizacion', status='open' WHERE id=?")->execute([$row['quotation_id']]);
+        ok(['approved'=>true,'approval_id'=>$ap_id,'quotation_id'=>$row['quotation_id'],'staging'=>true,'test_only'=>true]);
+    }
+
+    // ── e2e_force_sent_stg — marca aprobación como 'sent' (solo tests) ──────────
+    if ($action === 'e2e_force_sent_stg') {
+        $ap_id = body()['approval_id'] ?? '';
+        if (!$ap_id) err('approval_id requerido');
+        $ap = stg()->prepare("SELECT id, status FROM wa_quote_approvals WHERE id=? LIMIT 1");
+        $ap->execute([$ap_id]);
+        $row = $ap->fetch();
+        if (!$row) err('Aprobación no encontrada', 404);
+        stg()->prepare("UPDATE wa_quote_approvals SET status='sent', approved_at=NOW(), approved_by='e2e_test' WHERE id=?")
+            ->execute([$ap_id]);
+        ok(['sent'=>true,'approval_id'=>$ap_id,'staging'=>true,'test_only'=>true]);
+    }
+
     // ── e2e_fase1_verify — verificación pre-migración ─────────────────────────
     if ($action === 'e2e_fase1_verify') {
         $version = stg()->query("SELECT VERSION() AS v")->fetch()['v'];
@@ -5867,13 +5900,52 @@ if (str_starts_with($action, 'e2e_')) {
             err('Existen RUT duplicados. Ejecutar e2e_fase1_rut_audit y resolver antes de continuar.', 409);
         }
         try {
+            // MariaDB: columna generada STORED + UNIQUE INDEX (MySQL 8.0 usa functional index syntax)
+            stg()->exec("ALTER TABLE clients
+                ADD COLUMN IF NOT EXISTS rut_normalized VARCHAR(30)
+                GENERATED ALWAYS AS (
+                    IF(rut IS NULL OR rut='', NULL, REPLACE(REPLACE(rut,'.',''),'-',''))
+                ) STORED COMMENT 'RUT normalizado para índice único'");
             stg()->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_rut_normalized
-                ON clients ((REPLACE(REPLACE(rut,'.',''),'-','')))
-                COMMENT 'Fase 1: previene RUT duplicados'");
-            ok(['unique_index_applied' => true, 'index' => 'idx_clients_rut_normalized']);
+                ON clients (rut_normalized)");
+            ok(['unique_index_applied' => true, 'index' => 'idx_clients_rut_normalized', 'method' => 'generated_column']);
         } catch (PDOException $e) {
             err('Error al crear UNIQUE index: ' . $e->getMessage(), 500);
         }
+    }
+
+    // ── e2e_fase1_seed_conv — crea conversación staging con campos Fase 1 SIN borrador ──
+    if ($action === 'e2e_fase1_seed_conv') {
+        $b = body();
+        $phone = $b['phone'] ?? '';
+        $whitelist = ['56911111001','56911111002','56911111003','56911111004','56911111005',
+                      '56911111006','56911111007','56911111008','56911111009','56911111010','56911111011'];
+        if (!$phone || !in_array($phone, $whitelist, true)) err('Teléfono no autorizado', 403);
+        $exists = stg()->prepare("SELECT id FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+        $exists->execute([$phone]);
+        if ($exists->fetch()) err("Ya existe conversación para $phone. Limpiar primero.", 409);
+        $conv_id = stguuid();
+        $exec_id = 'beb2594e-be75-11f1-adc3-56000529c2a9';
+        stg()->prepare("
+            INSERT INTO wa_cloud_conversations
+                (id, phone, channel, assigned_to, contact_name, contact_rut, contact_email,
+                 company_name, client_type, quote_send_email,
+                 service_origin, service_destination, service_date, service_passengers,
+                 service_type, service_vehicle, service_km, stage, created_at)
+            VALUES (?,?,'whatsapp',?,?,?,?,?,?,?,
+                'Las Condes, Santiago','Viña del Mar, Valparaíso',
+                DATE_ADD(NOW(),INTERVAL 7 DAY),42,'privado','bus',128.6,
+                'formulario_completo',NOW())
+        ")->execute([
+            $conv_id, $phone, $exec_id,
+            $b['contact_name']     ?? 'Test Empresa Staging',
+            $b['contact_rut']      ?? null,
+            $b['contact_email']    ?? null,
+            $b['company_name']     ?? null,
+            $b['client_type']      ?? 'empresa',
+            $b['quote_send_email'] ?? $b['contact_email'] ?? null,
+        ]);
+        ok(['conv_id'=>$conv_id,'phone'=>$phone,'has_draft'=>false,'staging'=>true]);
     }
 
     // ── e2e_fase1_seed_client — siembra cliente/contacto para pruebas Fase 1 ──
