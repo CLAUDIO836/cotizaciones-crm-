@@ -4256,34 +4256,25 @@ if ($action === 'wa_form_get') {
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL");            } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN observaciones TEXT NULL");                  } catch (PDOException $e) {}
 
-    // SELECT seguro: columnas base siempre presentes + nuevas con IF
-    $stmt = db()->prepare(
-        "SELECT contact_name, contact_email, contact_rut,
-                service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
-                service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
-                service_date, service_passengers, service_type, service_vehicle,
-                client_type, company_name, quote_send_email,
-                service_hour, service_hour_return, observaciones
-         FROM wa_cloud_conversations WHERE phone = ? LIMIT 1"
-    );
-    try {
-        $stmt->execute([$phone]);
-    } catch (PDOException $e) {
-        // Fallback: si alguna columna nueva no existe aún, usar SELECT mínimo
-        $stmt2 = db()->prepare(
-            "SELECT contact_name, contact_email, contact_rut,
-                    service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
-                    service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
-                    service_date, service_passengers, service_type, service_vehicle
-             FROM wa_cloud_conversations WHERE phone = ? LIMIT 1"
-        );
-        $stmt2->execute([$phone]);
-        $row = $stmt2->fetch() ?: [];
-        if (!empty($row['service_date'])) {
-            $row['service_date'] = date('Y-m-d', strtotime($row['service_date']));
-        }
-        ok($row);
+    // Detectar columnas nuevas disponibles (pueden no existir si no se ejecutó la migración SQL)
+    $existingCols = db()->query("SHOW COLUMNS FROM wa_cloud_conversations")->fetchAll(PDO::FETCH_COLUMN);
+    $existingSet  = array_flip($existingCols);
+
+    // Columnas base: siempre existen
+    $selectCols = ['contact_name','contact_email','contact_rut',
+                   'service_origin','service_destination','service_date',
+                   'service_passengers','service_type','service_vehicle',
+                   'company_name','client_type'];
+    // Columnas nuevas: solo si existen en el schema
+    $optionalCols = ['service_origin_place_id','service_origin_lat','service_origin_lng',
+                     'service_destination_place_id','service_destination_lat','service_destination_lng',
+                     'service_km','quote_send_email','service_hour','service_hour_return','observaciones'];
+    foreach ($optionalCols as $col) {
+        if (isset($existingSet[$col])) $selectCols[] = $col;
     }
+
+    $stmt = db()->prepare("SELECT " . implode(',', $selectCols) . " FROM wa_cloud_conversations WHERE phone = ? LIMIT 1");
+    $stmt->execute([$phone]);
     $row = $stmt->fetch() ?: [];
     if (!empty($row['service_date'])) {
         $row['service_date'] = date('Y-m-d', strtotime($row['service_date']));
