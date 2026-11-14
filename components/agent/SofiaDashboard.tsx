@@ -70,7 +70,14 @@ const STAGE_COLOR: Record<string, { bg: string; color: string }> = {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export default function SofiaDashboard({ mode = 'production' }: { mode?: 'production' | 'staging' }) {
+export default function SofiaDashboard({
+  mode: initialMode = 'production',
+  canSwitchEnv = false,
+}: {
+  mode?: 'production' | 'staging'
+  canSwitchEnv?: boolean
+}) {
+  const [mode, setMode] = useState<'production' | 'staging'>(initialMode)
   const isStaging = mode === 'staging'
   const listUrl      = isStaging ? '/api/whatsapp/cloud/staging-list'      : '/api/whatsapp/cloud/list'
   const approvalsUrl = isStaging ? '/api/whatsapp/cloud/staging-approvals' : '/api/whatsapp/cloud/approvals'
@@ -180,6 +187,44 @@ export default function SofiaDashboard({ mode = 'production' }: { mode?: 'produc
             </button>
           ))}
         </div>
+
+        {/* Selector entorno — solo admins */}
+        {canSwitchEnv && (
+          <div style={{ padding: '10px 12px', borderTop: '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Entorno</div>
+            <div style={{ display: 'flex', gap: 4, background: '#f3f4f6', borderRadius: 8, padding: 3 }}>
+              <button
+                onClick={() => setMode('production')}
+                style={{
+                  flex: 1, padding: '5px 4px', fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
+                  borderRadius: 6, transition: 'all 0.15s',
+                  background: !isStaging ? '#fff' : 'transparent',
+                  color: !isStaging ? '#166534' : '#6b7280',
+                  boxShadow: !isStaging ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                }}
+              >
+                🟢 Producción
+              </button>
+              <button
+                onClick={() => setMode('staging')}
+                style={{
+                  flex: 1, padding: '5px 4px', fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
+                  borderRadius: 6, transition: 'all 0.15s',
+                  background: isStaging ? '#7c3aed' : 'transparent',
+                  color: isStaging ? '#fff' : '#6b7280',
+                  boxShadow: isStaging ? '0 1px 3px rgba(124,58,237,0.3)' : 'none',
+                }}
+              >
+                🧪 Staging
+              </button>
+            </div>
+            {isStaging && (
+              <div style={{ marginTop: 6, fontSize: 10, color: '#7c3aed', fontWeight: 500, lineHeight: 1.4 }}>
+                Solo lectura · Base de prueba · Sin impacto en producción
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Quick links */}
         <div style={{ padding: '12px 16px', borderTop: '1px solid #e5e7eb' }}>
