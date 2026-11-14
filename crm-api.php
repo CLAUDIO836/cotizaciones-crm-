@@ -4,6 +4,9 @@
  * Subir a: https://transccl.cl/crm-api.php (public_html)
  */
 
+// Cargar secrets del servidor (mismo patrón que wa_webhook.php)
+$_crm_s = '/home/transccl/crm-secrets.php';
+if (file_exists($_crm_s) && !defined('META_WA_TOKEN')) require_once $_crm_s;
 // Cargar variables de entorno del servidor (crm-env.php no está en git)
 if (file_exists(__DIR__ . '/crm-env.php')) require_once __DIR__ . '/crm-env.php';
 
@@ -4656,7 +4659,8 @@ if ($action === 'wa_approvals_get') {
 //   $opts      — ['simulate'=>true] no llama a la API real (staging/tests)
 // Retorna: ['ok'=>true,'wamid'=>'...'] | ['error'=>'...','code'=>N]
 function dispatch_wa_quote(PDO $pdo, string $appr_id, string $wa_token, string $wa_phone_id, array $opts = []): array {
-    $simulate = $opts['simulate'] ?? false;
+    $simulate       = $opts['simulate']       ?? false;
+    $override_phone = $opts['override_phone'] ?? null; // solo para pruebas internas
 
     // 1. Cargar aprobación + cotización + conversación
     $apSt = $pdo->prepare("
@@ -4749,7 +4753,7 @@ function dispatch_wa_quote(PDO $pdo, string $appr_id, string $wa_token, string $
     } else {
         $payload = [
             'messaging_product' => 'whatsapp',
-            'to'                => $ap['phone'],
+            'to'                => $override_phone ?? $ap['phone'],
             'type'              => 'text',
             'text'              => ['body' => $msgTexto, 'preview_url' => false],
         ];
@@ -4800,6 +4804,32 @@ function dispatch_wa_quote(PDO $pdo, string $appr_id, string $wa_token, string $
 
     return ['ok' => true, 'wamid' => $wamid, 'approval_url' => $approvalUrl, 'simulated' => $simulate];
 }
+
+// ── Migración lazy: crear wa_quote_approvals si no existe (producción) ────────
+try {
+    db()->exec("CREATE TABLE IF NOT EXISTS wa_quote_approvals (
+        id VARCHAR(36) PRIMARY KEY,
+        conv_id VARCHAR(36) NOT NULL,
+        quotation_id VARCHAR(36) NOT NULL,
+        created_by VARCHAR(36) NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        approved_by VARCHAR(36) NULL,
+        approved_at DATETIME NULL,
+        quote_total DECIMAL(12,0) NULL,
+        quote_snapshot JSON NULL,
+        status ENUM('pending','approved','rejected','invalidated','sent') DEFAULT 'pending',
+        sent_at DATETIME NULL,
+        sent_wamid VARCHAR(100) NULL,
+        sent_result JSON NULL,
+        notes TEXT NULL,
+        invalidated_reason TEXT NULL,
+        invalidated_at DATETIME NULL,
+        invalidated_by VARCHAR(36) NULL,
+        previous_approval_id VARCHAR(36) NULL,
+        INDEX idx_wqa_conv (conv_id),
+        INDEX idx_wqa_status (status)
+    ) ENGINE=InnoDB");
+} catch (PDOException $e) {}
 
 // ── Sofía: aprobar o rechazar borrador ────────────────────────────────────────
 if ($action === 'wa_approvals_decide') {
@@ -5837,6 +5867,118 @@ if (str_starts_with($action, 'e2e_')) {
         $results['pass'] = !in_array(false, array_column($results['pasos'], 'ok'));
         $results['resultado'] = $results['pass'] ? 'PASS ✅ — Circuito completo verificado en staging' : 'FAIL ❌ — Ver pasos con ok=false';
         ok($results);
+    }
+
+    // ── e2e_prueba_interna — prueba completa real con número interno autorizado ───
+    // Usa producción DB (db()), envía WA real, requiere WA_DISPATCH_ENABLED=1.
+    // Solo acepta phone 56974270657 (número interno autorizado por Gerencia).
+    if ($action === 'e2e_prueba_interna') {
+        $phone_interno = '56974270657';
+        $b = body();
+        $phone_req = $b['phone'] ?? '';
+        if ($phone_req !== $phone_interno) {
+            err('Este endpoint solo acepta el número interno autorizado por Gerencia', 403);
+        }
+
+        $dispatchEnabled = (getenv('WA_DISPATCH_ENABLED') === '1');
+        $waToken   = defined('META_WA_TOKEN')           ? META_WA_TOKEN           : (getenv('META_WA_TOKEN')           ?: '');
+        $waPhoneId = defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : (getenv('META_WA_PHONE_NUMBER_ID') ?: '');
+        if (!$dispatchEnabled || !$waToken || !$waPhoneId) {
+            err('WA_DISPATCH_ENABLED no está activo o faltan credenciales WA. Configurar en crm-secrets.php antes de correr esta prueba.', 503);
+        }
+
+        // Número de test sin colisión (el real 56974270657 ya tiene conv activa)
+        // El mensaje WA real se envía al número interno via override_phone en dispatch
+        $phone_test_conv = '56911111999';
+        $results = ['pasos' => [], 'pass' => true, 'phone_wa_destino' => $phone_interno, 'phone_test_conv' => $phone_test_conv];
+
+        // Limpiar estado anterior del número de prueba
+        db()->exec("DELETE FROM wa_quote_approvals WHERE conv_id IN (SELECT id FROM wa_cloud_conversations WHERE phone='$phone_test_conv' AND company_name='PRUEBA_INTERNA_TransCCL')");
+        db()->exec("DELETE FROM quotations WHERE id IN (SELECT quotation_id FROM wa_quote_approvals WHERE conv_id IN (SELECT id FROM wa_cloud_conversations WHERE phone='$phone_test_conv' AND company_name='PRUEBA_INTERNA_TransCCL'))");
+        db()->exec("DELETE FROM wa_cloud_conversations WHERE phone='$phone_test_conv' AND company_name='PRUEBA_INTERNA_TransCCL'");
+
+        // 1. Crear conversación de prueba en producción DB (con phone de test, no el real)
+        $conv_id   = db()->query("SELECT UUID() AS u")->fetch()['u'];
+        $exec_uuid = db()->query("SELECT id FROM profiles WHERE role IN ('gerencia','admin','superadmin') LIMIT 1")->fetch()['id'] ?? null;
+        try {
+            db()->prepare("
+                INSERT INTO wa_cloud_conversations
+                    (id, phone, assigned_to, bot_active, contact_name, contact_email, contact_rut,
+                     client_type, company_name, service_origin, service_destination, service_date,
+                     service_passengers, service_type, service_vehicle, service_km,
+                     stage, form_submitted_at, created_at)
+                VALUES (?,?,?,1,'Prueba Interna TransCCL','claudio@transccl.cl','12.345.678-9',
+                        'empresa','PRUEBA_INTERNA_TransCCL',
+                        'Las Condes, Santiago','Viña del Mar',DATE_ADD(NOW(),INTERVAL 7 DAY),
+                        30,'traslado','Bus 45 pax',120.5,
+                        'formulario_completo',NOW(),NOW())
+            ")->execute([$conv_id, $phone_test_conv, $exec_uuid]);
+            $results['pasos'][] = ['paso' => 1, 'desc' => 'Conversación de prueba creada en producción', 'ok' => true, 'conv_id' => $conv_id];
+        } catch (PDOException $e) {
+            $results['pasos'][] = ['paso' => 1, 'desc' => 'Crear conv', 'ok' => false, 'error' => $e->getMessage()];
+            $results['pass'] = false;
+            ok($results);
+        }
+
+        // 2. Crear borrador Sofía (producción, sin client_lookup)
+        $borrador = crear_borrador_wa(db(), $conv_id, ['use_client_lookup' => false]);
+        $p2_ok = isset($borrador['ok']);
+        $results['pasos'][] = ['paso' => 2, 'desc' => 'Borrador Sofía generado', 'ok' => $p2_ok, 'detalle' => $borrador];
+        if (!$p2_ok) { $results['pass'] = false; ok($results); }
+        $appr_id = $borrador['approval_id'];
+        $quot_id = $borrador['quotation_id'];
+        $results['appr_id'] = $appr_id;
+        $results['quot_id'] = $quot_id;
+
+        // 3. Simular aprobación (en producción, equivale al click de ejecutiva)
+        db()->prepare("UPDATE wa_quote_approvals SET status='approved', approved_by=?, approved_at=NOW(), notes='Prueba interna autorizada por Gerencia' WHERE id=?")
+            ->execute([$exec_uuid, $appr_id]);
+        db()->prepare("UPDATE quotations SET etapa='cotizacion', status='open' WHERE id=?")->execute([$quot_id]);
+        $results['pasos'][] = ['paso' => 3, 'desc' => 'Aprobación registrada', 'ok' => true];
+
+        // 4. Despacho REAL (WA real, no simulate)
+        // override_phone envía al número interno real aunque la conv tenga phone de test
+        $dispatchResult = dispatch_wa_quote(db(), $appr_id, $waToken, $waPhoneId, ['override_phone' => $phone_interno]);
+        $p4_ok = ($dispatchResult['ok'] ?? false) && !($dispatchResult['simulated'] ?? false);
+        $results['pasos'][] = ['paso' => 4, 'desc' => 'Despacho WA real', 'ok' => $p4_ok, 'detalle' => $dispatchResult];
+        if (!$p4_ok) { $results['pass'] = false; ok($results); }
+        $wamid_real = $dispatchResult['wamid'] ?? null;
+        $results['wamid_real'] = $wamid_real;
+
+        // 5. Verificar wamid no nulo y estado=sent en DB
+        $finalRow = db()->query("SELECT status, sent_at, sent_wamid FROM wa_quote_approvals WHERE id='$appr_id'")->fetch();
+        $p5_ok = ($finalRow['status'] === 'sent') && !empty($finalRow['sent_wamid']);
+        $results['pasos'][] = ['paso' => 5, 'desc' => 'Estado DB = sent, wamid guardado', 'ok' => $p5_ok,
+                               'status' => $finalRow['status'], 'sent_wamid' => $finalRow['sent_wamid']];
+
+        // 6. Verificar idempotencia: segundo dispatch bloqueado
+        $dispatch2 = dispatch_wa_quote(db(), $appr_id, $waToken, $waPhoneId);
+        $p6_ok = ($dispatch2['idempotent'] ?? false) === true;
+        $results['pasos'][] = ['paso' => 6, 'desc' => 'Idempotencia: doble envío bloqueado', 'ok' => $p6_ok, 'detalle' => $dispatch2];
+
+        // 7. Verificar contexto de Sofía (que conv tiene wa_draft_quote_id)
+        $convRow = db()->query("SELECT wa_draft_quote_id, stage FROM wa_cloud_conversations WHERE id='$conv_id'")->fetch();
+        $p7_ok = ($convRow['wa_draft_quote_id'] === $quot_id);
+        $results['pasos'][] = ['paso' => 7, 'desc' => 'Conv vinculada con cotización (Sofía puede dar seguimiento)', 'ok' => $p7_ok,
+                               'wa_draft_quote_id' => $convRow['wa_draft_quote_id'] ?? null];
+
+        // No limpiar: dejar la conversación para verificar recepción real del mensaje
+        // La conv quedará visible en la bandeja con tag PRUEBA_INTERNA_TransCCL
+
+        $results['pass'] = !in_array(false, array_column($results['pasos'], 'ok'));
+        $results['resultado'] = $results['pass']
+            ? 'PASS ✅ — WA real aceptado, wamid: ' . ($wamid_real ?? '?')
+            : 'FAIL ❌ — Ver paso con ok=false';
+        ok($results);
+    }
+
+    // ── e2e_prueba_interna_cleanup — limpia los datos de la prueba interna ────────
+    if ($action === 'e2e_prueba_interna_cleanup') {
+        $phone_interno = '56974270657';
+        db()->exec("DELETE FROM wa_quote_approvals WHERE conv_id IN (SELECT id FROM wa_cloud_conversations WHERE phone='$phone_interno' AND company_name='PRUEBA_INTERNA_TransCCL')");
+        db()->exec("DELETE FROM quotations WHERE id IN (SELECT quotation_id FROM wa_quote_approvals WHERE conv_id IN (SELECT id FROM wa_cloud_conversations WHERE phone='$phone_interno' AND company_name='PRUEBA_INTERNA_TransCCL'))");
+        db()->exec("DELETE FROM wa_cloud_conversations WHERE phone='$phone_interno' AND company_name='PRUEBA_INTERNA_TransCCL'");
+        ok(['cleanup' => 'done', 'phone' => $phone_interno]);
     }
 
     // ── e2e_cleanup ────────────────────────────────────────────────────────
