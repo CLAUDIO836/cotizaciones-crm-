@@ -175,6 +175,7 @@ export default function FormPage() {
   // Datos personales
   const [name,      setName]     = useState('')
   const [email,     setEmail]    = useState('')
+  const [phone_contact, setPhoneContact] = useState('')
   const [rut,       setRut]      = useState('')
   const [rutError,  setRutError] = useState('')
   const [quoteEmail, setQuoteEmail] = useState('')
@@ -217,6 +218,7 @@ export default function FormPage() {
           if (f.company_name)        setCompanyName(f.company_name)
           if (f.contact_name)        setName(f.contact_name)
           if (f.contact_email)       setEmail(f.contact_email)
+          if (f.contact_phone)       setPhoneContact(f.contact_phone)
           if (f.contact_rut)         setRut(f.contact_rut)
           if (f.quote_send_email)    setQuoteEmail(f.quote_send_email)
           if (f.service_origin)      setOrigin({
@@ -235,9 +237,10 @@ export default function FormPage() {
           })
           if (f.service_date)        setDate(f.service_date)
           if (f.service_hour)        setHour(f.service_hour.substring(0, 5))
-          if (f.service_hour_return) {
+          if (f.service_hour_return || f.service_date_return) {
             setTripType('round_trip')
-            setReturnHour(f.service_hour_return.substring(0, 5))
+            if (f.service_hour_return) setReturnHour(f.service_hour_return.substring(0, 5))
+            if (f.service_date_return) setReturnDate(f.service_date_return)
           }
           if (f.service_passengers)  setPax(String(f.service_passengers))
           if (f.service_type)        setTipo(f.service_type)
@@ -272,6 +275,7 @@ export default function FormPage() {
           company_name: clientType === 'empresa' ? companyName.trim() || null : null,
           contact_name: name.trim(),
           contact_email: email.trim() || null,
+          contact_phone: phone_contact.trim() || null,
           contact_rut: rut.trim() || null,
           quote_send_email: quoteEmail.trim() || null,
           service_origin: origin.address.trim(),
@@ -284,6 +288,7 @@ export default function FormPage() {
           service_destination_lng: dest.lng ?? null,
           service_date: date,
           service_hour: hour || null,
+          service_date_return: tripType === 'round_trip' && returnDate ? returnDate : null,
           service_hour_return: tripType === 'round_trip' && returnHour ? returnHour : null,
           service_passengers: parseInt(pax) || null,
           service_type: tipo,
@@ -431,6 +436,13 @@ export default function FormPage() {
             <label style={labelStyle}>Correo electrónico <span style={{ color: '#a0aec0', fontWeight: 400 }}>(opcional)</span></label>
             <input style={inputStyle} type="email" value={email} onChange={e => setEmail(e.target.value)}
               placeholder="correo@ejemplo.com" autoComplete="email" />
+          </div>
+
+          {/* Teléfono de contacto */}
+          <div style={{ marginBottom: 18 }}>
+            <label style={labelStyle}>Teléfono de contacto <span style={{ color: '#a0aec0', fontWeight: 400 }}>(opcional)</span></label>
+            <input style={inputStyle} type="tel" value={phone_contact} onChange={e => setPhoneContact(e.target.value)}
+              placeholder="+56 9 1234 5678" autoComplete="tel" inputMode="tel" />
           </div>
 
           {/* Email para cotización */}

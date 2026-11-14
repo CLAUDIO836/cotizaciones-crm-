@@ -4261,7 +4261,8 @@ if ($action === 'wa_form_get') {
     // Columnas nuevas: solo si existen en el schema
     $optionalCols = ['service_origin_place_id','service_origin_lat','service_origin_lng',
                      'service_destination_place_id','service_destination_lat','service_destination_lng',
-                     'service_km','quote_send_email','service_hour','service_hour_return','observaciones'];
+                     'service_km','quote_send_email','service_hour','service_date_return','service_hour_return',
+                     'contact_phone','observaciones'];
     foreach ($optionalCols as $col) {
         if (isset($existingSet[$col])) $selectCols[] = $col;
     }
@@ -4296,13 +4297,15 @@ if ($action === 'wa_form_save') {
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN quote_send_email VARCHAR(255) NULL");       } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour TIME NULL");                   } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL");            } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_date_return DATE NULL");            } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN contact_phone VARCHAR(30) NULL");           } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN observaciones TEXT NULL");                  } catch (PDOException $e) {}
 
-    $allowed = ['contact_name','contact_email','contact_rut',
+    $allowed = ['contact_name','contact_email','contact_phone','contact_rut',
                 'client_type','company_name','quote_send_email',
                 'service_origin','service_origin_place_id','service_origin_lat','service_origin_lng',
                 'service_destination','service_destination_place_id','service_destination_lat','service_destination_lng',
-                'service_date','service_hour','service_hour_return',
+                'service_date','service_hour','service_date_return','service_hour_return',
                 'service_passengers','service_type','service_vehicle','service_km',
                 'observaciones'];
     $sets = []; $vals = [];
@@ -4896,8 +4899,9 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                 // No hay contactos: crear uno nuevo si es empresa
                 if ($client_type === 'empresa' && !empty($conv['contact_name'])) {
                     $new_ct_id = $pdo->query("SELECT UUID() AS u")->fetch(PDO::FETCH_ASSOC)['u'];
+                    $ct_phone = !empty($conv['contact_phone']) ? $conv['contact_phone'] : ($conv['phone'] ?? null);
                     $pdo->prepare("INSERT INTO contacts (id,client_id,name,email,phone_mobile) VALUES (?,?,?,?,?)")
-                        ->execute([$new_ct_id, $client_id, $conv['contact_name'], $email, $conv['phone'] ?? null]);
+                        ->execute([$new_ct_id, $client_id, $conv['contact_name'], $email, $ct_phone]);
                     $contact_id = $new_ct_id;
                 }
             }
@@ -4918,8 +4922,9 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                 // Crear contacto si es empresa y hay nombre de contacto diferente a la razón social
                 if ($client_type === 'empresa' && !empty($conv['contact_name']) && $conv['contact_name'] !== $nombre_cliente) {
                     $new_ct_id = $pdo->query("SELECT UUID() AS u")->fetch(PDO::FETCH_ASSOC)['u'];
+                    $ct_phone = !empty($conv['contact_phone']) ? $conv['contact_phone'] : ($conv['phone'] ?? null);
                     $pdo->prepare("INSERT INTO contacts (id,client_id,name,email,phone_mobile) VALUES (?,?,?,?,?)")
-                        ->execute([$new_ct_id, $new_cl_id, $conv['contact_name'], $email, $conv['phone'] ?? null]);
+                        ->execute([$new_ct_id, $new_cl_id, $conv['contact_name'], $email, $ct_phone]);
                     $contact_id = $new_ct_id;
                 }
             } catch (PDOException $e) {
@@ -4998,8 +5003,9 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
             $has_client_col = true;
         } catch (PDOException $e) {}
 
-        $hora_salida   = !empty($conv['service_hour'])        ? $conv['service_hour']        : null;
-        $hora_retorno  = !empty($conv['service_hour_return']) ? $conv['service_hour_return'] : null;
+        $hora_salida    = !empty($conv['service_hour'])        ? $conv['service_hour']        : null;
+        $fecha_retorno  = !empty($conv['service_date_return']) ? $conv['service_date_return'] : null;
+        $hora_retorno   = !empty($conv['service_hour_return']) ? $conv['service_hour_return'] : null;
 
         if ($has_client_col && $client_id) {
             $pdo->prepare("
@@ -5009,14 +5015,14 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                      subtotal,tax_pct,total,
                      notes,observaciones,
                      desde,hasta,desde_lat,desde_lng,hasta_lat,hasta_lng,
-                     distancia_km,fecha_salida,hora_salida,hora_retorno,vehicle_type,
+                     distancia_km,fecha_salida,hora_salida,fecha_retorno,hora_retorno,vehicle_type,
                      client_id,contact_id,user_id,pd_sync_status,pdf_upload_status,created_at)
                 VALUES (?,?,?,?,?,
                         ?,?,
                         ?,?,?,
                         ?,?,
                         ?,?,?,?,?,?,
-                        ?,?,?,?,?,
+                        ?,?,?,?,?,?,
                         ?,?,?,?,?,NOW())
             ")->execute([
                 $quot_id,$number,'open','borrador_wa',$company_field,
@@ -5026,7 +5032,7 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                 $conv['service_origin'],$conv['service_destination'],
                 $conv['service_origin_lat']??null,$conv['service_origin_lng']??null,
                 $conv['service_destination_lat']??null,$conv['service_destination_lng']??null,
-                $km,$conv['service_date'],$hora_salida,$hora_retorno,$tarifa['formato_nombre'],
+                $km,$conv['service_date'],$hora_salida,$fecha_retorno,$hora_retorno,$tarifa['formato_nombre'],
                 $client_id,$contact_id,$exec_id,'pending','pending',
             ]);
         } else {
@@ -5037,14 +5043,14 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                      subtotal,tax_pct,total,
                      notes,observaciones,
                      desde,hasta,desde_lat,desde_lng,hasta_lat,hasta_lng,
-                     distancia_km,fecha_salida,hora_salida,hora_retorno,vehicle_type,
+                     distancia_km,fecha_salida,hora_salida,fecha_retorno,hora_retorno,vehicle_type,
                      user_id,pd_sync_status,pdf_upload_status,created_at)
                 VALUES (?,?,?,?,?,
                         ?,?,
                         ?,?,?,
                         ?,?,
                         ?,?,?,?,?,?,
-                        ?,?,?,?,?,
+                        ?,?,?,?,?,?,
                         ?,?,?,NOW())
             ")->execute([
                 $quot_id,$number,'open','borrador_wa',$company_field,
@@ -5054,7 +5060,7 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                 $conv['service_origin'],$conv['service_destination'],
                 $conv['service_origin_lat']??null,$conv['service_origin_lng']??null,
                 $conv['service_destination_lat']??null,$conv['service_destination_lng']??null,
-                $km,$conv['service_date'],$hora_salida,$hora_retorno,$tarifa['formato_nombre'],
+                $km,$conv['service_date'],$hora_salida,$fecha_retorno,$hora_retorno,$tarifa['formato_nombre'],
                 $exec_id,'pending','pending',
             ]);
         }
@@ -5175,6 +5181,8 @@ if (str_starts_with($action, 'e2e_')) {
         "ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour TIME NULL COMMENT 'Hora de salida HH:MM'",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL COMMENT 'Hora de regreso aproximada HH:MM'",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN observaciones TEXT NULL COMMENT 'Observaciones del servicio'",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN service_date_return DATE NULL COMMENT 'Fecha de regreso (ida y vuelta)'",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN contact_phone VARCHAR(30) NULL COMMENT 'Teléfono del contacto'",
         // ── Fase 1: historial de invalidaciones en wa_quote_approvals ─────────
         "ALTER TABLE wa_quote_approvals ADD COLUMN invalidated_reason TEXT NULL",
         "ALTER TABLE wa_quote_approvals ADD COLUMN invalidated_at DATETIME NULL",
@@ -5231,6 +5239,17 @@ if (str_starts_with($action, 'e2e_')) {
                 : 'NO EXISTE';
         }
         ok(['db' => 'transccl_crm_staging', 'tables' => count($tables), 'counts' => $counts]);
+    }
+
+    // ── e2e_debug_quotation — verificar campos de una cotización ─────────────
+    if ($action === 'e2e_debug_quotation') {
+        $quot_id = $_GET['quot_id'] ?? (body()['quot_id'] ?? '');
+        if (!$quot_id) err('quot_id requerido');
+        $stmt = stg()->prepare("SELECT id, number, desde, hasta, fecha_salida, hora_salida, fecha_retorno, hora_retorno, vehicle_type, subtotal, client_id, contact_id FROM quotations WHERE id=? LIMIT 1");
+        $stmt->execute([$quot_id]);
+        $q = $stmt->fetch();
+        if (!$q) err('quotation no encontrada', 404);
+        ok($q);
     }
 
     // ── e2e_seed ───────────────────────────────────────────────────────────
@@ -5419,21 +5438,58 @@ if (str_starts_with($action, 'e2e_')) {
 
     // ── e2e_seed_borrador — conversación sin borrador previo ───────────────
     if ($action === 'e2e_seed_borrador') {
-        $phone = '56911111002';
+        $b = body();
+        $phone   = $b['phone'] ?? '56911111002';
+        $data    = $b['data'] ?? [];
         $conv_id = stguuid();
         $exec_id = 'beb2594e-be75-11f1-adc3-56000529c2a9';
+        // Eliminar si ya existe (re-seed)
+        stg()->prepare("DELETE FROM wa_cloud_conversations WHERE phone=?")->execute([$phone]);
         try {
             stg()->prepare("
                 INSERT INTO wa_cloud_conversations
-                    (id, phone, channel, assigned_to, contact_name,
+                    (id, phone, channel, assigned_to,
+                     contact_name, contact_email, contact_phone, contact_rut,
+                     client_type, company_name,
                      service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
                      service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
-                     service_date, service_passengers, service_type, service_vehicle, service_km, created_at)
-                VALUES (?,?,'whatsapp',?,'Empresa Borrador Test S.A.',
-                    'Las Condes, Santiago','ChIJN1t_tDeuEmsRUsoyG83frY4',-33.4150,-70.5869,
-                    'Viña del Mar, Valparaíso','ChIJhWj3mVeCYJYRJUMHmOKWwBc',-33.0247,-71.5518,
-                    DATE_ADD(NOW(),INTERVAL 5 DAY),42,'privado','bus',128.6,NOW())
-            ")->execute([$conv_id, $phone, $exec_id]);
+                     service_date, service_hour, service_date_return, service_hour_return,
+                     service_passengers, service_type, service_vehicle, service_km,
+                     observaciones, created_at)
+                VALUES (?,?,'whatsapp',?,
+                        ?,?,?,?,
+                        ?,?,
+                        ?,?,?,?,
+                        ?,?,?,?,
+                        ?,?,?,?,
+                        ?,?,?,?,
+                        ?,NOW())
+            ")->execute([
+                $conv_id, $phone, $exec_id,
+                $data['contact_name'] ?? 'Empresa Borrador Test S.A.',
+                $data['contact_email'] ?? null,
+                $data['contact_phone'] ?? null,
+                $data['contact_rut'] ?? null,
+                $data['client_type'] ?? 'empresa',
+                $data['company_name'] ?? null,
+                $data['service_origin'] ?? 'Las Condes, Santiago',
+                $data['service_origin_place_id'] ?? 'ChIJN1t_tDeuEmsRUsoyG83frY4',
+                $data['service_origin_lat'] ?? -33.4150,
+                $data['service_origin_lng'] ?? -70.5869,
+                $data['service_destination'] ?? 'Viña del Mar, Valparaíso',
+                $data['service_destination_place_id'] ?? 'ChIJhWj3mVeCYJYRJUMHmOKWwBc',
+                $data['service_destination_lat'] ?? -33.0247,
+                $data['service_destination_lng'] ?? -71.5518,
+                $data['service_date'] ?? date('Y-m-d', strtotime('+5 days')),
+                $data['service_hour'] ?? null,
+                $data['service_date_return'] ?? null,
+                $data['service_hour_return'] ?? null,
+                $data['service_passengers'] ?? 42,
+                $data['service_type'] ?? 'privado',
+                $data['service_vehicle'] ?? 'bus',
+                $data['service_km'] ?? 128.6,
+                $data['observaciones'] ?? null,
+            ]);
             ok(['conv_id'=>$conv_id,'phone'=>$phone,'has_draft'=>false]);
         } catch (PDOException $e) {
             err('seed_borrador error: '.$e->getMessage());
@@ -5473,11 +5529,11 @@ if (str_starts_with($action, 'e2e_')) {
         $phone = $_GET['phone'] ?? '';
         if (!$phone) err('phone requerido');
         $stmt = stg()->prepare(
-            "SELECT contact_name, contact_email, contact_rut,
+            "SELECT contact_name, contact_email, contact_phone, contact_rut,
                     client_type, company_name, quote_send_email,
                     service_origin, service_origin_place_id, service_origin_lat, service_origin_lng,
                     service_destination, service_destination_place_id, service_destination_lat, service_destination_lng,
-                    service_date, service_hour, service_hour_return,
+                    service_date, service_hour, service_date_return, service_hour_return,
                     service_passengers, service_type, service_vehicle, service_km, observaciones, stage
              FROM wa_cloud_conversations WHERE phone=? LIMIT 1"
         );
@@ -5503,11 +5559,11 @@ if (str_starts_with($action, 'e2e_')) {
         if (!$conv) err('Conversación de staging no encontrada. Usar e2e_seed_borrador primero.', 404);
         $conv_id = $conv['id'];
 
-        $allowed = ['contact_name','contact_email','contact_rut',
+        $allowed = ['contact_name','contact_email','contact_phone','contact_rut',
                     'client_type','company_name','quote_send_email',
                     'service_origin','service_origin_place_id','service_origin_lat','service_origin_lng',
                     'service_destination','service_destination_place_id','service_destination_lat','service_destination_lng',
-                    'service_date','service_hour','service_hour_return',
+                    'service_date','service_hour','service_date_return','service_hour_return',
                     'service_passengers','service_type','service_vehicle','service_km','observaciones'];
         $sets = []; $vals = [];
         foreach ($allowed as $col) {
