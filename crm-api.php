@@ -4464,6 +4464,21 @@ if ($action === 'wa_form_save') {
         }
     }
 
+    // Gap 1: calcular km vía OSRM si el usuario no lo envió pero hay coordenadas
+    $formKm      = isset($b['service_km']) && $b['service_km'] !== '' ? (float)$b['service_km'] : null;
+    $formOrigLat = isset($b['service_origin_lat'])      ? (float)$b['service_origin_lat']      : null;
+    $formOrigLng = isset($b['service_origin_lng'])       ? (float)$b['service_origin_lng']       : null;
+    $formDstLat  = isset($b['service_destination_lat']) ? (float)$b['service_destination_lat'] : null;
+    $formDstLng  = isset($b['service_destination_lng']) ? (float)$b['service_destination_lng']  : null;
+    if ($formKm === null && $formOrigLat && $formOrigLng && $formDstLat && $formDstLng && $prev) {
+        $kmCalc = php_calcular_km_latlng($formOrigLat, $formOrigLng, $formDstLat, $formDstLng);
+        if ($kmCalc !== null) {
+            db()->prepare("UPDATE wa_cloud_conversations SET service_km=? WHERE id=?")
+                ->execute([$kmCalc, $prev['id']]);
+            error_log('[wa_form_save] km calculado OSRM=' . $kmCalc . ' para conv=' . $prev['id']);
+        }
+    }
+
     // Auto-crear borrador (idempotente — crear_borrador_wa verifica wa_draft_quote_id internamente)
     // No depende de que el cliente envíe otro WA; se dispara automáticamente al guardar el formulario.
     if ($prev) {
@@ -4668,6 +4683,56 @@ if ($action === 'wa_approvals_get') {
         $row['dispatch_error'] = !empty($sr['error']) ? ($sr['response'] ?? 'Error de envío') : null;
     }
     ok(['approval' => $row ?: null]);
+}
+
+// ── GAP 4: Lista de aprobaciones pendientes directo desde wa_quote_approvals ──
+// No depende de LIMIT en conversaciones — ninguna aprobación pendiente es invisible.
+if ($action === 'wa_approvals_list') {
+    requireAuth();
+    $status_filter = $_GET['status'] ?? 'pending';
+    $allowed_statuses = ['pending', 'approved', 'rejected', 'sent', 'all'];
+    if (!in_array($status_filter, $allowed_statuses)) $status_filter = 'pending';
+
+    $where = $status_filter === 'all' ? '' : "WHERE wqa.status = " . db()->quote($status_filter);
+
+    $stmt = db()->query("
+        SELECT wqa.id              AS approval_id,
+               wqa.conv_id,
+               wqa.quotation_id,
+               wqa.status         AS approval_status,
+               wqa.created_at     AS approval_created_at,
+               wqa.approved_at,
+               wqa.quote_total,
+               c.phone,
+               c.contact_name,
+               c.service_origin,
+               c.service_destination,
+               c.service_date,
+               c.service_passengers,
+               c.service_vehicle,
+               c.service_km,
+               c.assigned_to,
+               c.stage            AS conv_stage,
+               c.bot_active,
+               c.last_msg_at,
+               q.number           AS quote_number,
+               q.total            AS quote_total_bd,
+               q.etapa            AS quote_etapa,
+               q.status           AS quote_status,
+               q.vehicle_type,
+               q.distancia_km,
+               q.fecha_salida,
+               q.observaciones    AS quote_obs,
+               p.name             AS ejecutiva_name
+        FROM wa_quote_approvals wqa
+        JOIN wa_cloud_conversations c ON c.id = wqa.conv_id
+        LEFT JOIN quotations q        ON q.id = wqa.quotation_id
+        LEFT JOIN profiles p          ON p.id = c.assigned_to
+        $where
+        ORDER BY wqa.created_at DESC
+        LIMIT 100
+    ");
+    ok($stmt->fetchAll(PDO::FETCH_ASSOC));
 }
 
 // ── Sofía: despachar cotización aprobada al cliente via WA ───────────────────
@@ -5069,6 +5134,78 @@ function php_calcular_tarifa_salida(string $formato_id, float $km): array {
     ];
 }
 
+// GAP 5: Llama al motor oficial TypeScript vía endpoint interno.
+// Garantiza que PHP y el Cotizador usen exactamente las mismas reglas.
+// Fallback: php_calcular_tarifa_salida() si el servidor Next.js no responde.
+function php_calcular_tarifa_oficial(string $formato_id, float $km, array $opts = []): array {
+    $secret = getenv('INTERNAL_PDF_SECRET') ?: '';
+    $appUrl = rtrim(getenv('NEXT_PUBLIC_APP_URL') ?: 'https://crm.transccl.cl', '/');
+    $url    = $appUrl . '/api/tarifa/internal';
+
+    $payload = json_encode([
+        'servicio'    => 'salida',
+        'km'          => $km,
+        'formato'     => $formato_id,
+        'modalidad'   => $opts['modalidad'] ?? 'mismo_dia',
+        'fecha'       => $opts['fecha']     ?? null,
+        'horaSalida'  => $opts['horaSalida'] ?? null,
+    ]);
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => [
+            'Content-Type: application/json',
+            "X-Internal-Secret: $secret",
+        ],
+        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_TIMEOUT        => 5,
+        CURLOPT_SSL_VERIFYPEER => false,
+    ]);
+    $raw    = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($status === 200 && $raw) {
+        $decoded = json_decode($raw, true);
+        $data    = $decoded['data'] ?? null;
+        if ($data && isset($data['precioLista'])) {
+            return [
+                'formato_id'    => $data['formato']['id']     ?? $formato_id,
+                'formato_nombre'=> $data['formato']['nombre'] ?? php_formato_nombre($formato_id),
+                'km'            => $km,
+                'precio_lista'  => (int)$data['precioLista'],
+                'precio_minimo' => (int)($data['precioMinimo'] ?? 0),
+                'alertas'       => $data['alertas']           ?? [],
+                'detalle'       => $data['detalle']           ?? [],
+                'version'       => $data['version']           ?? '?',
+                'fuente'        => 'oficial',
+            ];
+        }
+    }
+
+    // Fallback: PHP local (mismo_dia sin recargos)
+    error_log("[php_calcular_tarifa_oficial] Fallback PHP: status=$status url=$url");
+    $result = php_calcular_tarifa_salida($formato_id, $km);
+    $result['fuente'] = 'fallback_php';
+    return $result;
+}
+
+// GAP 1: Calcula km via OSRM usando lat/lng ya almacenados en la conv.
+// Solo se llama desde wa_form_save cuando service_km llega vacío pero hay coords.
+function php_calcular_km_latlng(float $lat1, float $lng1, float $lat2, float $lng2): ?float {
+    $url = "http://router.project-osrm.org/route/v1/driving/{$lng1},{$lat1};{$lng2},{$lat2}?overview=false";
+    $ctx = stream_context_create(['http' => ['timeout' => 8,
+        'header' => "User-Agent: TransCCL-CRM/1.0\r\n"]]);
+    $raw = @file_get_contents($url, false, $ctx);
+    if (!$raw) return null;
+    $data = json_decode($raw, true);
+    $dist = $data['routes'][0]['distance'] ?? null;
+    if (!$dist) return null;
+    return round((float)$dist / 1000, 1);
+}
+
 // ── crear_borrador_wa — crea cotización borrador a partir de conversación WA ──
 // $opts['use_client_lookup'] = true  → busca/crea cliente por RUT (staging Fase 1)
 function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
@@ -5083,12 +5220,12 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
         if (empty($conv[$f])) return ['error'=>"Campo requerido: $f",'code'=>422,'missing'=>$f];
     }
     $km = isset($conv['service_km']) && (float)$conv['service_km'] > 0 ? (float)$conv['service_km'] : null;
-    if (!$km) return ['error'=>'Distancia no calculada (service_km vacío)','code'=>422,'missing'=>'service_km'];
+    // GAP 1: km=0/null no bloquea — se crea borrador con requiere_revision_precio
 
     $pax = (int)$conv['service_passengers'];
     if ($pax < 1) return ['error'=>'Número de pasajeros inválido','code'=>422];
     if ($pax > 90) return ['error'=>"$pax pasajeros: requiere cotización a medida (máx 90)",'code'=>422,'tipo'=>'a_medida'];
-    if ($km > 150) return ['error'=>"{$km} km supera el límite de 150 km para borrador automático",'code'=>422,'tipo'=>'a_medida'];
+    if ($km !== null && $km > 150) return ['error'=>"{$km} km supera el límite de 150 km para borrador automático",'code'=>422,'tipo'=>'a_medida'];
 
     // ── Fase 1: identificación de cliente por RUT ────────────────────────────
     $client_id  = null;
@@ -5230,7 +5367,24 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
     }
 
     $formato_id = php_map_vehiculo($conv['service_vehicle'] ?? '', $pax);
-    $tarifa = php_calcular_tarifa_salida($formato_id, $km);
+    $sin_km     = ($km === null);
+    if ($sin_km) {
+        // GAP 1: sin km → precio 0, etapa=requiere_revision_precio
+        $tarifa = [
+            'formato_id'    => $formato_id,
+            'formato_nombre'=> php_formato_nombre($formato_id),
+            'km'            => 0,
+            'precio_lista'  => 0,
+            'precio_minimo' => 0,
+            'fuente'        => 'sin_km',
+        ];
+    } else {
+        // GAP 5: usar motor oficial TypeScript vía endpoint interno
+        $tarifa = php_calcular_tarifa_oficial($formato_id, $km, [
+            'fecha'      => $conv['service_date']        ?? null,
+            'horaSalida' => $conv['service_hour']        ?? null,
+        ]);
+    }
 
     // Invalidar aprobaciones anteriores en estado pending o invalidated (no approved/sent)
     try {
@@ -5240,13 +5394,18 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
     $quot_id = $pdo->query("SELECT UUID() AS u")->fetch(PDO::FETCH_ASSOC)['u'];
     $appr_id = $pdo->query("SELECT UUID() AS u")->fetch(PDO::FETCH_ASSOC)['u'];
     $exec_id = $conv['assigned_to'] ?? null;
-    $number  = 'BWA-' . date('Ymd') . '-' . str_pad(rand(1000,9999), 4, '0', STR_PAD_LEFT);
-    $obs     = sprintf('Borrador automático Sofía. Vehículo: %s. Distancia: %s km. Pasajeros: %d. Servicio: salida / mismo día.',
-                 $tarifa['formato_nombre'], $km, $pax);
+    $number         = 'BWA-' . date('Ymd') . '-' . str_pad(rand(1000,9999), 4, '0', STR_PAD_LEFT);
+    $etapa_borrador = $sin_km ? 'requiere_revision_precio' : 'borrador_wa';
+    $obs            = $sin_km
+        ? sprintf('Borrador automático Sofía — DISTANCIA PENDIENTE. Vehículo estimado: %s. Pasajeros: %d. La ejecutiva debe ingresar precio.',
+              $tarifa['formato_nombre'], $pax)
+        : sprintf('Borrador automático Sofía. Vehículo: %s. Distancia: %s km. Pasajeros: %d. Servicio: salida / mismo día.%s',
+              $tarifa['formato_nombre'], $km, $pax,
+              ($tarifa['fuente'] ?? '') === 'fallback_php' ? ' [tarifario fallback]' : '');
     $snapshot = ['origin'=>$conv['service_origin'],'destination'=>$conv['service_destination'],
                  'passengers'=>$pax,'vehicle'=>$tarifa['formato_nombre'],'km'=>$km,
                  'precio_lista'=>$tarifa['precio_lista'],'modalidad'=>'mismo_dia','servicio'=>'salida',
-                 'generado'=>date('c')];
+                 'sin_km'=>$sin_km,'fuente_tarifa'=>$tarifa['fuente']??'','generado'=>date('c')];
 
     try {
         // Columnas client_id/contact_id solo si existen (producción puede no tenerlas aún)
@@ -5278,7 +5437,7 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                         ?,?,?,?,?,?,
                         ?,?,?,?,?,NOW())
             ")->execute([
-                $quot_id,$number,'open','borrador_wa',$company_field,
+                $quot_id,$number,'open',$etapa_borrador,$company_field,
                 date('Y-m-d'),date('Y-m-d',strtotime('+7 days')),
                 $tarifa['precio_lista'],0,$tarifa['precio_lista'],
                 'Borrador automático WA — pendiente de revisión y aprobación',$obs,
@@ -5306,7 +5465,7 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                         ?,?,?,?,?,?,
                         ?,?,?,NOW())
             ")->execute([
-                $quot_id,$number,'open','borrador_wa',$company_field,
+                $quot_id,$number,'open',$etapa_borrador,$company_field,
                 date('Y-m-d'),date('Y-m-d',strtotime('+7 days')),
                 $tarifa['precio_lista'],0,$tarifa['precio_lista'],
                 'Borrador automático WA — pendiente de revisión y aprobación',$obs,
@@ -5316,6 +5475,20 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                 $km,$conv['service_date'],$hora_salida,$fecha_retorno,$hora_retorno,$tarifa['formato_nombre'],
                 $exec_id,'pending','pending',
             ]);
+        }
+        // Gap 2: línea de ítem para que el PDF tenga contenido
+        $item_desc = $sin_km
+            ? "Servicio de transporte por definir — datos de cotización pendientes"
+            : "Servicio salida: {$conv['service_origin']} → {$conv['service_destination']}";
+        try {
+            $item_id = $pdo->query("SELECT UUID() AS u")->fetch(PDO::FETCH_ASSOC)['u'];
+            $pdo->prepare("
+                INSERT INTO quotation_items
+                    (id,quotation_id,codigo,description,pasajeros,quantity,unit_price,subtotal,sort_order)
+                VALUES (?,?,NULL,?,?,1,?,?,0)
+            ")->execute([$item_id,$quot_id,$item_desc,$pax,$tarifa['precio_lista'],$tarifa['precio_lista']]);
+        } catch (PDOException $ei) {
+            error_log("[crear_borrador_wa] quotation_items insert failed: ".$ei->getMessage());
         }
         $pdo->prepare("
             INSERT INTO wa_quote_approvals (id,conv_id,quotation_id,created_by,quote_total,quote_snapshot,status)

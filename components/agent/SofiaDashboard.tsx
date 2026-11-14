@@ -85,22 +85,29 @@ export default function SofiaDashboard({
   const [section, setSection] = useState<Section>('aprobaciones')
   const [metrics, setMetrics] = useState<SofiaMetrics | null>(null)
   const [convs, setConvs]     = useState<WaConv[]>([])
+  // Gap 4: conteo exacto desde endpoint dedicado (no afectado por LIMIT del listado de convs)
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [webhookOk, setWebhookOk] = useState<boolean | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const promises: Promise<Response>[] = [fetch(listUrl)]
+      const promises: Promise<Response>[] = [
+        fetch(listUrl),
+        fetch('/api/whatsapp/cloud/approvals-list'),
+      ]
       if (!isStaging) promises.unshift(fetch('/api/whatsapp/cloud/metrics'))
       const results = await Promise.all(promises)
       if (!isStaging) {
-        const [mRes, cRes] = results
+        const [mRes, cRes, aRes] = results
         if (mRes.ok) { const d = await mRes.json(); setMetrics(d.metrics ?? null) }
         if (cRes.ok) { const d = await cRes.json(); setConvs(Array.isArray(d) ? d : []) }
+        if (aRes?.ok) { const d = await aRes.json(); setPendingApprovalCount(Array.isArray(d) ? d.length : 0) }
       } else {
-        const [cRes] = results
+        const [cRes, aRes] = results
         if (cRes.ok) { const d = await cRes.json(); setConvs(Array.isArray(d) ? d : []) }
+        if (aRes?.ok) { const d = await aRes.json(); setPendingApprovalCount(Array.isArray(d) ? d.length : 0) }
       }
     } catch { /* ignore */ }
     setLoading(false)
@@ -126,10 +133,13 @@ export default function SofiaDashboard({
     ? Math.round((metrics.ganados_sofia / metrics.prospectos_bot) * 100)
     : 0
 
+  // Gap 4: usar conteo exacto del endpoint dedicado; caer al filtro local si no cargó aún
+  const approvalBadge = pendingApprovalCount > 0 ? pendingApprovalCount : pendingApproval.length
+
   const NAV: { id: Section; label: string; badge?: number }[] = [
     { id: 'resumen',      label: '📊 Resumen' },
     { id: 'gestion',      label: '🤖 Gestión', badge: botActive.length },
-    { id: 'aprobaciones', label: '✅ Aprobaciones', badge: pendingApproval.length },
+    { id: 'aprobaciones', label: '✅ Aprobaciones', badge: approvalBadge },
     { id: 'seguimiento',  label: '⏰ Seguimiento', badge: needFollowUp.length },
     { id: 'resultados',   label: '🏆 Resultados' },
     { id: 'control',      label: '⚙️ Control' },
@@ -509,11 +519,24 @@ function ConvTable({ convs, showApproval, onDecide, approvalsUrl = '/api/whatsap
             {hasDraft && state !== 'done' && (
               <div style={{
                 borderTop: '1px solid #fde68a', background: '#fffbeb',
-                padding: '10px 16px', display: 'flex', gap: 8, alignItems: 'center',
+                padding: '10px 16px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
               }}>
-                <span style={{ fontSize: 11, color: '#92400e', flex: 1 }}>
+                <span style={{ fontSize: 11, color: '#92400e', flex: 1, minWidth: 120 }}>
                   Cotización lista — revisa antes de aprobar
                 </span>
+                {/* Gap 3: link directo a editar la cotización antes de aprobar */}
+                <a
+                  href={`/cotizaciones/${c.wa_draft_quote_id}/editar`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    padding: '5px 12px', fontSize: 11, fontWeight: 600, borderRadius: 6,
+                    border: '1px solid #93c5fd', background: '#eff6ff', color: '#1d4ed8',
+                    textDecoration: 'none', whiteSpace: 'nowrap',
+                  }}
+                >
+                  ✏️ Editar cotización
+                </a>
                 <button
                   onClick={() => decide(c.id, 'rejected')}
                   disabled={!!state}
