@@ -232,6 +232,54 @@ function stgValidateRut(string $rut): bool {
     return $dv === $expStr;
 }
 
+// ── Interruptor global y config de staging ───────────────────────────────────────
+// Tabla stg_config: clave→valor. Persiste entre requests sin tocar wa_cloud_conversations.
+// Claves reservadas: sofia_active (1=activa, 0=pausada global)
+function stgEnsureConfig(): void {
+    stgDb()->exec("CREATE TABLE IF NOT EXISTS stg_config (
+        clave   VARCHAR(60) NOT NULL PRIMARY KEY,
+        valor   VARCHAR(255) NOT NULL DEFAULT '',
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Valor inicial: Sofia activa
+    stgDb()->exec("INSERT IGNORE INTO stg_config (clave, valor) VALUES ('sofia_active','1')");
+}
+
+function stgIsSofiaActive(): bool {
+    try {
+        stgEnsureConfig();
+        $r = stgDb()->query("SELECT valor FROM stg_config WHERE clave='sofia_active'")->fetch();
+        return !$r || $r['valor'] !== '0';
+    } catch (Throwable $e) {
+        return true; // si la config no existe, asumir activa
+    }
+}
+
+function stgSetSofiaActive(bool $active): void {
+    stgEnsureConfig();
+    stgDb()->prepare("INSERT INTO stg_config (clave,valor) VALUES ('sofia_active',?)
+        ON DUPLICATE KEY UPDATE valor=VALUES(valor)")
+        ->execute([$active ? '1' : '0']);
+    stgLog("GLOBAL_SWITCH sofia_active=" . ($active ? '1' : '0'));
+}
+
+// ── Handoff: ejecutiva toma control / libera el bot ──────────────────────────────
+// stgHandoff($convId, true)  → ejecutiva toma control (bloquea reactivación automática)
+// stgHandoff($convId, false) → libera al bot (Sofía puede volver a responder)
+function stgHandoff(string $convId, bool $ejecutivaToma): void {
+    if ($ejecutivaToma) {
+        stgDb()->prepare("UPDATE wa_cloud_conversations
+            SET bot_active=0, handoff_requested_at=NOW() WHERE id=?")
+            ->execute([$convId]);
+        stgLog("HANDOFF_TAKE conv=$convId — ejecutiva tomó el control");
+    } else {
+        stgDb()->prepare("UPDATE wa_cloud_conversations
+            SET bot_active=1, handoff_requested_at=NULL WHERE id=?")
+            ->execute([$convId]);
+        stgLog("HANDOFF_RELEASE conv=$convId — Sofía reactivada");
+    }
+}
+
 // ── Log de staging ─────────────────────────────────────────────────────────────
 function stgLog(string $msg): void {
     $logfile = '/home/transccl/logs/wa_webhook_stg.log';
@@ -417,6 +465,17 @@ function stgEnsureTables(): void {
         UNIQUE KEY uq_phone (phone)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    // Columnas que pueden faltar en staging existente (ALTER IGNORE si ya existen)
+    foreach ([
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN IF NOT EXISTS service_km FLOAT NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN IF NOT EXISTS handoff_requested_at DATETIME NULL",
+    ] as $alter) {
+        try { $pdo->exec($alter); } catch (Throwable $e) {}
+    }
+
+    // Tabla config (interruptor global) — creada aquí también para garantizar existencia
+    stgEnsureConfig();
+
     $pdo->exec("CREATE TABLE IF NOT EXISTS wa_cloud_messages (
         id              CHAR(36)     NOT NULL PRIMARY KEY,
         conversation_id CHAR(36)     NOT NULL,
@@ -444,12 +503,19 @@ function stgProcessMessage(string $wamid, string $phone, string $text, ?string $
     try {
         stgEnsureTables();
 
+        // ── Interruptor global ───────────────────────────────────────────────────
+        if (!stgIsSofiaActive()) {
+            stgLog("SOFIA_GLOBAL_OFF phone=$phone — mensaje ignorado por interruptor global");
+            return;
+        }
+
         // Upsert conversación
         $conv = stgDb()->prepare("SELECT id, bot_active, stage, contact_name,
             contact_rut, contact_email, company_name, client_type,
             service_origin, service_destination, service_date,
             service_hour, service_hour_return,
             service_passengers, service_type, service_vehicle,
+            service_km, assigned_to, handoff_requested_at,
             wa_draft_quote_id, form_submitted_at
             FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
         $conv->execute([$phone]);
@@ -468,8 +534,9 @@ function stgProcessMessage(string $wamid, string $phone, string $text, ?string $
                     'service_destination' => null, 'service_date' => null,
                     'service_hour' => null, 'service_hour_return' => null,
                     'service_passengers' => null, 'service_type' => null,
-                    'service_vehicle' => null, 'wa_draft_quote_id' => null,
-                    'form_submitted_at' => null];
+                    'service_vehicle' => null, 'service_km' => null,
+                    'assigned_to' => null, 'handoff_requested_at' => null,
+                    'wa_draft_quote_id' => null, 'form_submitted_at' => null];
         } else {
             stgDb()->prepare("UPDATE wa_cloud_conversations
                 SET last_msg_at=NOW(), last_message=?, last_customer_msg_at=NOW(),
@@ -496,7 +563,8 @@ function stgProcessMessage(string $wamid, string $phone, string $text, ?string $
         }
 
         if (!$row['bot_active']) {
-            stgLog("BOT_OFF conv=$convId — sin respuesta");
+            $motivo = !empty($row['handoff_requested_at']) ? 'ejecutiva tiene el control' : 'bot_active=0';
+            stgLog("BOT_OFF conv=$convId — sin respuesta ($motivo)");
             return;
         }
 

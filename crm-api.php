@@ -6437,6 +6437,51 @@ if (str_starts_with($action, 'e2e_')) {
         ok(['conv_id'=>$c['id'], 'last_bot_msg'=>$m]);
     }
 
+    // ── e2e_global_switch — activa/pausa Sofía globalmente en staging ──────────
+    // POST {action:'e2e_global_switch', enabled: true|false}
+    // GET  ?action=e2e_global_switch&enabled=1|0
+    if ($action === 'e2e_global_switch') {
+        $b = body();
+        $raw     = $b['enabled'] ?? ($_GET['enabled'] ?? null);
+        if ($raw === null) err('enabled requerido (true/false o 1/0)');
+        $enabled = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($enabled === null) err('enabled debe ser true/false o 1/0');
+        stg()->exec("CREATE TABLE IF NOT EXISTS stg_config (
+            clave   VARCHAR(60) NOT NULL PRIMARY KEY,
+            valor   VARCHAR(255) NOT NULL DEFAULT '',
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        stg()->exec("INSERT IGNORE INTO stg_config (clave, valor) VALUES ('sofia_active','1')");
+        stg()->prepare("INSERT INTO stg_config (clave,valor) VALUES ('sofia_active',?)
+            ON DUPLICATE KEY UPDATE valor=VALUES(valor)")
+            ->execute([$enabled ? '1' : '0']);
+        ok(['sofia_active' => $enabled, 'msg' => $enabled ? 'Sofía activada' : 'Sofía pausada globalmente']);
+    }
+
+    // ── e2e_reactivate — ejecutiva libera conversación → Sofía retoma ────────
+    // POST {action:'e2e_reactivate', phone:'56911111001'}
+    if ($action === 'e2e_reactivate') {
+        $b     = body();
+        $phone = $b['phone'] ?? '';
+        if (!$phone) err('phone requerido');
+        $conv  = stg()->prepare("SELECT id, bot_active, assigned_to, handoff_requested_at
+            FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+        $conv->execute([$phone]);
+        $c = $conv->fetch(PDO::FETCH_ASSOC);
+        if (!$c) err("No hay conversación para $phone", 404);
+        stg()->prepare("UPDATE wa_cloud_conversations
+            SET bot_active=1, handoff_requested_at=NULL WHERE id=?")
+            ->execute([$c['id']]);
+        ok([
+            'conv_id'              => $c['id'],
+            'bot_active_before'    => (bool)$c['bot_active'],
+            'handoff_before'       => $c['handoff_requested_at'],
+            'bot_active_now'       => true,
+            'handoff_requested_at' => null,
+            'msg'                  => 'Sofía reactivada para esta conversación'
+        ]);
+    }
+
     err("Acción e2e '$action' no reconocida", 404);
 }
 
