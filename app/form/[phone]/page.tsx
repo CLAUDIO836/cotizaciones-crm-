@@ -131,7 +131,7 @@ function AddressFieldInline({
       </div>
       {!value.validated && value.address.length > 2 && !open && (
         <div style={{ fontSize: 11, color: '#718096', marginTop: 3 }}>
-          Escribe y selecciona una sugerencia para validar la dirección
+          💡 Selecciona una sugerencia para validar con Google Maps (recomendado para calcular km)
         </div>
       )}
       {open && suggestions.length > 0 && (
@@ -167,6 +167,9 @@ export default function FormPage() {
 
   const [step, setStep]     = useState<'loading' | 'form' | 'done' | 'error'>('loading')
   const [saving, setSaving] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+  const [showValidation, setShowValidation] = useState(false)
 
   // Tipo cliente
   const [clientType, setClientType] = useState<'natural' | 'empresa'>('natural')
@@ -262,10 +265,36 @@ export default function FormPage() {
     }
   }
 
+  // Lista de campos faltantes para validación visible
+  function getMissingFields(): string[] {
+    const missing: string[] = []
+    if (!name.trim())                                              missing.push('Nombre completo')
+    if (clientType === 'empresa' && !companyName.trim())          missing.push('Razón social')
+    if (rut && !validateRut(rut))                                 missing.push('RUT (formato inválido)')
+    if (!origin.address.trim())                                   missing.push('Lugar de partida')
+    if (!dest.address.trim())                                     missing.push('Destino')
+    if (!date)                                                    missing.push('Fecha de salida')
+    if (!hour)                                                    missing.push('Hora de salida')
+    if (!pax)                                                     missing.push('N° de pasajeros')
+    if (!tipo)                                                    missing.push('Tipo de servicio')
+    if (tripType === 'round_trip' && !returnDate)                 missing.push('Fecha de regreso')
+    if (tripType === 'round_trip' && !returnHour)                 missing.push('Hora de regreso')
+    return missing
+  }
+
+  const missingFields = getMissingFields()
+  const canSubmit = missingFields.length === 0
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (rut && !validateRut(rut)) return
+    // Muestra validación si hay campos faltantes
+    if (missingFields.length > 0) {
+      setShowValidation(true)
+      return
+    }
+    if (submitted) return // prevenir doble envío
     setSaving(true)
+    setSubmitError('')
     try {
       const r = await fetch(`/api/form/${phone}`, {
         method: 'POST',
@@ -297,10 +326,18 @@ export default function FormPage() {
           observaciones: observaciones.trim() || null,
         }),
       })
-      const d = await r.json()
-      if (d.ok) setStep('done')
-      else setSaving(false)
+      let d: { ok?: boolean; error?: string } = {}
+      try { d = await r.json() } catch { /* non-JSON response */ }
+      if (d.ok) {
+        setSubmitted(true)
+        setStep('done')
+      } else {
+        const msg = d.error ?? (r.ok ? 'Error al enviar. Intenta nuevamente.' : `Error del servidor (${r.status}). Intenta nuevamente.`)
+        setSubmitError(msg)
+        setSaving(false)
+      }
     } catch {
+      setSubmitError('Sin conexión. Verifica tu internet e intenta nuevamente.')
       setSaving(false)
     }
   }
@@ -315,16 +352,6 @@ export default function FormPage() {
   }
 
   const rutInvalid = rut.length > 3 && !validateRut(rut)
-
-  const canSubmit = !!(
-    name.trim() &&
-    origin.address.trim() &&
-    dest.address.trim() &&
-    date && hour && pax && tipo &&
-    !rutInvalid &&
-    (clientType !== 'empresa' || companyName.trim()) &&
-    (tripType !== 'round_trip' || (returnDate && returnHour))
-  )
 
   if (step === 'loading') return (
     <div style={{ minHeight: '100svh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f7fafc' }}>
@@ -591,16 +618,51 @@ export default function FormPage() {
             />
           </div>
 
+          {/* Panel de validación — aparece al intentar enviar con campos incompletos */}
+          {showValidation && missingFields.length > 0 && (
+            <div style={{
+              marginBottom: 16, padding: '14px 16px', borderRadius: 10,
+              background: '#fff5f5', border: '1.5px solid #feb2b2',
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#c53030', marginBottom: 8 }}>
+                ⚠️ Faltan estos campos obligatorios:
+              </div>
+              {missingFields.map(f => (
+                <div key={f} style={{ fontSize: 13, color: '#c53030', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fc8181', display: 'inline-block', flexShrink: 0 }} />
+                  {f}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Error de envío del servidor */}
+          {submitError && (
+            <div style={{
+              marginBottom: 16, padding: '14px 16px', borderRadius: 10,
+              background: '#fff5f5', border: '1.5px solid #feb2b2',
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#c53030', marginBottom: 4 }}>
+                ❌ No se pudo enviar la solicitud
+              </div>
+              <div style={{ fontSize: 13, color: '#c53030' }}>{submitError}</div>
+              <div style={{ fontSize: 12, color: '#718096', marginTop: 6 }}>
+                Tus datos están guardados. Puedes intentar nuevamente.
+              </div>
+            </div>
+          )}
+
           <button
             type="submit"
-            disabled={saving || !canSubmit}
+            disabled={saving}
             style={{
               width: '100%', padding: '15px', fontSize: 16, fontWeight: 700,
-              background: saving || !canSubmit ? '#9ae6b4' : '#1B8A4B', color: '#fff',
-              border: 'none', borderRadius: 12, cursor: saving || !canSubmit ? 'not-allowed' : 'pointer',
+              background: saving ? '#9ae6b4' : '#1B8A4B', color: '#fff',
+              border: 'none', borderRadius: 12, cursor: saving ? 'not-allowed' : 'pointer',
+              opacity: saving ? 0.8 : 1,
             }}
           >
-            {saving ? 'Enviando…' : 'Enviar solicitud'}
+            {saving ? 'Enviando…' : 'Enviar solicitud →'}
           </button>
 
           <p style={{ textAlign: 'center', fontSize: 12, color: '#a0aec0', marginTop: 14 }}>
