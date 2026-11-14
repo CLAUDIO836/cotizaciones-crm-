@@ -5091,10 +5091,13 @@ if ($action === 'wa_create_borrador') {
 // Requiere header x-e2e-token con valor definido en env E2E_STAGING_TOKEN (cPanel).
 // Conecta a DB staging, NO a producción.
 if (str_starts_with($action, 'e2e_')) {
+    // Doble protección: token E2E + verificación que el env STG_DB_USER esté configurado
+    // (el server productivo no tiene STG_DB_USER → rechazo automático)
     $e2e_token          = $_SERVER['HTTP_X_E2E_TOKEN'] ?? '';
     $e2e_token_expected = getenv('E2E_STAGING_TOKEN') ?: '';
-    if (!$e2e_token_expected || $e2e_token !== $e2e_token_expected) {
-        err('e2e token inválido', 403);
+    $stg_db_user        = getenv('STG_DB_USER') ?: '';
+    if (!$e2e_token_expected || $e2e_token !== $e2e_token_expected || !$stg_db_user) {
+        err('e2e token inválido o entorno sin staging configurado', 403);
     }
 
     // Conexión exclusiva staging (no usa db() de producción)
@@ -5245,11 +5248,51 @@ if (str_starts_with($action, 'e2e_')) {
     if ($action === 'e2e_debug_quotation') {
         $quot_id = $_GET['quot_id'] ?? (body()['quot_id'] ?? '');
         if (!$quot_id) err('quot_id requerido');
-        $stmt = stg()->prepare("SELECT id, number, desde, hasta, fecha_salida, hora_salida, fecha_retorno, hora_retorno, vehicle_type, subtotal, client_id, contact_id FROM quotations WHERE id=? LIMIT 1");
+        $stmt = stg()->prepare("SELECT id, number, status, etapa, desde, hasta, fecha_salida, hora_salida, fecha_retorno, hora_retorno, vehicle_type, subtotal, client_id, contact_id FROM quotations WHERE id=? LIMIT 1");
         $stmt->execute([$quot_id]);
         $q = $stmt->fetch();
         if (!$q) err('quotation no encontrada', 404);
         ok($q);
+    }
+
+    // ── e2e_debug_client — verificar client + contact + phone_mobile ──────────
+    if ($action === 'e2e_debug_client') {
+        $client_id  = $_GET['client_id'] ?? '';
+        $contact_id = $_GET['contact_id'] ?? '';
+        $result = [];
+        if ($client_id) {
+            $s = stg()->prepare("SELECT id, name, rut, email, phone FROM clients WHERE id=? LIMIT 1");
+            $s->execute([$client_id]);
+            $result['client'] = $s->fetch() ?: null;
+        }
+        if ($contact_id) {
+            $s = stg()->prepare("SELECT id, client_id, name, email, phone_mobile FROM contacts WHERE id=? LIMIT 1");
+            $s->execute([$contact_id]);
+            $result['contact'] = $s->fetch() ?: null;
+        }
+        ok($result);
+    }
+
+    // ── e2e_idempotencia — verifica conteo de quotations por conv ────────────
+    if ($action === 'e2e_idempotencia') {
+        $conv_id = $_GET['conv_id'] ?? (body()['conv_id'] ?? '');
+        if (!$conv_id) err('conv_id requerido');
+        // Contar quotations vía wa_quote_approvals
+        $approvals = stg()->prepare("SELECT quotation_id, status, created_at FROM wa_quote_approvals WHERE conv_id=? ORDER BY created_at");
+        $approvals->execute([$conv_id]);
+        $rows = $approvals->fetchAll();
+        // Estado actual del borrador en la conv
+        $conv = stg()->prepare("SELECT wa_draft_quote_id, stage, contact_rut FROM wa_cloud_conversations WHERE id=? LIMIT 1");
+        $conv->execute([$conv_id]);
+        $convRow = $conv->fetch();
+        ok([
+            'conv_id'              => $conv_id,
+            'wa_draft_quote_id'    => $convRow['wa_draft_quote_id'] ?? null,
+            'stage'                => $convRow['stage'] ?? null,
+            'approvals_count'      => count($rows),
+            'approvals'            => $rows,
+            'is_idempotent'        => count($rows) === 1,
+        ]);
     }
 
     // ── e2e_seed ───────────────────────────────────────────────────────────
