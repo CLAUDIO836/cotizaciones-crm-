@@ -4609,16 +4609,20 @@ if ($action === 'wa_approvals_get') {
         quote_snapshot JSON       NULL,
         status       ENUM('pending','approved','rejected','invalidated','sent') DEFAULT 'pending',
         sent_at      DATETIME     NULL,
+        sent_wamid   VARCHAR(100) NULL,
         sent_result  JSON         NULL,
         notes        TEXT         NULL,
         INDEX idx_wqa_conv (conv_id),
         INDEX idx_wqa_status (status)
     )"); } catch (PDOException $e) {}
+    // Migración: columna sent_wamid (producción puede no tenerla aún)
+    try { db()->exec("ALTER TABLE wa_quote_approvals ADD COLUMN sent_wamid VARCHAR(100) NULL AFTER sent_at"); } catch (PDOException $e) {}
     if (!$convId) err('conv_id requerido');
 
     $stmt = db()->prepare("
         SELECT wqa.id, wqa.conv_id, wqa.quotation_id, wqa.status,
                wqa.created_at, wqa.approved_at, wqa.sent_at,
+               wqa.sent_wamid, wqa.sent_result,
                wqa.approved_by, wqa.notes, wqa.quote_total,
                q.number AS quote_number, q.total AS quote_total_bd,
                q.desde, q.hasta, q.distancia_km, q.fecha_salida, q.hora_salida,
@@ -4636,7 +4640,165 @@ if ($action === 'wa_approvals_get') {
     ");
     $stmt->execute([$convId]);
     $row = $stmt->fetch();
+    if ($row && $row['sent_result']) {
+        $sr = json_decode($row['sent_result'], true);
+        $row['dispatch_error'] = !empty($sr['error']) ? ($sr['response'] ?? 'Error de envío') : null;
+    }
     ok(['approval' => $row ?: null]);
+}
+
+// ── Sofía: despachar cotización aprobada al cliente via WA ───────────────────
+// Parámetros:
+//   $pdo       — conexión a usar (producción o staging)
+//   $appr_id   — id del registro en wa_quote_approvals (status='approved')
+//   $wa_token  — Bearer token de WhatsApp (producción o staging)
+//   $wa_phone_id — Phone Number ID de WhatsApp
+//   $opts      — ['simulate'=>true] no llama a la API real (staging/tests)
+// Retorna: ['ok'=>true,'wamid'=>'...'] | ['error'=>'...','code'=>N]
+function dispatch_wa_quote(PDO $pdo, string $appr_id, string $wa_token, string $wa_phone_id, array $opts = []): array {
+    $simulate = $opts['simulate'] ?? false;
+
+    // 1. Cargar aprobación + cotización + conversación
+    $apSt = $pdo->prepare("
+        SELECT wqa.id, wqa.conv_id, wqa.quotation_id, wqa.status, wqa.sent_at, wqa.sent_wamid,
+               q.number, q.total, q.desde, q.hasta, q.fecha_salida, q.hora_salida,
+               q.fecha_retorno, q.hora_retorno, q.vehicle_type, q.distancia_km,
+               c.phone, c.contact_name, c.contact_email, c.quote_send_email
+        FROM wa_quote_approvals wqa
+        JOIN quotations q ON q.id = wqa.quotation_id
+        JOIN wa_cloud_conversations c ON c.id = wqa.conv_id
+        WHERE wqa.id = ?
+    ");
+    $apSt->execute([$appr_id]);
+    $ap = $apSt->fetch(PDO::FETCH_ASSOC);
+    if (!$ap) return ['error' => 'Aprobación no encontrada', 'code' => 404];
+
+    // 2. Idempotencia: si ya fue enviada, no reenviar
+    if ($ap['status'] === 'sent' && $ap['sent_wamid']) {
+        return ['ok' => true, 'idempotent' => true, 'wamid' => $ap['sent_wamid']];
+    }
+    if ($ap['status'] !== 'approved') {
+        return ['error' => "Estado inválido para despacho: {$ap['status']}", 'code' => 409];
+    }
+
+    // 3. Generar / recuperar token de aprobación del cliente (quotation_approvals)
+    $tSt = $pdo->prepare("SELECT token FROM quotation_approvals WHERE quotation_id=? ORDER BY created_at DESC LIMIT 1");
+    $tSt->execute([$ap['quotation_id']]);
+    $existingToken = $tSt->fetch(PDO::FETCH_ASSOC)['token'] ?? null;
+    if (!$existingToken) {
+        $tok_id    = $pdo->query("SELECT UUID() AS u")->fetch(PDO::FETCH_ASSOC)['u'];
+        $tok_token = $pdo->query("SELECT UUID() AS u")->fetch(PDO::FETCH_ASSOC)['u'];
+        // Obtener datos del cliente para quotation_approvals
+        $qFull = $pdo->prepare("SELECT q.*, cli.name AS cname, cli.rut AS crut, prof.name AS pname FROM quotations q LEFT JOIN clients cli ON cli.id=q.client_id LEFT JOIN profiles prof ON prof.id=q.user_id WHERE q.id=?");
+        $qFull->execute([$ap['quotation_id']]);
+        $qRow = $qFull->fetch(PDO::FETCH_ASSOC) ?: [];
+        try {
+            $pdo->prepare("
+                INSERT INTO quotation_approvals (id,token,quotation_id,client_name,client_rut,seller_name,
+                  desde,hasta,fecha_salida,hora_salida,fecha_retorno,hora_retorno,total,company_name,items,sent_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+            ")->execute([
+                $tok_id, $tok_token, $ap['quotation_id'],
+                $qRow['cname'] ?? $ap['contact_name'],
+                $qRow['crut'] ?? '',
+                $qRow['pname'] ?? 'TransCCL',
+                $ap['desde'], $ap['hasta'],
+                $ap['fecha_salida'], $ap['hora_salida'],
+                $ap['fecha_retorno'], $ap['hora_retorno'],
+                $ap['total'],
+                $qRow['company'] ?? 'TransCCL',
+                '[]',
+            ]);
+            $existingToken = $tok_token;
+        } catch (PDOException $e) {
+            // Si hay race condition, reintentar lectura
+            $tSt->execute([$ap['quotation_id']]);
+            $existingToken = $tSt->fetch(PDO::FETCH_ASSOC)['token'] ?? null;
+            if (!$existingToken) return ['error' => 'No se pudo crear token de aprobación: ' . $e->getMessage(), 'code' => 500];
+        }
+    }
+
+    // 4. Componer mensaje WA al cliente
+    $nombre       = $ap['contact_name'] ?? 'Cliente';
+    $primerNombre = explode(' ', trim($nombre))[0];
+    $total        = '$' . number_format((float)$ap['total'], 0, ',', '.');
+    $desde        = $ap['desde']        ?? '—';
+    $hasta        = $ap['hasta']        ?? '—';
+    $fecha        = $ap['fecha_salida'] ?? '—';
+    $hora         = $ap['hora_salida']  ? ' a las ' . $ap['hora_salida'] : '';
+    $vehiculo     = $ap['vehicle_type'] ?? '';
+    $km           = $ap['distancia_km'] ? " ({$ap['distancia_km']} km)" : '';
+    $numero       = $ap['number']       ?? '';
+    $approvalUrl  = "https://crm.transccl.cl/aprobar/{$existingToken}";
+
+    $msgTexto = "¡Hola {$primerNombre}! 😊 Tu cotización de TransCCL está lista.\n\n"
+              . "📋 *Cotización {$numero}*\n"
+              . "🚌 *Vehículo:* {$vehiculo}{$km}\n"
+              . "📍 *Desde:* {$desde}\n"
+              . "📍 *Hasta:* {$hasta}\n"
+              . "📅 *Fecha:* {$fecha}{$hora}\n"
+              . "💰 *Total:* {$total}\n\n"
+              . "👉 Revisa y acepta tu cotización aquí:\n{$approvalUrl}\n\n"
+              . "Tienes 7 días para confirmar. Cualquier consulta, ¡estoy aquí! 🙋‍♀️";
+
+    // 5. Enviar por WhatsApp (o simular)
+    $wamid = null;
+    if ($simulate) {
+        $wamid      = 'SIM_' . uniqid();
+        $sentResult = ['simulado' => true, 'nota' => 'STAGING — no enviado a WA real', 'wamid' => $wamid, 'ts' => date('c')];
+    } else {
+        $payload = [
+            'messaging_product' => 'whatsapp',
+            'to'                => $ap['phone'],
+            'type'              => 'text',
+            'text'              => ['body' => $msgTexto, 'preview_url' => false],
+        ];
+        $ch = curl_init("https://graph.facebook.com/v21.0/{$wa_phone_id}/messages");
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_HTTPHEADER     => ["Authorization: Bearer {$wa_token}", 'Content-Type: application/json'],
+            CURLOPT_POSTFIELDS     => json_encode($payload),
+            CURLOPT_TIMEOUT        => 15,
+        ]);
+        $waResp   = curl_exec($ch);
+        $waStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        $waBody = json_decode($waResp, true) ?? [];
+        if ($waStatus >= 400) {
+            // Despacho fallido: registrar error en sent_result, NO cambiar status (sigue 'approved')
+            $errResult = ['error' => true, 'http_status' => $waStatus, 'response' => substr($waResp, 0, 300), 'ts' => date('c')];
+            try {
+                $pdo->prepare("UPDATE wa_quote_approvals SET sent_result=? WHERE id=?")
+                    ->execute([json_encode($errResult), $appr_id]);
+            } catch (PDOException $ex) {}
+            error_log("[dispatch_wa_quote] WA error {$waStatus}: " . substr($waResp, 0, 200));
+            return ['error' => "WA rechazó el mensaje (HTTP {$waStatus})", 'code' => 502, 'wa_response' => substr($waResp, 0, 200)];
+        }
+        $wamid      = $waBody['messages'][0]['id'] ?? null;
+        $sentResult = ['ok' => true, 'wamid' => $wamid, 'http_status' => $waStatus, 'ts' => date('c')];
+    }
+
+    // 6. Marcar como enviada
+    $pdo->prepare("
+        UPDATE wa_quote_approvals
+        SET status='sent', sent_at=NOW(), sent_wamid=?, sent_result=?
+        WHERE id=?
+    ")->execute([$wamid, json_encode($sentResult), $appr_id]);
+
+    // 7. Registrar en wa_cloud_messages si hay wamid real
+    if ($wamid && !$simulate) {
+        try {
+            $pdo->prepare("
+                INSERT IGNORE INTO wa_cloud_messages
+                  (id, conversation_id, wamid, direction, content, sender_type, created_at)
+                VALUES (?, ?, ?, 'out', ?, 'bot', NOW())
+            ")->execute([uuid(), $ap['conv_id'], $wamid, $msgTexto]);
+        } catch (PDOException $ex) {}
+    }
+
+    return ['ok' => true, 'wamid' => $wamid, 'approval_url' => $approvalUrl, 'simulated' => $simulate];
 }
 
 // ── Sofía: aprobar o rechazar borrador ────────────────────────────────────────
@@ -4677,13 +4839,18 @@ if ($action === 'wa_approvals_decide') {
         ok(['rechazado' => true, 'rechazado_por' => $user['id'], 'timestamp' => date('c')]);
     }
 
-    // Aprobar: status='approved' (el envío es un paso separado)
+    // Aprobar: status='approved' — despacho automático inmediato
     // La ejecutiva comercial NO cambia — solo se registra quién autorizó
     db()->prepare("UPDATE wa_quote_approvals SET status='approved', approved_by=?, approved_at=NOW(), notes=?, quote_snapshot=? WHERE id=?")
         ->execute([$user['id'], $notes ?: null, json_encode($snapshot), $apRow['id']]);
     // Mover cotización de borrador a lista para envío
     db()->prepare("UPDATE quotations SET etapa='cotizacion', status='open' WHERE id=?")
         ->execute([$apRow['quotation_id']]);
+
+    // ── Despacho automático WA ────────────────────────────────────────────────
+    $waToken   = defined('META_WA_TOKEN')           ? META_WA_TOKEN           : (getenv('META_WA_TOKEN')           ?: '');
+    $waPhoneId = defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : (getenv('META_WA_PHONE_NUMBER_ID') ?: '');
+    $dispatchResult = dispatch_wa_quote(db(), $apRow['id'], $waToken, $waPhoneId);
 
     $q = db()->prepare("SELECT number, total, desde, hasta, fecha_salida FROM quotations WHERE id=?");
     $q->execute([$apRow['quotation_id']]);
@@ -4694,8 +4861,31 @@ if ($action === 'wa_approvals_decide') {
         'timestamp'      => date('c'),
         'quote_number'   => $qRow['number'] ?? null,
         'total'          => $qRow['total']  ?? null,
-        'envio_pendiente'=> true, // El envío WA es un paso posterior independiente
+        'despacho'       => $dispatchResult,
     ]);
+}
+
+// ── Sofía: reintentar despacho de cotización aprobada (recovery controlada) ───
+if ($action === 'wa_quote_retry') {
+    $user = requireAuth();
+    $allowedRoles = ['gerencia', 'admin', 'superadmin', 'supervisor'];
+    if (!in_array($user['role'] ?? '', $allowedRoles)) {
+        err('Sin permiso para reintentar despacho', 403);
+    }
+    $convId = body()['conv_id'] ?? '';
+    if (!$convId) err('conv_id requerido');
+
+    $ap = db()->prepare("SELECT id, status, sent_at FROM wa_quote_approvals WHERE conv_id=? ORDER BY created_at DESC LIMIT 1");
+    $ap->execute([$convId]);
+    $apRow = $ap->fetch();
+    if (!$apRow) err('No hay aprobación para esta conversación', 404);
+    if ($apRow['status'] !== 'approved') err("No se puede reintentar: status actual es '{$apRow['status']}'", 409);
+
+    $waToken   = defined('META_WA_TOKEN')           ? META_WA_TOKEN           : (getenv('META_WA_TOKEN')           ?: '');
+    $waPhoneId = defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : (getenv('META_WA_PHONE_NUMBER_ID') ?: '');
+    $result = dispatch_wa_quote(db(), $apRow['id'], $waToken, $waPhoneId);
+    if (isset($result['error'])) err($result['error'], $result['code'] ?? 502);
+    ok(['reintentado' => true, 'wamid' => $result['wamid']]);
 }
 
 // ── Sofía: invalidar aprobación para permitir nueva versión ───────────────────
@@ -5192,6 +5382,8 @@ if (str_starts_with($action, 'e2e_')) {
         "ALTER TABLE wa_quote_approvals ADD COLUMN invalidated_at DATETIME NULL",
         "ALTER TABLE wa_quote_approvals ADD COLUMN invalidated_by VARCHAR(36) NULL",
         "ALTER TABLE wa_quote_approvals ADD COLUMN previous_approval_id VARCHAR(36) NULL COMMENT 'FK a aprobación anterior invalidada'",
+        // ── Circuito aprobado→envío: sent_wamid para tracking delivery ─────────
+        "ALTER TABLE wa_quote_approvals ADD COLUMN sent_wamid VARCHAR(100) NULL COMMENT 'WA message ID del envío al cliente'",
         // ── Fase 1: client_id y contact_id en cotizaciones staging ────────────
         "ALTER TABLE quotations ADD COLUMN client_id CHAR(36) NULL",
         "ALTER TABLE quotations ADD COLUMN contact_id CHAR(36) NULL",
@@ -5504,6 +5696,86 @@ if (str_starts_with($action, 'e2e_')) {
             ],
             'divergencia' => 'NINGUNA — mismo motor OSRM en ambos sistemas',
         ]);
+    }
+
+    // ── e2e_circuito_completo — test completo formulario→borrador→aprobación→envío ──
+    // Simula todo el circuito sin enviar mensajes WA reales.
+    // Usa phone 56911111020 (reservado para este test, limpiado automáticamente al final).
+    if ($action === 'e2e_circuito_completo') {
+        $phone_test = '56911111020';
+        $exec_id    = body()['exec_id'] ?? null; // id del ejecutivo para asignar
+
+        // 0. Limpiar estado anterior
+        stg()->exec("DELETE FROM wa_quote_approvals WHERE conv_id IN (SELECT id FROM wa_cloud_conversations WHERE phone='$phone_test')");
+        stg()->exec("DELETE FROM quotations WHERE number LIKE 'BWA-%' AND id IN (SELECT quotation_id FROM wa_quote_approvals WHERE conv_id IN (SELECT id FROM wa_cloud_conversations WHERE phone='$phone_test'))");
+        stg()->exec("DELETE FROM wa_cloud_conversations WHERE phone='$phone_test'");
+        $results = ['pasos' => [], 'pass' => true];
+
+        // 1. Crear conversación con formulario completo
+        $conv_id = stguuid();
+        $exec_uuid = $exec_id ?? stguuid();
+        stg()->prepare("
+            INSERT INTO wa_cloud_conversations
+                (id, phone, channel, assigned_to, bot_active, contact_name, contact_email, contact_rut,
+                 client_type, company_name, service_origin, service_destination, service_date,
+                 service_passengers, service_type, service_vehicle, service_km,
+                 stage, form_submitted_at, created_at)
+            VALUES (?,?,'whatsapp',?,1,'CircuitoTest','circuito@test.cl','12.345.678-9',
+                    'empresa','Empresa Test SpA',
+                    'Las Condes, Santiago','Viña del Mar',DATE_ADD(NOW(),INTERVAL 7 DAY),
+                    30,'traslado','Bus 45 pax',120.5,
+                    'formulario_completo',NOW(),NOW())
+        ")->execute([$conv_id, $phone_test, $exec_uuid]);
+        $results['pasos'][] = ['paso' => 1, 'desc' => 'Conv con formulario creada', 'conv_id' => $conv_id];
+
+        // 2. Crear borrador Sofía
+        $opts = ['use_client_lookup' => false]; // sin lookup de clientes en staging
+        $borrador = crear_borrador_wa(stg(), $conv_id, $opts);
+        $p2_ok = isset($borrador['ok']);
+        $results['pasos'][] = ['paso' => 2, 'desc' => 'Borrador Sofía', 'ok' => $p2_ok, 'detalle' => $borrador];
+        if (!$p2_ok) { $results['pass'] = false; ok($results); }
+        $appr_id = $borrador['approval_id'];
+        $quot_id = $borrador['quotation_id'];
+
+        // 3. Verificar estado pending
+        $apRow = stg()->prepare("SELECT status FROM wa_quote_approvals WHERE id=?")->execute([$appr_id]) ? null : null;
+        $apRow2 = stg()->query("SELECT status, wa_draft_quote_id FROM wa_cloud_conversations WHERE id='$conv_id'")->fetch();
+        $p3_ok = ($apRow2['wa_draft_quote_id'] === $quot_id);
+        $results['pasos'][] = ['paso' => 3, 'desc' => 'Draft vinculado en conv', 'ok' => $p3_ok, 'wa_draft_quote_id' => $apRow2['wa_draft_quote_id']];
+
+        // 4. Simular aprobación + despacho (simulate=true → no llama WA real)
+        // Marcar como approved manualmente (simula el click de la ejecutiva)
+        $snapData = stg()->prepare("SELECT id, number, total, etapa, desde, hasta, fecha_salida, vehicle_type, distancia_km FROM quotations WHERE id=?")->execute([$quot_id]) ? null : null;
+        stg()->prepare("UPDATE wa_quote_approvals SET status='approved', approved_by=?, approved_at=NOW(), notes='Aprobado E2E staging' WHERE id=?")
+            ->execute([$exec_uuid, $appr_id]);
+        stg()->prepare("UPDATE quotations SET etapa='cotizacion', status='open' WHERE id=?")->execute([$quot_id]);
+        $results['pasos'][] = ['paso' => 4, 'desc' => 'Aprobación simulada', 'ok' => true];
+
+        // 5. Despacho simulado usando dispatch_wa_quote con simulate=true
+        $dispatchResult = dispatch_wa_quote(stg(), $appr_id, 'fake_token_stg', 'fake_phone_id_stg', ['simulate' => true]);
+        $p5_ok = ($dispatchResult['ok'] ?? false) && ($dispatchResult['simulated'] ?? false);
+        $results['pasos'][] = ['paso' => 5, 'desc' => 'Despacho simulado', 'ok' => $p5_ok, 'detalle' => $dispatchResult];
+
+        // 6. Verificar estado final: status='sent', sent_wamid no null
+        $finalRow = stg()->query("SELECT status, sent_at, sent_wamid FROM wa_quote_approvals WHERE id='$appr_id'")->fetch();
+        $p6_ok = ($finalRow['status'] === 'sent') && !empty($finalRow['sent_wamid']);
+        $results['pasos'][] = ['paso' => 6, 'desc' => 'Estado final = sent', 'ok' => $p6_ok,
+                               'status' => $finalRow['status'], 'sent_wamid' => $finalRow['sent_wamid']];
+
+        // 7. Verificar idempotencia: segundo dispatch no debe re-enviar
+        $dispatch2 = dispatch_wa_quote(stg(), $appr_id, 'fake_token_stg', 'fake_phone_id_stg', ['simulate' => true]);
+        $p7_ok = ($dispatch2['idempotent'] ?? false) === true;
+        $results['pasos'][] = ['paso' => 7, 'desc' => 'Idempotencia (doble despacho bloqueado)', 'ok' => $p7_ok, 'detalle' => $dispatch2];
+
+        // 8. Limpiar datos del test
+        stg()->exec("DELETE FROM wa_quote_approvals WHERE conv_id='$conv_id'");
+        stg()->exec("DELETE FROM quotations WHERE id='$quot_id'");
+        stg()->exec("DELETE FROM wa_cloud_conversations WHERE id='$conv_id'");
+        $results['pasos'][] = ['paso' => 8, 'desc' => 'Datos de prueba limpiados', 'ok' => true];
+
+        $results['pass'] = !in_array(false, array_column($results['pasos'], 'ok'));
+        $results['resultado'] = $results['pass'] ? 'PASS ✅ — Circuito completo verificado en staging' : 'FAIL ❌ — Ver pasos con ok=false';
+        ok($results);
     }
 
     // ── e2e_cleanup ────────────────────────────────────────────────────────

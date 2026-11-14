@@ -78,6 +78,13 @@ foreach ($body['entry'] ?? [] as $entry) {
                 db()->prepare("UPDATE wa_cloud_messages SET status = ? WHERE wamid = ?")
                     ->execute([$stStatus, $stWamid]);
             } catch (Throwable $e) {}
+            // Actualizar delivery_status de cotización enviada por Sofía
+            if (in_array($stStatus, ['delivered', 'read'])) {
+                try {
+                    db()->prepare("UPDATE wa_quote_approvals SET sent_result=JSON_SET(COALESCE(sent_result,'{}'), '$.delivery_status', ?) WHERE sent_wamid=?")
+                        ->execute([$stStatus, $stWamid]);
+                } catch (Throwable $e) {}
+            }
         }
 
         if (($change['field'] ?? '') !== 'messages') continue;
@@ -251,7 +258,7 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         $pdo = db();
 
         // Upsert conversación (incluye ficha para pasarla al bot)
-        $stmt = $pdo->prepare("SELECT id, bot_active, stage, assigned_to, contact_name, contact_email, contact_rut, service_origin, service_destination, service_date, service_passengers, service_type, service_vehicle, form_link_sent_at, form_submitted_at, followup_count, handoff_requested_at FROM wa_cloud_conversations WHERE phone = ?");
+        $stmt = $pdo->prepare("SELECT id, bot_active, stage, assigned_to, contact_name, contact_email, contact_rut, service_origin, service_destination, service_date, service_passengers, service_type, service_vehicle, form_link_sent_at, form_submitted_at, followup_count, handoff_requested_at, wa_draft_quote_id FROM wa_cloud_conversations WHERE phone = ?");
         $stmt->execute([$phone]);
         $conv = $stmt->fetch();
 
@@ -342,6 +349,36 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             'service_passengers','service_type','service_vehicle',
             'form_submitted_at',
         ])) : [];
+
+        // Agregar contexto de cotización enviada por Sofía (si existe)
+        if (!empty($conv['wa_draft_quote_id'])) {
+            try {
+                $qaSt = $pdo->prepare("
+                    SELECT wqa.status, wqa.sent_at, wqa.sent_wamid, wqa.sent_result,
+                           q.number, q.total, q.desde, q.hasta, q.fecha_salida, q.vehicle_type
+                    FROM wa_quote_approvals wqa
+                    JOIN quotations q ON q.id = wqa.quotation_id
+                    WHERE wqa.conv_id = ?
+                    ORDER BY wqa.created_at DESC LIMIT 1
+                ");
+                $qaSt->execute([$convId]);
+                $qaRow = $qaSt->fetch();
+                if ($qaRow) {
+                    $fichaActual['_quote_status']   = $qaRow['status'];
+                    $fichaActual['_quote_number']   = $qaRow['number'];
+                    $fichaActual['_quote_total']    = $qaRow['total'];
+                    $fichaActual['_quote_desde']    = $qaRow['desde'];
+                    $fichaActual['_quote_hasta']    = $qaRow['hasta'];
+                    $fichaActual['_quote_fecha']    = $qaRow['fecha_salida'];
+                    $fichaActual['_quote_vehiculo'] = $qaRow['vehicle_type'];
+                    if ($qaRow['status'] === 'sent' && $qaRow['sent_result']) {
+                        $sr = json_decode($qaRow['sent_result'], true) ?? [];
+                        $fichaActual['_quote_delivery'] = $sr['delivery_status'] ?? 'enviada';
+                    }
+                }
+            } catch (Throwable $e) {}
+        }
+
         $botReply = runBot($phone, $text, $history, $name, $fichaActual, $execName);
         if (!$botReply) { error_log("[wa_webhook] EMPTY_REPLY phone={$phone}"); return; }
 
@@ -741,6 +778,32 @@ function buildFichaContext(array $ficha): string {
         } else {
             $out .= "FICHA COMPLETA PERSONA NATURAL — todos los datos listos para cotización formal. Confirma resumen y escala.\n";
         }
+    }
+
+    // ── Contexto de cotización enviada por Sofía ──────────────────────────────
+    $quoteStatus = $ficha['_quote_status'] ?? null;
+    if ($quoteStatus) {
+        $qNum  = $ficha['_quote_number']  ?? '';
+        $qTot  = $ficha['_quote_total']   ? '$' . number_format((float)$ficha['_quote_total'], 0, ',', '.') : '';
+        $qDes  = $ficha['_quote_desde']   ?? '';
+        $qHas  = $ficha['_quote_hasta']   ?? '';
+        $qFec  = $ficha['_quote_fecha']   ?? '';
+        $qVeh  = $ficha['_quote_vehiculo'] ?? '';
+        $qDel  = $ficha['_quote_delivery'] ?? null;
+        $out .= "\n## COTIZACIÓN SOFÍA\n";
+        if ($quoteStatus === 'pending') {
+            $out .= "BORRADOR PENDIENTE DE APROBACIÓN interna — NO menciones que existe una cotización todavía. Continúa atendiendo normalmente.\n";
+        } elseif ($quoteStatus === 'approved') {
+            $out .= "COTIZACIÓN APROBADA — enviándose al cliente en este momento. Puedes decirle que está por llegar.\n";
+        } elseif ($quoteStatus === 'sent') {
+            $delivery = $qDel === 'read' ? 'leída por el cliente' : ($qDel === 'delivered' ? 'entregada al celular del cliente' : 'enviada');
+            $out .= "COTIZACIÓN ENVIADA Y {$delivery} — Número: {$qNum}, Monto: {$qTot}, Ruta: {$qDes} → {$qHas}, Fecha: {$qFec}, Vehículo: {$qVeh}.\n";
+            $out .= "→ Haz SEGUIMIENTO ACTIVO: pregunta si la revisó, si tiene dudas sobre el precio o el servicio, ofrece confirmar la fecha. No la reenvíes a menos que el cliente lo pida.\n";
+            $out .= "→ Objetivo: llevar al cliente a aceptar la cotización en crm.transccl.cl/aprobar/[token] o confirmar verbalmente.\n";
+        } elseif ($quoteStatus === 'rejected') {
+            $out .= "COTIZACIÓN RECHAZADA internamente — no fue enviada al cliente. Continúa atendiendo.\n";
+        }
+        $out .= "\n";
     }
 
     $out .= "\n";

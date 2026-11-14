@@ -51,6 +51,8 @@ interface WaApproval {
   created_by_name: string | null
   approved_at: string | null
   sent_at: string | null
+  sent_wamid: string | null
+  dispatch_error: string | null
 }
 
 interface SofiaMetrics {
@@ -215,6 +217,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [approval, setApproval]           = useState<WaApproval | null>(null)
   const [loadingApproval, setLoadingApproval] = useState(false)
   const [decidingApproval, setDecidingApproval] = useState(false)
+  const [retryingDispatch, setRetryingDispatch] = useState(false)
   // Sofía: métricas (solo admin)
   const [sofiaMetrics, setSofiaMetrics]   = useState<SofiaMetrics | null>(null)
   const [showMetrics, setShowMetrics]     = useState(false)
@@ -270,16 +273,33 @@ export default function Bandeja({ user }: { user: UserSession }) {
       })
       const d = await r.json()
       if (d.aprobado || d.rechazado) {
-        // Reload approval and conversation list
         setApproval(null)
         const refreshed = await fetch(`/api/whatsapp/cloud/approvals?conv_id=${activeConv.id}`)
         const rd = await refreshed.json()
         setApproval(rd?.approval ?? null)
-        // Update conv list to reflect new wa_draft_quote_id = null (after reject)
         loadConversations()
       }
     } catch { /* silent */ }
     setDecidingApproval(false)
+  }
+
+  async function retryDispatch() {
+    if (!activeConv || retryingDispatch) return
+    setRetryingDispatch(true)
+    try {
+      const r = await fetch('/api/whatsapp/cloud/approvals/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conv_id: activeConv.id }),
+      })
+      const d = await r.json()
+      if (d.reintentado) {
+        const refreshed = await fetch(`/api/whatsapp/cloud/approvals?conv_id=${activeConv.id}`)
+        const rd = await refreshed.json()
+        setApproval(rd?.approval ?? null)
+      }
+    } catch { /* silent */ }
+    setRetryingDispatch(false)
   }
 
   // Scroll refs
@@ -947,7 +967,7 @@ export default function Bandeja({ user }: { user: UserSession }) {
                         disabled={decidingApproval}
                         style={{ flex: 1, padding: '6px 0', background: decidingApproval ? '#e5e7eb' : '#1B8A4B', color: decidingApproval ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: decidingApproval ? 'not-allowed' : 'pointer' }}
                       >
-                        {decidingApproval ? '...' : '✅ Aprobar'}
+                        {decidingApproval ? '...' : '✅ Aprobar y enviar'}
                       </button>
                       <button
                         onClick={() => decideApproval('rejected')}
@@ -958,8 +978,31 @@ export default function Bandeja({ user }: { user: UserSession }) {
                       </button>
                     </div>
                   )}
+                  {approval.status === 'approved' && !approval.dispatch_error && (
+                    <div style={{ fontSize: 11, color: '#7c3aed', fontWeight: 600 }}>⏳ Enviando al cliente...</div>
+                  )}
+                  {approval.status === 'approved' && approval.dispatch_error && (
+                    <div>
+                      <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 600, marginBottom: 4 }}>⚠️ Error de envío — cotización aprobada</div>
+                      <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 6, wordBreak: 'break-word' }}>{approval.dispatch_error}</div>
+                      <button
+                        onClick={retryDispatch}
+                        disabled={retryingDispatch}
+                        style={{ width: '100%', padding: '5px 0', background: retryingDispatch ? '#e5e7eb' : '#fff7ed', color: retryingDispatch ? '#9ca3af' : '#c2410c', border: '1px solid #fed7aa', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: retryingDispatch ? 'not-allowed' : 'pointer' }}
+                      >
+                        {retryingDispatch ? '...' : '🔄 Reintentar envío'}
+                      </button>
+                    </div>
+                  )}
                   {approval.status === 'sent' && (
-                    <div style={{ fontSize: 11, color: '#1B8A4B', fontWeight: 600 }}>✅ Enviada al cliente</div>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#1B8A4B', fontWeight: 600 }}>✅ Enviada al cliente</div>
+                      {approval.sent_at && (
+                        <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>
+                          {new Date(approval.sent_at).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      )}
+                    </div>
                   )}
                   {approval.status === 'rejected' && (
                     <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>❌ Rechazada{approval.approved_by_name ? ` por ${approval.approved_by_name}` : ''}</div>
