@@ -5387,8 +5387,55 @@ if (str_starts_with($action, 'e2e_')) {
         // ── Fase 1: client_id y contact_id en cotizaciones staging ────────────
         "ALTER TABLE quotations ADD COLUMN client_id CHAR(36) NULL",
         "ALTER TABLE quotations ADD COLUMN contact_id CHAR(36) NULL",
+        // ── Columnas faltantes en wa_cloud_conversations staging ──────────────
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN form_submitted_at DATETIME NULL COMMENT 'Fecha envío del formulario web'",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN form_lead_id VARCHAR(36) NULL COMMENT 'ID del lead del formulario'",
+        // ── Tabla profiles mínima para staging (dispatch_wa_quote) ───────────
+        "CREATE TABLE IF NOT EXISTS profiles (
+            id CHAR(36) PRIMARY KEY,
+            name VARCHAR(200) NOT NULL,
+            email VARCHAR(200) NULL,
+            role VARCHAR(50) NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB",
+        // ── quotation_approvals para circuito de aprobación cliente ──────────
+        "CREATE TABLE IF NOT EXISTS quotation_approvals (
+            id VARCHAR(36) PRIMARY KEY,
+            token VARCHAR(36) NOT NULL UNIQUE,
+            quotation_id VARCHAR(36) NOT NULL,
+            client_name VARCHAR(200) NULL,
+            client_rut VARCHAR(20) NULL,
+            seller_name VARCHAR(200) NULL,
+            desde TEXT NULL,
+            hasta TEXT NULL,
+            fecha_salida DATE NULL,
+            hora_salida TIME NULL,
+            fecha_retorno DATE NULL,
+            hora_retorno TIME NULL,
+            total DECIMAL(14,2) NULL,
+            company_name VARCHAR(200) NULL,
+            items JSON NULL,
+            sent_at DATETIME NULL,
+            response VARCHAR(50) NULL,
+            responded_at DATETIME NULL,
+            responded_name VARCHAR(200) NULL,
+            responded_rut VARCHAR(20) NULL,
+            responded_ip VARCHAR(45) NULL,
+            responded_user_agent TEXT NULL,
+            rejection_reason TEXT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_qa_token (token),
+            INDEX idx_qa_quot (quotation_id)
+        ) ENGINE=InnoDB",
     ];
     foreach ($stg_migrations as $smig) { try { stg()->exec($smig); } catch (PDOException $e) {} }
+
+    // Handler global para capturar errores PHP en e2e y devolverlos como JSON
+    set_exception_handler(function(Throwable $ex) {
+        http_response_code(500);
+        echo json_encode(['error' => 'PHP exception: ' . $ex->getMessage(), 'file' => basename($ex->getFile()), 'line' => $ex->getLine(), 'trace' => array_slice(array_map(fn($f) => ($f['function'] ?? '?') . ' line ' . ($f['line'] ?? '?'), $ex->getTrace()), 0, 5)]);
+        exit;
+    });
 
     // ── e2e_debug_seed ─────────────────────────────────────────────────────
     if ($action === 'e2e_debug_seed') {
@@ -5714,19 +5761,25 @@ if (str_starts_with($action, 'e2e_')) {
         // 1. Crear conversación con formulario completo
         $conv_id = stguuid();
         $exec_uuid = $exec_id ?? stguuid();
-        stg()->prepare("
-            INSERT INTO wa_cloud_conversations
-                (id, phone, channel, assigned_to, bot_active, contact_name, contact_email, contact_rut,
-                 client_type, company_name, service_origin, service_destination, service_date,
-                 service_passengers, service_type, service_vehicle, service_km,
-                 stage, form_submitted_at, created_at)
-            VALUES (?,?,'whatsapp',?,1,'CircuitoTest','circuito@test.cl','12.345.678-9',
-                    'empresa','Empresa Test SpA',
-                    'Las Condes, Santiago','Viña del Mar',DATE_ADD(NOW(),INTERVAL 7 DAY),
-                    30,'traslado','Bus 45 pax',120.5,
-                    'formulario_completo',NOW(),NOW())
-        ")->execute([$conv_id, $phone_test, $exec_uuid]);
-        $results['pasos'][] = ['paso' => 1, 'desc' => 'Conv con formulario creada', 'conv_id' => $conv_id];
+        try {
+            stg()->prepare("
+                INSERT INTO wa_cloud_conversations
+                    (id, phone, channel, assigned_to, bot_active, contact_name, contact_email, contact_rut,
+                     client_type, company_name, service_origin, service_destination, service_date,
+                     service_passengers, service_type, service_vehicle, service_km,
+                     stage, form_submitted_at, created_at)
+                VALUES (?,?,'whatsapp',?,1,'CircuitoTest','circuito@test.cl','12.345.678-9',
+                        'empresa','Empresa Test SpA',
+                        'Las Condes, Santiago','Viña del Mar',DATE_ADD(NOW(),INTERVAL 7 DAY),
+                        30,'traslado','Bus 45 pax',120.5,
+                        'formulario_completo',NOW(),NOW())
+            ")->execute([$conv_id, $phone_test, $exec_uuid]);
+            $results['pasos'][] = ['paso' => 1, 'desc' => 'Conv con formulario creada', 'ok' => true, 'conv_id' => $conv_id];
+        } catch (PDOException $e) {
+            $results['pasos'][] = ['paso' => 1, 'desc' => 'Conv con formulario creada', 'ok' => false, 'error' => $e->getMessage()];
+            $results['pass'] = false;
+            ok($results);
+        }
 
         // 2. Crear borrador Sofía
         $opts = ['use_client_lookup' => false]; // sin lookup de clientes en staging
@@ -5739,7 +5792,7 @@ if (str_starts_with($action, 'e2e_')) {
 
         // 3. Verificar estado pending
         $apRow = stg()->prepare("SELECT status FROM wa_quote_approvals WHERE id=?")->execute([$appr_id]) ? null : null;
-        $apRow2 = stg()->query("SELECT status, wa_draft_quote_id FROM wa_cloud_conversations WHERE id='$conv_id'")->fetch();
+        $apRow2 = stg()->query("SELECT wa_draft_quote_id FROM wa_cloud_conversations WHERE id='$conv_id'")->fetch();
         $p3_ok = ($apRow2['wa_draft_quote_id'] === $quot_id);
         $results['pasos'][] = ['paso' => 3, 'desc' => 'Draft vinculado en conv', 'ok' => $p3_ok, 'wa_draft_quote_id' => $apRow2['wa_draft_quote_id']];
 
