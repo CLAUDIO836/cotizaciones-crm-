@@ -6504,10 +6504,9 @@ if ($action === 'stg_conv_detail') {
     $convId = $_GET['id'] ?? '';
     if (!$convId) err('id requerido', 400);
 
-    // Conectar a staging DB (mismas credenciales que los endpoints e2e_*)
-    $stg_db_user = getenv('STG_DB_USER') ?: '';
-    $stg_db_pass = getenv('STG_DB_PASS') ?: '';
-    if (!$stg_db_user) err('Staging DB no configurada en este servidor', 503);
+    // Conectar a staging DB — mismos fallbacks que wa_webhook_stg.php
+    $stg_db_user = getenv('STG_DB_USER') ?: DB_USER;
+    $stg_db_pass = getenv('STG_DB_PASS') ?: (getenv('CRM_DB_PASSWORD') ?: DB_PASS);
 
     try {
         $stgConn = new PDO(
@@ -6519,7 +6518,7 @@ if ($action === 'stg_conv_detail') {
         err('staging db error: ' . $e->getMessage(), 500);
     }
 
-    // Obtener conversación
+    // Obtener conversación — sin JOIN a users (staging usa IDs ficticios stg-exec-*)
     $stmt = $stgConn->prepare(
         "SELECT c.id, c.phone, c.bot_active, c.stage, c.source,
                 c.contact_name, c.contact_rut, c.contact_email,
@@ -6530,9 +6529,8 @@ if ($action === 'stg_conv_detail') {
                 c.service_km, c.assigned_to, c.handoff_requested_at,
                 c.wa_draft_quote_id, c.notes, c.last_msg_at,
                 c.last_customer_msg_at, c.created_at,
-                u.name AS assigned_name
+                c.assigned_to AS assigned_name
          FROM wa_cloud_conversations c
-         LEFT JOIN users u ON u.id = c.assigned_to
          WHERE c.id = ? LIMIT 1"
     );
     $stmt->execute([$convId]);
@@ -6578,6 +6576,34 @@ if ($action === 'stg_conv_detail') {
         'quote'        => $quote,
         'viewer'       => ['id' => $authUser['id'], 'name' => $authUser['name'], 'role' => $authUser['role']],
     ]);
+}
+
+// ── stg_conv_list — lista últimas conversaciones staging (temp debug) ─────────
+if ($action === 'stg_conv_list') {
+    // Auth: JWT normal O X-Stg-Token (mismo token que usa wa_webhook_stg.php)
+    $stgTok = $_SERVER['HTTP_X_STG_TOKEN'] ?? '';
+    $stgTokExpected = defined('CRM_E2E_TOKEN') ? CRM_E2E_TOKEN
+        : (getenv('CRM_E2E_TOKEN') ?: getenv('E2E_STAGING_TOKEN') ?: '');
+    $isStgAuth = ($stgTokExpected !== '' && $stgTok !== '' && hash_equals($stgTokExpected, $stgTok));
+    $authUser = $isStgAuth ? ['id' => 'stg-token-auth', 'role' => 'admin', 'name' => 'STG Token'] : getAuthUser();
+    if (!$authUser) err('No autenticado', 401);
+    $stg_db_user = getenv('STG_DB_USER') ?: DB_USER;
+    $stg_db_pass = getenv('STG_DB_PASS') ?: (getenv('CRM_DB_PASSWORD') ?: DB_PASS);
+    try {
+        $stgConn = new PDO(
+            'mysql:host=localhost;dbname=transccl_crm_staging;charset=utf8mb4',
+            $stg_db_user, $stg_db_pass,
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+        );
+    } catch (PDOException $e) { err('staging db error: ' . $e->getMessage(), 500); }
+    $isAdmin = ($authUser['role'] ?? '') === 'admin';
+    if ($isAdmin) {
+        $stmt = $stgConn->query("SELECT id, phone, contact_name, stage, assigned_to, created_at, last_msg_at FROM wa_cloud_conversations ORDER BY created_at DESC LIMIT 20");
+    } else {
+        $stmt = $stgConn->prepare("SELECT id, phone, contact_name, stage, assigned_to, created_at, last_msg_at FROM wa_cloud_conversations WHERE assigned_to = ? ORDER BY created_at DESC LIMIT 20");
+        $stmt->execute([$authUser['id']]);
+    }
+    ok(['conversations' => $stmt->fetchAll(), 'viewer' => ['id' => $authUser['id'], 'role' => $authUser['role']]]);
 }
 
 // ── Not found ─────────────────────────────────────────────────────────────────
