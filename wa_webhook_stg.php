@@ -212,6 +212,38 @@ function stgCrearBorradorSimple(PDO $pdo, string $conv_id, array $conv): array {
     $pdo->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=? WHERE id=?")
         ->execute([$qid,$conv_id]);
 
+    // Dual-write a producción: hace el borrador visible en la UI del CRM (mismo UUID)
+    $phone = $conv['phone'] ?? null;
+    if ($phone && ($prd = prdDb())) {
+        try {
+            $prdConvStmt = $prd->prepare("SELECT id, wa_draft_quote_id FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+            $prdConvStmt->execute([$phone]);
+            $prdConv = $prdConvStmt->fetch();
+            if ($prdConv && empty($prdConv['wa_draft_quote_id'])) {
+                $prd->prepare("INSERT IGNORE INTO quotations
+                    (id,number,etapa,status,company,distancia_km,fecha_salida,observaciones,created_at)
+                    VALUES (?,?,'borrador_wa','open',?,?,?,?,NOW())")
+                    ->execute([$qid,$number,$company,$km,$conv['service_date'],$obs]);
+                $prdAid = $prd->query("SELECT UUID() AS u")->fetch()['u'];
+                try {
+                    $prd->prepare("INSERT INTO wa_quote_approvals
+                        (id,conv_id,quotation_id,status,created_at)
+                        VALUES (?,?,?,'pending',NOW())")
+                        ->execute([$prdAid,$prdConv['id'],$qid]);
+                } catch (PDOException $e) {}
+                $prd->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=?, last_msg_at=NOW() WHERE id=?")
+                    ->execute([$qid,$prdConv['id']]);
+                stgLog("PRD_DUAL_WRITE_OK phone=$phone prd_conv={$prdConv['id']} quot=$qid");
+            } elseif ($prdConv) {
+                stgLog("PRD_DUAL_WRITE_SKIP phone=$phone — ya tiene borrador {$prdConv['wa_draft_quote_id']}");
+            } else {
+                stgLog("PRD_DUAL_WRITE_SKIP phone=$phone — sin conv en producción");
+            }
+        } catch (Throwable $e) {
+            stgLog("PRD_DUAL_WRITE_ERR phone=$phone " . $e->getMessage());
+        }
+    }
+
     return ['quotation_id' => $qid, 'number' => $number, 'etapa' => 'borrador_wa'];
 }
 
@@ -426,6 +458,25 @@ function stgDb(): PDO {
         );
     }
     return $pdo;
+}
+
+// Conexión a BD de producción (solo lectura/escritura controlada para dual-write de aprobaciones)
+function prdDb(): ?PDO {
+    static $pdo, $tried;
+    if (!$tried) {
+        $tried = true;
+        try {
+            $pdo = new PDO(
+                'mysql:host=localhost;dbname=transccl_crm;charset=utf8mb4',
+                'transccl_crm_user',
+                getenv('CRM_DB_PASSWORD') ?: '',
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+            );
+        } catch (Throwable $e) {
+            stgLog('PRD_DB_FAIL ' . $e->getMessage());
+        }
+    }
+    return $pdo ?? null;
 }
 
 function stgDbUuid(): string {

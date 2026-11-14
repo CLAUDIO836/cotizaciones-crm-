@@ -117,7 +117,7 @@ function requireAdmin(): array {
 }
 
 function isAdmin(array $user): bool {
-    return in_array($user['role'], ['admin', 'superadmin']);
+    return in_array($user['role'], ['admin', 'superadmin', 'gerencia']);
 }
 
 // ── RUT utilities (módulo 11 chileno) ─────────────────────────────────────────
@@ -3698,8 +3698,8 @@ if ($action === 'wa_cloud_list') {
             ORDER BY created_at DESC LIMIT 1
         )
         " . ($where ? 'WHERE ' . implode(' AND ', $where) : '') . "
-        ORDER BY c.last_msg_at DESC
-        LIMIT 200
+        ORDER BY (c.wa_draft_quote_id IS NOT NULL) DESC, c.last_msg_at DESC
+        LIMIT 500
     ";
 
     $stmt = db()->prepare($sql);
@@ -4332,6 +4332,7 @@ if ($action === 'wa_form_save') {
 
     $sets[] = "form_submitted_at = COALESCE(form_submitted_at, NOW())";
     $sets[] = "stage = 'formulario_completo'";
+    $sets[] = "last_msg_at = NOW()";
     $vals[] = $phone;
     db()->prepare("UPDATE wa_cloud_conversations SET " . implode(', ', $sets) . " WHERE phone = ?")
         ->execute($vals);
@@ -4877,6 +4878,10 @@ if ($action === 'wa_approvals_decide') {
     $qSnap = db()->prepare("SELECT id, number, total, etapa, desde, hasta, fecha_salida, vehicle_type, distancia_km FROM quotations WHERE id=?");
     $qSnap->execute([$apRow['quotation_id']]);
     $snapshot = $qSnap->fetch() ?: [];
+
+    if ($decision === 'approved' && (float)($snapshot['total'] ?? 0) <= 0) {
+        err('No se puede aprobar: la cotización tiene precio $0. Ajuste el precio antes de aprobar.', 422);
+    }
 
     if ($decision === 'rejected') {
         db()->prepare("UPDATE wa_quote_approvals SET status='rejected', approved_by=?, approved_at=NOW(), notes=?, quote_snapshot=? WHERE id=?")
