@@ -13,7 +13,7 @@ date_default_timezone_set('America/Santiago');
 define('_DB_HOST',  'localhost');
 define('_DB_NAME',  'transccl_crm');
 define('_DB_USER',  'transccl_crm_user');
-define('_DB_PASS',  getenv('CRM_DB_PASSWORD') ?: 'Claudio@1978');
+define('_DB_PASS',  getenv('CRM_DB_PASSWORD')); // REQUIERE CRM_DB_PASSWORD en env del cron (verificar crm-secrets.php en servidor)
 define('_WA_TOKEN', defined('META_WA_TOKEN')           ? META_WA_TOKEN           : (getenv('WHATSAPP_TOKEN') ?: ''));
 define('_WA_PHONE', defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : (getenv('WHATSAPP_PHONE_NUMBER_ID') ?: ''));
 define('_FLYER_URL', 'https://www.transccl.cl/img/wa_flyer.webp');

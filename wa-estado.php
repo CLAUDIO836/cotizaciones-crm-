@@ -9,7 +9,7 @@ if (!defined('DB_HOST')) {
     define('DB_HOST', 'localhost');
     define('DB_NAME', 'transccl_crm');
     define('DB_USER', 'transccl_crm_user');
-    define('DB_PASS', getenv('CRM_DB_PASSWORD') ?: 'Claudio@1978');
+    define('DB_PASS', getenv('CRM_DB_PASSWORD'));
 }
 
 // ── Auth — sin secretos en URL (evitar filtración en logs) ───────────────────

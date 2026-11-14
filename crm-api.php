@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit; }
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'transccl_crm');
 define('DB_USER', 'transccl_crm_user');
-define('DB_PASS', getenv('CRM_DB_PASSWORD') ?: 'Claudio@1978');
+define('DB_PASS', getenv('CRM_DB_PASSWORD'));
 define('JWT_SECRET', getenv('CRM_JWT_SECRET') ?: 'aaf2874032a28f19d5ee92733d7d33baee9dd198f6efceb271d544a8deaf1312');
 define('SESSION_HOURS', 72);
 
@@ -3636,6 +3636,7 @@ if ($action === 'wa_cloud_list') {
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_passengers INT NULL");                                        } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_type VARCHAR(100) NULL");                                     } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_vehicle VARCHAR(50) NULL AFTER service_type");                } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN wa_draft_quote_id VARCHAR(36) NULL");                                 } catch (PDOException $e) {}
 
     // Backfill last_customer_msg_at para conversaciones que aún no lo tienen
     try {
@@ -6596,11 +6597,19 @@ if ($action === 'stg_conv_list') {
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
         );
     } catch (PDOException $e) { err('staging db error: ' . $e->getMessage(), 500); }
-    $isAdmin = ($authUser['role'] ?? '') === 'admin';
+    $isAdmin = in_array($authUser['role'] ?? '', ['admin', 'superadmin']);
+    $sel = "SELECT c.id, c.phone, c.contact_name, c.stage, c.assigned_to,
+                   c.bot_active, c.wa_draft_quote_id,
+                   c.last_msg_at, c.last_message, c.unread_count,
+                   c.service_origin, c.service_destination, c.service_date,
+                   c.created_at,
+                   p.name AS assigned_name
+            FROM wa_cloud_conversations c
+            LEFT JOIN profiles p ON p.id = c.assigned_to";
     if ($isAdmin) {
-        $stmt = $stgConn->query("SELECT id, phone, contact_name, stage, assigned_to, created_at, last_msg_at FROM wa_cloud_conversations ORDER BY created_at DESC LIMIT 20");
+        $stmt = $stgConn->query("$sel ORDER BY c.last_msg_at DESC LIMIT 50");
     } else {
-        $stmt = $stgConn->prepare("SELECT id, phone, contact_name, stage, assigned_to, created_at, last_msg_at FROM wa_cloud_conversations WHERE assigned_to = ? ORDER BY created_at DESC LIMIT 20");
+        $stmt = $stgConn->prepare("$sel WHERE (c.assigned_to = ? OR c.assigned_to IS NULL) ORDER BY c.last_msg_at DESC LIMIT 50");
         $stmt->execute([$authUser['id']]);
     }
     ok(['conversations' => $stmt->fetchAll(), 'viewer' => ['id' => $authUser['id'], 'role' => $authUser['role']]]);

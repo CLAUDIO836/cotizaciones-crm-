@@ -35,7 +35,7 @@ function supvDb(): PDO {
     $host = defined('STG_DB_HOST') ? STG_DB_HOST : (getenv('STG_DB_HOST') ?: 'localhost');
     $db   = defined('STG_DB_NAME') ? STG_DB_NAME : (getenv('STG_DB_NAME') ?: 'transccl_crm_staging');
     $user = defined('STG_DB_USER') ? STG_DB_USER : (getenv('STG_DB_USER') ?: 'transccl_crm_user');
-    $pass = defined('STG_DB_PASS') ? STG_DB_PASS : (getenv('STG_DB_PASS') ?: 'Claudio@1978');
+    $pass = defined('STG_DB_PASS') ? STG_DB_PASS : getenv('STG_DB_PASS');
     $pdo = new PDO("mysql:host=$host;dbname=$db;charset=utf8mb4", $user, $pass,
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
     return $pdo;

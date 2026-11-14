@@ -32,7 +32,7 @@ date_default_timezone_set('America/Santiago');
 define('STG_DB_NAME',   'transccl_crm_staging');
 define('STG_DB_HOST',   'localhost');
 define('STG_DB_USER',   defined('STG_DB_USER_K')   ? STG_DB_USER_K   : (getenv('STG_DB_USER')   ?: 'transccl_crm_user'));
-define('STG_DB_PASS',   defined('STG_DB_PASS_K')   ? STG_DB_PASS_K   : (getenv('STG_DB_PASS')   ?: getenv('CRM_DB_PASSWORD') ?: 'Claudio@1978'));
+define('STG_DB_PASS',   defined('STG_DB_PASS_K')   ? STG_DB_PASS_K   : (getenv('STG_DB_PASS')   ?: getenv('CRM_DB_PASSWORD')));
 define('STG_VERIFY',    defined('STG_WA_VERIFY')   ? STG_WA_VERIFY   : (getenv('STG_WA_VERIFY') ?: 'stg_verify_token_2024'));
 define('STG_E2E_TOKEN', defined('CRM_E2E_TOKEN')   ? CRM_E2E_TOKEN
     : (getenv('CRM_E2E_TOKEN') ?: (getenv('E2E_STAGING_TOKEN') ?: '')));

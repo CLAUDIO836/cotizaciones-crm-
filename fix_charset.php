@@ -5,7 +5,7 @@ if (file_exists($_s)) require_once $_s;
 
 $pdo = new PDO('mysql:host=localhost;dbname=transccl_crm;charset=utf8mb4',
     'transccl_crm_user',
-    getenv('CRM_DB_PASSWORD') ?: 'Claudio@1978',
+    getenv('CRM_DB_PASSWORD'),
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
      PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
 
