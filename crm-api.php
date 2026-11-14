@@ -6482,6 +6482,14 @@ if (str_starts_with($action, 'e2e_')) {
         ]);
     }
 
+    // ── e2e_run_supervision — ejecuta el cron de alertas comerciales en staging ─
+    if ($action === 'e2e_run_supervision') {
+        define('SUPERVISION_INCLUDED', true);
+        require_once __DIR__ . '/wa_supervision_stg.php';
+        $r = supvRunAll();
+        ok($r);
+    }
+
     err("Acción e2e '$action' no reconocida", 404);
 }
 

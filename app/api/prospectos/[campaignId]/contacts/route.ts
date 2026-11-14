@@ -13,11 +13,11 @@ function contactFields(body: Record<string, string | null>) {
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ campaignId: string }> }) {
   const token = req.cookies.get('crm_token')?.value
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id } = await params
+  const { campaignId: id } = await params
   const body = await req.json()
 
   const res = await fetch(`${CRM_API}?action=prospect_contact_add&token=${encodeURIComponent(token)}`, {
