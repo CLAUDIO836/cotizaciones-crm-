@@ -5295,6 +5295,45 @@ if (str_starts_with($action, 'e2e_')) {
         ]);
     }
 
+    // ── e2e_conv_messages — historial de mensajes de una conv por phone ──
+    if ($action === 'e2e_conv_messages') {
+        $phone = $_GET['phone'] ?? (body()['phone'] ?? '');
+        if (!$phone) err('phone requerido');
+        $conv = stg()->prepare("SELECT id, stage, bot_active, contact_name, company_name, client_type,
+            contact_rut, contact_email,
+            service_origin, service_destination, service_date, service_passengers,
+            service_hour, service_hour_return, service_type, service_vehicle,
+            form_submitted_at, wa_draft_quote_id FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+        $conv->execute([$phone]);
+        $convRow = $conv->fetch();
+        if (!$convRow) err('conversación no encontrada', 404);
+        $msgs = stg()->prepare("SELECT direction, msg_type, content, sender_type, created_at
+            FROM wa_cloud_messages WHERE conversation_id=? ORDER BY created_at ASC");
+        $msgs->execute([$convRow['id']]);
+        ok(['conv' => $convRow, 'messages' => $msgs->fetchAll()]);
+    }
+
+    // ── e2e_reset_conv — borra mensajes y limpia campos de chat (mantiene datos del formulario) ──
+    if ($action === 'e2e_reset_conv') {
+        $phone = $_GET['phone'] ?? (body()['phone'] ?? '');
+        if (!$phone) err('phone requerido');
+        $conv = stg()->prepare("SELECT id FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+        $conv->execute([$phone]);
+        $convRow = $conv->fetch();
+        if (!$convRow) err('conversación no encontrada', 404);
+        $convId = $convRow['id'];
+        stg()->prepare("DELETE FROM wa_cloud_messages WHERE conversation_id=?")->execute([$convId]);
+        // Limpiar campos recopilados en el chat (mantiene datos del formulario)
+        stg()->prepare("UPDATE wa_cloud_conversations SET
+            bot_active=1,
+            contact_rut=NULL,
+            contact_email=NULL,
+            service_hour=NULL,
+            service_hour_return=NULL
+            WHERE id=?")->execute([$convId]);
+        ok(['reset' => true, 'conv_id' => $convId, 'phone' => $phone]);
+    }
+
     // ── e2e_seed ───────────────────────────────────────────────────────────
     if ($action === 'e2e_seed') {
         $phone_test = '56911111001';
