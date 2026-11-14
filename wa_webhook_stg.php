@@ -465,12 +465,16 @@ function stgEnsureTables(): void {
         UNIQUE KEY uq_phone (phone)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    // Columnas que pueden faltar en staging existente (ALTER IGNORE si ya existen)
-    foreach ([
-        "ALTER TABLE wa_cloud_conversations ADD COLUMN IF NOT EXISTS service_km FLOAT NULL",
-        "ALTER TABLE wa_cloud_conversations ADD COLUMN IF NOT EXISTS handoff_requested_at DATETIME NULL",
-    ] as $alter) {
-        try { $pdo->exec($alter); } catch (Throwable $e) {}
+    // Columnas que pueden faltar en staging existente
+    // Compatible MySQL 5.7: verificar INFORMATION_SCHEMA antes de ALTER
+    $existingCols = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='wa_cloud_conversations'")
+        ->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('service_km', $existingCols)) {
+        try { $pdo->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_km FLOAT NULL"); } catch (Throwable $e) {}
+    }
+    if (!in_array('handoff_requested_at', $existingCols)) {
+        try { $pdo->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN handoff_requested_at DATETIME NULL"); } catch (Throwable $e) {}
     }
 
     // Tabla config (interruptor global) — creada aquí también para garantizar existencia
