@@ -4847,10 +4847,18 @@ if ($action === 'wa_approvals_decide') {
     db()->prepare("UPDATE quotations SET etapa='cotizacion', status='open' WHERE id=?")
         ->execute([$apRow['quotation_id']]);
 
-    // ── Despacho automático WA ────────────────────────────────────────────────
+    // ── Despacho automático WA (controlado por flag WA_DISPATCH_ENABLED) ────────
+    // Para habilitar: agregar WA_DISPATCH_ENABLED=1 en crm-secrets.php
+    // Por defecto deshabilitado hasta activación general autorizada por Gerencia
+    $dispatchEnabled = (getenv('WA_DISPATCH_ENABLED') === '1');
     $waToken   = defined('META_WA_TOKEN')           ? META_WA_TOKEN           : (getenv('META_WA_TOKEN')           ?: '');
     $waPhoneId = defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : (getenv('META_WA_PHONE_NUMBER_ID') ?: '');
-    $dispatchResult = dispatch_wa_quote(db(), $apRow['id'], $waToken, $waPhoneId);
+
+    if ($dispatchEnabled && $waToken && $waPhoneId) {
+        $dispatchResult = dispatch_wa_quote(db(), $apRow['id'], $waToken, $waPhoneId);
+    } else {
+        $dispatchResult = ['ok' => false, 'envio_pendiente' => true, 'motivo' => $dispatchEnabled ? 'credenciales_wa_no_configuradas' : 'despacho_deshabilitado'];
+    }
 
     $q = db()->prepare("SELECT number, total, desde, hasta, fecha_salida FROM quotations WHERE id=?");
     $q->execute([$apRow['quotation_id']]);
