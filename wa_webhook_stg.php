@@ -168,16 +168,100 @@ function stgRegistrarOportunidad(PDO $pdo, string $conv_id): array {
     }
 }
 
-// ── Borrador simple staging: crea en quotations sin tarifa detallada ─────────────
-// No requiere crm-api.php. Solo crea el registro si hay km y datos básicos.
+// ── Helpers de tarifario staging ─────────────────────────────────────────────────
+$STG_TARIFARIO = [
+    'bus45'     => ['pax'=>45,'minimo'=>184500,'fijo'=>118500,'valorKm'=>3560],
+    'taxibus30' => ['pax'=>30,'minimo'=>175800,'fijo'=>116900,'valorKm'=>3100],
+    'taxibus25' => ['pax'=>25,'minimo'=>167800,'fijo'=>108900,'valorKm'=>3100],
+    'minibus19' => ['pax'=>19,'minimo'=>159100,'fijo'=>100200,'valorKm'=>3100],
+    'minibus17' => ['pax'=>17,'minimo'=>151100,'fijo'=>92200, 'valorKm'=>3100],
+    'minibus15' => ['pax'=>15,'minimo'=>142400,'fijo'=>83500, 'valorKm'=>3100],
+    'van11'     => ['pax'=>11,'minimo'=>134400,'fijo'=>75500, 'valorKm'=>3100],
+];
+function stgFormatoPorPasajeros(int $pax): string {
+    global $STG_TARIFARIO;
+    $t = $STG_TARIFARIO; uasort($t, fn($a,$b)=>$a['pax']<=>$b['pax']);
+    foreach ($t as $id=>$f) { if ($f['pax']>=$pax) return $id; }
+    return 'bus45';
+}
+function stgFormatoNombre(string $id): string {
+    return match($id) {
+        'bus45'=>'Bus 45','taxibus30'=>'Taxibús 30','taxibus25'=>'Taxibús 25',
+        'minibus19'=>'Minibús 19','minibus17'=>'Minibús 17','minibus15'=>'Minibús 15','van11'=>'Van 11',
+        default=>$id,
+    };
+}
+function stgMapVehiculo(string $v, int $pax): string {
+    $v = strtolower(trim($v));
+    $direct = ['bus45','taxibus30','taxibus25','minibus19','minibus17','minibus15','van11'];
+    if (in_array($v, $direct)) return $v;
+    if ($v==='bus'||str_starts_with($v,'bus ')) return 'bus45';
+    if ($v==='van11'||$v==='van'||str_starts_with($v,'van ')) return 'van11';
+    return stgFormatoPorPasajeros($pax);
+}
+// GAP 5: llama al motor oficial TypeScript. Fallback: PHP local.
+function stgCalcularTarifaOficial(string $formato_id, float $km, array $opts = []): array {
+    global $STG_TARIFARIO;
+    $secret = getenv('INTERNAL_PDF_SECRET') ?: '';
+    $appUrl = rtrim(getenv('NEXT_PUBLIC_APP_URL') ?: 'https://crm.transccl.cl', '/');
+    $url    = $appUrl . '/api/tarifa/internal';
+    $payload = json_encode([
+        'servicio'   => 'salida',
+        'km'         => $km,
+        'formato'    => $formato_id,
+        'modalidad'  => $opts['modalidad'] ?? 'mismo_dia',
+        'fecha'      => $opts['fecha']     ?? null,
+        'horaSalida' => $opts['horaSalida'] ?? null,
+    ]);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json', "X-Internal-Secret: $secret"],
+        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_TIMEOUT        => 5,
+        CURLOPT_SSL_VERIFYPEER => false,
+    ]);
+    $raw    = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($status === 200 && $raw) {
+        $decoded = json_decode($raw, true);
+        $data    = $decoded['data'] ?? null;
+        if ($data && isset($data['precioLista'])) {
+            return [
+                'formato_id'    => $data['formato']['id']     ?? $formato_id,
+                'formato_nombre'=> $data['formato']['nombre'] ?? stgFormatoNombre($formato_id),
+                'km'            => $km,
+                'precio_lista'  => (int)$data['precioLista'],
+                'precio_minimo' => (int)($data['precioMinimo'] ?? 0),
+                'alertas'       => $data['alertas']           ?? [],
+                'fuente'        => 'oficial',
+            ];
+        }
+    }
+    // Fallback PHP local
+    $f = $STG_TARIFARIO[$formato_id] ?? $STG_TARIFARIO['bus45'];
+    $lista = (int)max($f['minimo'], $f['fijo'] + $f['valorKm'] * $km);
+    return [
+        'formato_id'    => $formato_id,
+        'formato_nombre'=> stgFormatoNombre($formato_id),
+        'km'            => $km,
+        'precio_lista'  => $lista,
+        'precio_minimo' => (int)round($lista * (0.65 / 0.70)),
+        'fuente'        => 'fallback_php',
+    ];
+}
+
+// ── Borrador simple staging (Gaps 1+2+5): sin km bloquea, usa tarifario oficial ──
 function stgCrearBorradorSimple(PDO $pdo, string $conv_id, array $conv): array {
-    foreach (['service_origin','service_destination','service_passengers','service_date','service_km'] as $f) {
+    foreach (['service_origin','service_destination','service_passengers','service_date'] as $f) {
         if (empty($conv[$f])) return ['error' => "Campo requerido: $f"];
     }
-    $km  = (float)$conv['service_km'];
+    $km  = isset($conv['service_km']) && (float)$conv['service_km'] > 0 ? (float)$conv['service_km'] : null;
     $pax = (int)$conv['service_passengers'];
-    if ($km > 150) return ['error' => "{$km}km > 150km: a_medida", 'tipo' => 'a_medida'];
     if ($pax > 90) return ['error' => "{$pax} pax > 90: a_medida", 'tipo' => 'a_medida'];
+    if ($km !== null && $km > 150) return ['error' => "{$km}km > 150km: a_medida", 'tipo' => 'a_medida'];
 
     // No duplicar si ya existe
     if (!empty($conv['wa_draft_quote_id'])) {
@@ -188,29 +272,70 @@ function stgCrearBorradorSimple(PDO $pdo, string $conv_id, array $conv): array {
     $email = $conv['contact_email'] ?? $conv['quote_send_email'] ?? null;
     if (!$rut || !$email) return ['error' => 'RUT o email aún no recopilados'];
 
-    $qid    = $pdo->query("SELECT UUID() AS u")->fetch()['u'];
-    $number = 'BWA-' . date('Ymd') . '-' . substr(rand(1000,9999), 0, 4);
-    $company = $conv['company_name'] ?? $conv['contact_name'] ?? 'Cliente WA';
+    $formato_id    = stgMapVehiculo($conv['service_vehicle'] ?? '', $pax);
+    $sin_km        = ($km === null);
+    if ($sin_km) {
+        $tarifa = [
+            'formato_id'    => $formato_id,
+            'formato_nombre'=> stgFormatoNombre($formato_id),
+            'km'            => 0,
+            'precio_lista'  => 0,
+            'precio_minimo' => 0,
+            'fuente'        => 'sin_km',
+        ];
+    } else {
+        // GAP 5: motor oficial TypeScript
+        $tarifa = stgCalcularTarifaOficial($formato_id, $km, [
+            'fecha'      => $conv['service_date'] ?? null,
+            'horaSalida' => $conv['service_hour'] ?? null,
+        ]);
+    }
 
-    $obs = "Borrador WA staging. Origen: {$conv['service_origin']} → {$conv['service_destination']}. " .
-           "Pax: {$pax}. Km: {$km}. RUT: {$rut}. Email: {$email}.";
+    $qid           = $pdo->query("SELECT UUID() AS u")->fetch()['u'];
+    $appr_id       = $pdo->query("SELECT UUID() AS u")->fetch()['u'];
+    $number        = 'BWA-' . date('Ymd') . '-' . str_pad(rand(1000,9999), 4, '0', STR_PAD_LEFT);
+    $company       = $conv['company_name'] ?? $conv['contact_name'] ?? 'Cliente WA';
+    $etapa         = $sin_km ? 'requiere_revision_precio' : 'borrador_wa';
+    $obs           = $sin_km
+        ? sprintf('Borrador automático Sofía staging — DISTANCIA PENDIENTE. Vehículo estimado: %s. Pasajeros: %d.', $tarifa['formato_nombre'], $pax)
+        : sprintf('Borrador automático Sofía staging. Vehículo: %s. Distancia: %s km. Pasajeros: %d.%s',
+              $tarifa['formato_nombre'], $km, $pax,
+              ($tarifa['fuente'] ?? '') === 'fallback_php' ? ' [tarifario fallback]' : '');
 
     $pdo->prepare("INSERT INTO quotations
-        (id,number,etapa,status,company,distancia_km,fecha_salida,observaciones,created_at)
-        VALUES (?,?,'borrador_wa','open',?,?,?,?,NOW())")
-        ->execute([$qid,$number,$company,$km,$conv['service_date'],$obs]);
+        (id,number,etapa,status,company,distancia_km,fecha_salida,subtotal,total,observaciones,vehicle_type,created_at)
+        VALUES (?,?,?,?   ,?,?,?,?,?,?,?,NOW())")
+        ->execute([$qid,$number,$etapa,'open',$company,$km,$conv['service_date'],
+                   $tarifa['precio_lista'],$tarifa['precio_lista'],$obs,$tarifa['formato_nombre']]);
 
-    // Registrar aprobación pendiente en wa_quote_approvals si existe la tabla
+    // GAP 2: línea de ítem para que el PDF tenga contenido
+    $item_desc = $sin_km
+        ? "Servicio de transporte por definir — datos pendientes"
+        : "Servicio salida: {$conv['service_origin']} → {$conv['service_destination']}";
     try {
-        $aid = $pdo->query("SELECT UUID() AS u")->fetch()['u'];
-        $pdo->prepare("INSERT INTO wa_quote_approvals
-            (id,conv_id,quotation_id,status,created_at)
-            VALUES (?,?,?,'pending',NOW())")
-            ->execute([$aid,$conv_id,$qid]);
-    } catch (PDOException $e) {}
+        $item_id = $pdo->query("SELECT UUID() AS u")->fetch()['u'];
+        $pdo->prepare("INSERT INTO quotation_items
+            (id,quotation_id,codigo,description,pasajeros,quantity,unit_price,subtotal,sort_order)
+            VALUES (?,?,NULL,?,?,1,?,?,0)")
+            ->execute([$item_id,$qid,$item_desc,$pax,$tarifa['precio_lista'],$tarifa['precio_lista']]);
+    } catch (PDOException $ei) {
+        error_log("[stgCrearBorradorSimple] quotation_items insert failed: " . $ei->getMessage());
+    }
+
+    $snapshot = ['origin'=>$conv['service_origin'],'destination'=>$conv['service_destination'],
+                 'passengers'=>$pax,'vehicle'=>$tarifa['formato_nombre'],'km'=>$km,
+                 'precio_lista'=>$tarifa['precio_lista'],'sin_km'=>$sin_km,
+                 'fuente_tarifa'=>$tarifa['fuente']??'','generado'=>date('c')];
+
+    $pdo->prepare("INSERT INTO wa_quote_approvals
+        (id,conv_id,quotation_id,quote_total,quote_snapshot,status,created_at)
+        VALUES (?,?,?,?,?,'pending',NOW())")
+        ->execute([$appr_id,$conv_id,$qid,$tarifa['precio_lista'],json_encode($snapshot)]);
 
     $pdo->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=? WHERE id=?")
         ->execute([$qid,$conv_id]);
+
+    stgLog("BORRADOR_STG_OK conv=$conv_id quot=$qid number=$number etapa=$etapa km=" . ($km ?? 'null') . " precio=" . $tarifa['precio_lista']);
 
     // Dual-write a producción: hace el borrador visible en la UI del CRM (mismo UUID)
     $phone = $conv['phone'] ?? null;
@@ -221,15 +346,24 @@ function stgCrearBorradorSimple(PDO $pdo, string $conv_id, array $conv): array {
             $prdConv = $prdConvStmt->fetch();
             if ($prdConv && empty($prdConv['wa_draft_quote_id'])) {
                 $prd->prepare("INSERT IGNORE INTO quotations
-                    (id,number,etapa,status,company,distancia_km,fecha_salida,observaciones,created_at)
-                    VALUES (?,?,'borrador_wa','open',?,?,?,?,NOW())")
-                    ->execute([$qid,$number,$company,$km,$conv['service_date'],$obs]);
+                    (id,number,etapa,status,company,distancia_km,fecha_salida,subtotal,total,observaciones,vehicle_type,created_at)
+                    VALUES (?,?,?,?   ,?,?,?,?,?,?,?,NOW())")
+                    ->execute([$qid,$number,$etapa,'open',$company,$km,$conv['service_date'],
+                               $tarifa['precio_lista'],$tarifa['precio_lista'],$obs,$tarifa['formato_nombre']]);
+                // GAP 2 dual-write: quotation_items
+                try {
+                    $prd_item_id = $prd->query("SELECT UUID() AS u")->fetch()['u'];
+                    $prd->prepare("INSERT IGNORE INTO quotation_items
+                        (id,quotation_id,codigo,description,pasajeros,quantity,unit_price,subtotal,sort_order)
+                        VALUES (?,?,NULL,?,?,1,?,?,0)")
+                        ->execute([$prd_item_id,$qid,$item_desc,$pax,$tarifa['precio_lista'],$tarifa['precio_lista']]);
+                } catch (PDOException $e) {}
                 $prdAid = $prd->query("SELECT UUID() AS u")->fetch()['u'];
                 try {
                     $prd->prepare("INSERT INTO wa_quote_approvals
-                        (id,conv_id,quotation_id,status,created_at)
-                        VALUES (?,?,?,'pending',NOW())")
-                        ->execute([$prdAid,$prdConv['id'],$qid]);
+                        (id,conv_id,quotation_id,quote_total,quote_snapshot,status,created_at)
+                        VALUES (?,?,?,?,?,'pending',NOW())")
+                        ->execute([$prdAid,$prdConv['id'],$qid,$tarifa['precio_lista'],json_encode($snapshot)]);
                 } catch (PDOException $e) {}
                 $prd->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=?, last_msg_at=NOW() WHERE id=?")
                     ->execute([$qid,$prdConv['id']]);
@@ -244,7 +378,8 @@ function stgCrearBorradorSimple(PDO $pdo, string $conv_id, array $conv): array {
         }
     }
 
-    return ['quotation_id' => $qid, 'number' => $number, 'etapa' => 'borrador_wa'];
+    return ['quotation_id' => $qid, 'number' => $number, 'etapa' => $etapa,
+            'tarifa' => $tarifa, 'approval_id' => $appr_id];
 }
 
 // ── Validación RUT chileno (módulo 11) ─────────────────────────────────────────

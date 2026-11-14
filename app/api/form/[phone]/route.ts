@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
+const CRM_API_STG = (process.env.CRM_API_STG_URL ?? 'https://www.transccl.cl/crm-api-stg.php').replace('://transccl.cl', '://www.transccl.cl')
 
 // Teléfonos de prueba staging — nunca llegan a producción DB
 const E2E_TOKEN = process.env.E2E_TEST_TOKEN ?? ''
@@ -19,7 +20,8 @@ export async function GET(
     const action = staging ? 'e2e_form_get' : 'wa_form_get'
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (staging) headers['x-e2e-token'] = E2E_TOKEN
-    const res = await fetch(`${CRM_API}?action=${action}&phone=${clean}`, { cache: 'no-store', headers })
+    const baseUrl = staging ? CRM_API_STG : CRM_API
+    const res = await fetch(`${baseUrl}?action=${action}&phone=${clean}`, { cache: 'no-store', headers })
     const data = await res.json()
     return NextResponse.json(data)
   } catch {
@@ -41,7 +43,8 @@ export async function POST(
     const action = staging ? 'e2e_form_save_borrador' : 'wa_form_save'
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (staging) headers['x-e2e-token'] = E2E_TOKEN
-    const res = await fetch(`${CRM_API}?action=${action}`, {
+    const baseUrl = staging ? CRM_API_STG : CRM_API
+    const res = await fetch(`${baseUrl}?action=${action}`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ ...body, phone: clean }),
