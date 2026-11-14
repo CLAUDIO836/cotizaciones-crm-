@@ -520,7 +520,7 @@ function stgProcessMessage(string $wamid, string $phone, string $text, ?string $
             service_hour, service_hour_return,
             service_passengers, service_type, service_vehicle,
             service_km, assigned_to, handoff_requested_at,
-            wa_draft_quote_id, form_submitted_at
+            wa_draft_quote_id, form_submitted_at, form_link_sent_at
             FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
         $conv->execute([$phone]);
         $row = $conv->fetch();
@@ -641,6 +641,20 @@ function stgProcessMessage(string $wamid, string $phone, string $text, ?string $
         }
 
         $visible = trim(preg_replace('/\[FICHA_JSON:[^\]]+\]/', '', $claude));
+
+        // Safety net: si Sofía olvidó el link del formulario, inyectarlo
+        // stage='nuevo' excluye datos históricos aunque existan en DB
+        $formYaEnviado  = !empty($row['form_link_sent_at']);
+        $formSubmitado  = !empty($row['form_submitted_at']);
+        $serviceDatosOk = !empty($row['service_origin'])     && !empty($row['service_destination'])
+                       && !empty($row['service_date'])       && !empty($row['service_passengers'])
+                       && !empty($row['service_type'])
+                       && ($row['stage'] !== 'nuevo');
+        if (!$formYaEnviado && !$formSubmitado && !$serviceDatosOk && $visible && !str_contains($visible, 'crm.transccl.cl/form/')) {
+            $visible .= "\n\nhttps://crm.transccl.cl/form/{$phone}";
+            stgDb()->prepare("UPDATE wa_cloud_conversations SET form_link_sent_at=NOW() WHERE id=?")->execute([$convId]);
+            stgLog("SAFETY_NET_FORM_INJECT phone=$phone conv=$convId");
+        }
 
         // Extracción PHP de datos del cliente — fallback cuando el modelo no incluye FICHA_JSON
         // REGLAS: solo extrae si el campo está vacío (no sobreescribe); valida RUT con módulo 11
