@@ -4389,11 +4389,14 @@ if ($action === 'wa_form_save') {
             $convFull->execute([$phone]);
             $conv = $convFull->fetch();
 
-            // Si no tiene ejecutivo asignado, notificar a Claudio
+            // Si no tiene ejecutivo asignado, notificar solo por email a gerencia (sin WA a número personal)
             $execPhone  = $conv['exec_celular'] ?? null;
             $execEmail  = $conv['exec_email']   ?? null;
             $execName   = $conv['exec_name']    ?? 'Equipo';
-            if (!$execPhone) { $execPhone = '56974270657'; $execEmail = 'claudio@transccl.cl'; $execName = 'Claudio'; }
+            if (!$execPhone && !$execEmail) { $execEmail = 'gerencia@transccl.cl'; $execName = 'Gerencia'; }
+            if (!$execPhone) {
+                error_log('[wa_form_save] conv sin exec phone, omitiendo WA notify phone=' . $phone);
+            }
 
             $clientName  = $conv['contact_name']        ?? 'Cliente';
             $origen      = $conv['service_origin']      ?? '—';
@@ -4403,31 +4406,33 @@ if ($action === 'wa_form_save') {
             $tipo        = $conv['service_type']        ?? '—';
             $clientPhone = $conv['phone']               ?? $phone;
 
-            // A) WA al ejecutivo — texto libre (cliente escribió primero, ventana abierta)
-            $waExecMsg = "🔔 *$clientName* completó el formulario de cotización.\n\n"
-                       . "*Servicio:* $tipo\n"
-                       . "*Desde:* $origen\n*Hacia:* $destino\n"
-                       . "*Fecha:* $fecha\n*Pasajeros:* $pax\n"
-                       . "*Tel cliente:* +$clientPhone\n\n"
-                       . "👉 Cotizar: https://crm.transccl.cl";
-            $waExecPayload = [
-                'messaging_product' => 'whatsapp',
-                'to'                => $execPhone,
-                'type'              => 'text',
-                'text'              => ['body' => $waExecMsg, 'preview_url' => false],
-            ];
-            $ch2 = curl_init("https://graph.facebook.com/v21.0/{$phoneId}/messages");
-            curl_setopt_array($ch2, [
-                CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true,
-                CURLOPT_HTTPHEADER     => ["Authorization: Bearer {$waToken}", 'Content-Type: application/json'],
-                CURLOPT_POSTFIELDS     => json_encode($waExecPayload),
-                CURLOPT_TIMEOUT        => 10,
-            ]);
-            $waExecResp   = curl_exec($ch2);
-            $waExecStatus = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
-            curl_close($ch2);
-            if ($waExecStatus >= 400) {
-                error_log('[wa_form_save] WA exec notify error ' . $waExecStatus . ': ' . substr($waExecResp, 0, 200));
+            // A) WA al ejecutivo — solo si tiene celular registrado (evitar enviar a número personal de fallback)
+            if ($execPhone) {
+                $waExecMsg = "🔔 *$clientName* completó el formulario de cotización.\n\n"
+                           . "*Servicio:* $tipo\n"
+                           . "*Desde:* $origen\n*Hacia:* $destino\n"
+                           . "*Fecha:* $fecha\n*Pasajeros:* $pax\n"
+                           . "*Tel cliente:* +$clientPhone\n\n"
+                           . "👉 Cotizar: https://crm.transccl.cl";
+                $waExecPayload = [
+                    'messaging_product' => 'whatsapp',
+                    'to'                => $execPhone,
+                    'type'              => 'text',
+                    'text'              => ['body' => $waExecMsg, 'preview_url' => false],
+                ];
+                $ch2 = curl_init("https://graph.facebook.com/v21.0/{$phoneId}/messages");
+                curl_setopt_array($ch2, [
+                    CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true,
+                    CURLOPT_HTTPHEADER     => ["Authorization: Bearer {$waToken}", 'Content-Type: application/json'],
+                    CURLOPT_POSTFIELDS     => json_encode($waExecPayload),
+                    CURLOPT_TIMEOUT        => 10,
+                ]);
+                $waExecResp   = curl_exec($ch2);
+                $waExecStatus = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+                curl_close($ch2);
+                if ($waExecStatus >= 400) {
+                    error_log('[wa_form_save] WA exec notify error ' . $waExecStatus . ': ' . substr($waExecResp, 0, 200));
+                }
             }
 
             // B) Email al ejecutivo
@@ -4455,6 +4460,20 @@ if ($action === 'wa_form_save') {
                 $headers .= "Reply-To: noreply@transccl.cl\r\n";
                 @mail($execEmail, $subject, $htmlEmail, $headers);
             }
+        }
+    }
+
+    // Auto-crear borrador (idempotente — crear_borrador_wa verifica wa_draft_quote_id internamente)
+    // No depende de que el cliente envíe otro WA; se dispara automáticamente al guardar el formulario.
+    if ($prev) {
+        $bRes = crear_borrador_wa(db(), $prev['id']);
+        if (!empty($bRes['ok'])) {
+            error_log('[wa_form_save] borrador_auto created quotation_id=' . ($bRes['quotation_id'] ?? '?')
+                      . (($bRes['idempotent'] ?? false) ? ' (idempotent)' : ''));
+        } else {
+            error_log('[wa_form_save] borrador_auto skip/fail: '
+                      . ($bRes['error'] ?? ($bRes['motivo'] ?? 'unknown'))
+                      . ' code=' . ($bRes['code'] ?? '-'));
         }
     }
 
@@ -6964,6 +6983,78 @@ if (str_starts_with($action, 'e2e_')) {
         require_once __DIR__ . '/wa_supervision_stg.php';
         $r = supvRunAll();
         ok($r);
+    }
+
+    // ── e2e_diag_wamid — diagnóstico de un wamid específico en producción ────────
+    if ($action === 'e2e_diag_wamid') {
+        $wamid = body()['wamid'] ?? '';
+        if (!$wamid) err('wamid requerido');
+
+        $result = [];
+
+        // 1. wa_quote_approvals
+        try {
+            $r = db()->prepare("SELECT id, conv_id, quotation_id, status, sent_at, sent_wamid, sent_result, notes FROM wa_quote_approvals WHERE sent_wamid = ? LIMIT 3");
+            $r->execute([$wamid]);
+            $result['wa_quote_approvals'] = $r->fetchAll();
+        } catch (PDOException $e) { $result['wa_quote_approvals_err'] = $e->getMessage(); }
+
+        // 2. wa_cloud_messages (sin status_at que no existe en prod)
+        try {
+            $r2 = db()->prepare("SELECT id, conversation_id, wamid, direction, msg_type, content, status, sender_type, created_at FROM wa_cloud_messages WHERE wamid = ? LIMIT 3");
+            $r2->execute([$wamid]);
+            $result['wa_cloud_messages'] = $r2->fetchAll();
+        } catch (PDOException $e) { $result['wa_cloud_messages_err'] = $e->getMessage(); }
+
+        // 3. wa_message_statuses si existe
+        try {
+            $r3 = db()->prepare("SELECT * FROM wa_message_statuses WHERE wamid = ? ORDER BY created_at DESC LIMIT 10");
+            $r3->execute([$wamid]);
+            $result['wa_message_statuses'] = $r3->fetchAll();
+        } catch (PDOException $e) { $result['wa_message_statuses_err'] = $e->getMessage(); }
+
+        // 4. Tablas wa_* disponibles
+        try {
+            $r4 = db()->query("SHOW TABLES LIKE 'wa_%'");
+            $result['wa_tables'] = array_column($r4->fetchAll(PDO::FETCH_NUM), 0);
+        } catch (PDOException $e) { $result['wa_tables_err'] = $e->getMessage(); }
+
+        // 5. Distribución de status en mensajes salientes recientes (últimas 48h)
+        try {
+            $r5 = db()->query("SELECT status, direction, COUNT(*) as cnt FROM wa_cloud_messages WHERE created_at > DATE_SUB(NOW(), INTERVAL 48 HOUR) GROUP BY status, direction ORDER BY direction, cnt DESC");
+            $result['status_distribution_48h'] = $r5->fetchAll();
+        } catch (PDOException $e) { $result['status_distribution_err'] = $e->getMessage(); }
+
+        // 6. Últimos 5 mensajes salientes de Sofía/bot (direction=out)
+        try {
+            $r6 = db()->query("SELECT id, conversation_id, wamid, direction, status, sender_type, created_at FROM wa_cloud_messages WHERE direction='out' ORDER BY created_at DESC LIMIT 5");
+            $result['recent_out_msgs'] = $r6->fetchAll();
+        } catch (PDOException $e) { $result['recent_out_msgs_err'] = $e->getMessage(); }
+
+        // 7. Estado de conversación por phone (si se pasa 'phone' en body)
+        $phone = body()['phone'] ?? null;
+        if ($phone) {
+            try {
+                $rc = db()->prepare("SELECT id, phone, stage, bot_active, wa_draft_quote_id, assigned_to,
+                    contact_name, company_name, service_origin, service_destination, service_date,
+                    service_type, service_vehicle, last_msg_at, created_at
+                    FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
+                $rc->execute([$phone]);
+                $result['conv_by_phone'] = $rc->fetch();
+            } catch (PDOException $e) { $result['conv_by_phone_err'] = $e->getMessage(); }
+
+            // Aprobaciones activas para esa conv
+            if (!empty($result['conv_by_phone']['id'])) {
+                $convId = $result['conv_by_phone']['id'];
+                try {
+                    $ra = db()->prepare("SELECT id, status, quote_total, created_at, approved_at, sent_at, sent_wamid FROM wa_quote_approvals WHERE conv_id=? ORDER BY created_at DESC LIMIT 3");
+                    $ra->execute([$convId]);
+                    $result['approvals_for_conv'] = $ra->fetchAll();
+                } catch (PDOException $e) { $result['approvals_err'] = $e->getMessage(); }
+            }
+        }
+
+        ok($result);
     }
 
     err("Acción e2e '$action' no reconocida", 404);

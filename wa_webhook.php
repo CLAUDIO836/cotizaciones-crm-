@@ -425,11 +425,14 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
 
         // Safety net: si el formulario aún no fue enviado y el bot olvidó incluir el link, inyectarlo
         // No inyectar si: formulario ya completado, O si los datos del servicio ya están en la ficha (chat)
+        // Excepción: si stage='nuevo', la conversación es nueva aunque queden datos históricos en BD —
+        // esos datos no representan la solicitud actual y no deben bloquear el envío del formulario.
         $formYaEnviado   = !empty($conv['form_link_sent_at']);
         $formSubmitado   = !empty($conv['form_submitted_at']);
         $serviceDatosOk  = !empty($conv['service_origin']) && !empty($conv['service_destination'])
                         && !empty($conv['service_date'])   && !empty($conv['service_passengers'])
-                        && !empty($conv['service_type']);
+                        && !empty($conv['service_type'])
+                        && ($conv['stage'] !== 'nuevo'); // datos históricos no aplican a conversación nueva
         if (!$formYaEnviado && !$formSubmitado && !$serviceDatosOk && $botReply && !str_contains($botReply, 'crm.transccl.cl/form/')) {
             $botReply .= "\n\nhttps://crm.transccl.cl/form/{$phone}";
             error_log("[wa_webhook] SAFETY_NET_FORM_INJECT phone={$phone}");
