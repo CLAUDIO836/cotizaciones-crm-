@@ -58,6 +58,163 @@ define('REAL_SEND_PHONES', [
     '56974270657',  // Claudio — teléfono de prueba autorizado
 ]);
 
+// ── Asignación round-robin staging (solo notifica a teléfono de prueba) ─────────
+// Pool: nombres reales, IDs ficticios. Notificación WA solo a DRY_RUN_SEND (Claudio).
+function stgAssignRoundRobin(string $convId, string $clientPhone, ?string $clientName): array {
+    $pool = [
+        ['id' => 'stg-exec-001', 'name' => 'Jhocisbell Santana (staging)'],
+        ['id' => 'stg-exec-002', 'name' => 'Javiera Aguilera (staging)'],
+        ['id' => 'stg-exec-003', 'name' => 'Danae Moscoso (staging)'],
+    ];
+    // Turno por cuenta de asignaciones previas (simple: round-robin por mod)
+    $cnt = (int)(stgDb()->query("SELECT COUNT(*) FROM wa_cloud_conversations WHERE assigned_to IS NOT NULL")->fetchColumn());
+    $exec = $pool[$cnt % count($pool)];
+
+    stgDb()->prepare("UPDATE wa_cloud_conversations SET assigned_to=? WHERE id=?")
+        ->execute([$exec['id'], $convId]);
+
+    stgLog("ASSIGN_STG conv=$convId exec=" . $exec['id'] . " ({$exec['name']})");
+
+    // Notificación WA solo al teléfono de prueba autorizado (Claudio)
+    $notifyPhone = REAL_SEND_PHONES[0] ?? null; // 56974270657
+    if ($notifyPhone) {
+        $display = $clientName ? "{$clientName} (+{$clientPhone})" : "+{$clientPhone}";
+        $msg = "🔔 [STAGING] Nueva consulta WA asignada a: {$exec['name']}\nCliente: {$display}\nRevisa la bandeja en crm.transccl.cl/bandeja";
+        stgSendWA($notifyPhone, $msg);
+        stgLog("NOTIFY_STG to=$notifyPhone exec={$exec['name']}");
+    }
+
+    return $exec;
+}
+
+// ── Intenta calcular km via Nominatim+OSRM desde texto de origen/destino ────────
+// Retorna float km o null si no puede calcular.
+function stgTryOsrm(string $origin, string $destination): ?float {
+    $geocode = function(string $place): ?array {
+        $url = 'https://nominatim.openstreetmap.org/search?q=' . urlencode($place . ', Chile') .
+               '&format=json&limit=1&countrycodes=cl';
+        $ctx = stream_context_create(['http' => ['timeout' => 5,
+            'header' => "User-Agent: TransCCL-Staging/1.0\r\n"]]);
+        $raw = @file_get_contents($url, false, $ctx);
+        if (!$raw) return null;
+        $data = json_decode($raw, true);
+        if (empty($data[0]['lat'])) return null;
+        return ['lat' => (float)$data[0]['lat'], 'lng' => (float)$data[0]['lon']];
+    };
+
+    $o = $geocode($origin);
+    $d = $geocode($destination);
+    if (!$o || !$d) return null;
+
+    $url = "http://router.project-osrm.org/route/v1/driving/{$o['lng']},{$o['lat']};{$d['lng']},{$d['lat']}?overview=false";
+    $ctx = stream_context_create(['http' => ['timeout' => 8,
+        'header' => "User-Agent: TransCCL-Staging/1.0\r\n"]]);
+    $raw = @file_get_contents($url, false, $ctx);
+    if (!$raw) return null;
+    $data = json_decode($raw, true);
+    $dist = $data['routes'][0]['distance'] ?? null;
+    if (!$dist) return null;
+    return round($dist / 1000, 1);
+}
+
+// ── Registra oportunidad comercial cuando no hay km ni precio ────────────────────
+// Crea/actualiza registro en quotations con etapa=oportunidad_wa, sin tarifa.
+// Vincula siempre al conv_id original para evitar duplicados si luego llega form.
+function stgRegistrarOportunidad(PDO $pdo, string $conv_id): array {
+    $stmt = $pdo->prepare("SELECT * FROM wa_cloud_conversations WHERE id=? LIMIT 1");
+    $stmt->execute([$conv_id]);
+    $conv = $stmt->fetch();
+    if (!$conv) return ['error' => 'Conversación no encontrada'];
+
+    // Evitar duplicado: si ya hay wa_draft_quote_id asociado a esta conv, no crear otro
+    if (!empty($conv['wa_draft_quote_id'])) {
+        return ['existing' => true, 'quotation_id' => $conv['wa_draft_quote_id']];
+    }
+
+    // Datos básicos requeridos
+    $origin = $conv['service_origin'] ?? null;
+    $destination = $conv['service_destination'] ?? null;
+    if (!$origin || !$destination) {
+        return ['error' => 'Sin origen/destino para registrar oportunidad'];
+    }
+
+    $qid = $pdo->query("SELECT UUID() AS u")->fetch()['u'];
+    $number = 'OPW-' . date('Ymd') . '-' . substr(str_replace('-','',  $qid), 0, 4);
+
+    // Nombre de empresa/cliente para la oportunidad
+    $company = $conv['company_name'] ?? $conv['contact_name'] ?? 'Cliente WA';
+    $obs = "Oportunidad generada automáticamente desde WhatsApp.\n" .
+           "Origen: {$origin} | Destino: {$destination}\n" .
+           "Pasajeros: " . ($conv['service_passengers'] ?? '?') . "\n" .
+           "Fecha: " . ($conv['service_date'] ?? 'No especificada') . "\n" .
+           "Sin kilómetros calculados — ejecutiva debe completar tarifa.";
+
+    try {
+        $pdo->prepare("INSERT INTO quotations
+            (id, number, etapa, status, company, observaciones, created_at)
+            VALUES (?, ?, 'oportunidad_wa', 'open', ?, ?, NOW())")
+            ->execute([$qid, $number, $company, $obs]);
+
+        // Vincular conv con este registro
+        $pdo->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=? WHERE id=?")
+            ->execute([$qid, $conv_id]);
+
+        stgLog("OPORTUNIDAD_STG_OK conv=$conv_id quot=$qid number=$number");
+        return ['quotation_id' => $qid, 'number' => $number, 'etapa' => 'oportunidad_wa'];
+
+    } catch (Throwable $e) {
+        stgLog("OPORTUNIDAD_STG_ERR conv=$conv_id err=" . $e->getMessage());
+        return ['error' => $e->getMessage()];
+    }
+}
+
+// ── Borrador simple staging: crea en quotations sin tarifa detallada ─────────────
+// No requiere crm-api.php. Solo crea el registro si hay km y datos básicos.
+function stgCrearBorradorSimple(PDO $pdo, string $conv_id, array $conv): array {
+    foreach (['service_origin','service_destination','service_passengers','service_date','service_km'] as $f) {
+        if (empty($conv[$f])) return ['error' => "Campo requerido: $f"];
+    }
+    $km  = (float)$conv['service_km'];
+    $pax = (int)$conv['service_passengers'];
+    if ($km > 150) return ['error' => "{$km}km > 150km: a_medida", 'tipo' => 'a_medida'];
+    if ($pax > 90) return ['error' => "{$pax} pax > 90: a_medida", 'tipo' => 'a_medida'];
+
+    // No duplicar si ya existe
+    if (!empty($conv['wa_draft_quote_id'])) {
+        return ['existing' => true, 'quotation_id' => $conv['wa_draft_quote_id']];
+    }
+
+    $rut   = $conv['contact_rut'] ?? null;
+    $email = $conv['contact_email'] ?? $conv['quote_send_email'] ?? null;
+    if (!$rut || !$email) return ['error' => 'RUT o email aún no recopilados'];
+
+    $qid    = $pdo->query("SELECT UUID() AS u")->fetch()['u'];
+    $number = 'BWA-' . date('Ymd') . '-' . substr(rand(1000,9999), 0, 4);
+    $company = $conv['company_name'] ?? $conv['contact_name'] ?? 'Cliente WA';
+
+    $obs = "Borrador WA staging. Origen: {$conv['service_origin']} → {$conv['service_destination']}. " .
+           "Pax: {$pax}. Km: {$km}. RUT: {$rut}. Email: {$email}.";
+
+    $pdo->prepare("INSERT INTO quotations
+        (id,number,etapa,status,company,distancia_km,fecha_salida,observaciones,created_at)
+        VALUES (?,?,'borrador_wa','open',?,?,?,?,NOW())")
+        ->execute([$qid,$number,$company,$km,$conv['service_date'],$obs]);
+
+    // Registrar aprobación pendiente en wa_quote_approvals si existe la tabla
+    try {
+        $aid = $pdo->query("SELECT UUID() AS u")->fetch()['u'];
+        $pdo->prepare("INSERT INTO wa_quote_approvals
+            (id,conv_id,quotation_id,status,created_at)
+            VALUES (?,?,?,'pending',NOW())")
+            ->execute([$aid,$conv_id,$qid]);
+    } catch (PDOException $e) {}
+
+    $pdo->prepare("UPDATE wa_cloud_conversations SET wa_draft_quote_id=? WHERE id=?")
+        ->execute([$qid,$conv_id]);
+
+    return ['quotation_id' => $qid, 'number' => $number, 'etapa' => 'borrador_wa'];
+}
+
 // ── Validación RUT chileno (módulo 11) ─────────────────────────────────────────
 function stgValidateRut(string $rut): bool {
     $clean = strtoupper(preg_replace('/[^0-9kK]/', '', $rut));
@@ -396,6 +553,11 @@ function stgProcessMessage(string $wamid, string $phone, string $text, ?string $
                 if ($col === 'service_date' && preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $v, $pd)) {
                     $v = "{$pd[3]}-{$pd[2]}-{$pd[1]}";
                 }
+                // Validar RUT antes de guardarlo desde FICHA_JSON
+                if ($col === 'contact_rut' && !stgValidateRut($v)) {
+                    stgLog("FICHA_JSON_RUT_INVALID conv=$convId rut=$v");
+                    continue;
+                }
                 $cols[] = "$col=?";
                 $vals[] = $v;
             }
@@ -429,19 +591,71 @@ function stgProcessMessage(string $wamid, string $phone, string $text, ?string $
             stgLog("PHP_EXTRACT conv=$convId " . json_encode($phpExtracted));
         }
 
-        // Escalar a humano: desactiva bot + intenta crear borrador
+        // Escalar a humano: desactiva bot + registra oportunidad + asigna ejecutiva
         if ($shouldEscalate) {
             stgDb()->prepare("UPDATE wa_cloud_conversations SET bot_active=0 WHERE id=?")->execute([$convId]);
             stgLog("ESCALAR_A_HUMANO conv=$convId phone=$phone — bot desactivado en staging");
-            // Intentar crear borrador WA en staging (si datos suficientes)
-            if (function_exists('crear_borrador_wa')) {
-                $br = crear_borrador_wa(stgDb(), $convId, ['use_client_lookup' => true]);
-                if (isset($br['error'])) {
-                    stgLog("BORRADOR_STG_SKIP conv=$convId reason=" . $br['error']);
-                } else {
+
+            // 1. Ver si ya hay km (del formulario) → intentar borrador directo
+            $borradorOk = false;
+            $reloadConv = stgDb()->prepare("SELECT * FROM wa_cloud_conversations WHERE id=? LIMIT 1");
+            $reloadConv->execute([$convId]);
+            $convData = $reloadConv->fetch();
+            $existingKm = isset($convData['service_km']) ? (float)$convData['service_km'] : 0;
+
+            if ($existingKm > 0 && $existingKm <= 150) {
+                // Km del formulario disponible y dentro de rango → borrador automático
+                $br = stgCrearBorradorSimple(stgDb(), $convId, $convData);
+                if (!isset($br['error'])) {
                     stgLog("BORRADOR_STG_OK conv=$convId quot=" . ($br['quotation_id'] ?? '?'));
+                    $borradorOk = true;
+                } else {
+                    stgLog("BORRADOR_STG_SKIP conv=$convId reason=" . $br['error']);
+                }
+            } else {
+                // 2. Sin km o fuera de rango: intentar calcular via Nominatim+OSRM
+                $origin = $convData['service_origin'] ?? '';
+                $dest   = $convData['service_destination'] ?? '';
+                if ($origin && $dest) {
+                    $km = stgTryOsrm($origin, $dest);
+                    if ($km !== null) {
+                        stgDb()->prepare("UPDATE wa_cloud_conversations SET service_km=? WHERE id=?")
+                            ->execute([$km, $convId]);
+                        stgLog("OSRM_CALC conv=$convId km=$km origin='$origin' dest='$dest'");
+                        if ($km <= 150) {
+                            // Recarga y reintenta borrador
+                            $reloadConv->execute([$convId]);
+                            $convData = $reloadConv->fetch();
+                            $br2 = stgCrearBorradorSimple(stgDb(), $convId, $convData);
+                            if (!isset($br2['error'])) {
+                                stgLog("BORRADOR_STG_OK_OSRM conv=$convId quot=" . ($br2['quotation_id'] ?? '?'));
+                                $borradorOk = true;
+                            } else {
+                                stgLog("BORRADOR_STG_SKIP2 conv=$convId reason=" . $br2['error']);
+                            }
+                        } else {
+                            stgLog("BORRADOR_STG_SKIP conv=$convId reason={$km}km > 150km limite borrador automatico");
+                        }
+                    } else {
+                        stgLog("OSRM_FAIL conv=$convId — no se pudo geocodificar '$origin' → '$dest'");
+                    }
+                }
+
+                // 3. Sin borrador automático: registrar oportunidad comercial (sin precio)
+                if (!$borradorOk) {
+                    $op = stgRegistrarOportunidad(stgDb(), $convId);
+                    if (isset($op['error'])) {
+                        stgLog("OPORTUNIDAD_STG_ERR conv=$convId err=" . $op['error']);
+                    } elseif (!isset($op['existing'])) {
+                        stgLog("OPORTUNIDAD_STG_OK conv=$convId num=" . ($op['number'] ?? '?'));
+                    } else {
+                        stgLog("OPORTUNIDAD_STG_EXIST conv=$convId quot=" . $op['quotation_id']);
+                    }
                 }
             }
+
+            // 4. Asignar ejecutiva y notificar (solo staging → teléfono de prueba)
+            stgAssignRoundRobin($convId, $phone, $row['contact_name'] ?? null);
         }
 
         // Envío real solo para REAL_SEND_PHONES; resto mantiene DRY-RUN

@@ -5300,7 +5300,7 @@ if (str_starts_with($action, 'e2e_')) {
         $phone = $_GET['phone'] ?? (body()['phone'] ?? '');
         if (!$phone) err('phone requerido');
         $conv = stg()->prepare("SELECT id, stage, bot_active, contact_name, company_name, client_type,
-            contact_rut, contact_email,
+            contact_rut, contact_email, assigned_to, service_km,
             service_origin, service_destination, service_date, service_passengers,
             service_hour, service_hour_return, service_type, service_vehicle,
             form_submitted_at, wa_draft_quote_id FROM wa_cloud_conversations WHERE phone=? LIMIT 1");
