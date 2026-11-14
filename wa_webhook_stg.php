@@ -79,7 +79,7 @@ function stgAssignRoundRobin(string $convId, string $clientPhone, ?string $clien
     $notifyPhone = REAL_SEND_PHONES[0] ?? null; // 56974270657
     if ($notifyPhone) {
         $display = $clientName ? "{$clientName} (+{$clientPhone})" : "+{$clientPhone}";
-        $msg = "🔔 [STAGING] Nueva consulta WA asignada a: {$exec['name']}\nCliente: {$display}\nRevisa la bandeja en crm.transccl.cl/bandeja";
+        $msg = "🔔 [STAGING] Nueva consulta WA asignada a: {$exec['name']}\nCliente: {$display}\nAbrir caso: https://crm.transccl.cl/stg/conv/{$convId}";
         stgSendWA($notifyPhone, $msg);
         stgLog("NOTIFY_STG to=$notifyPhone exec={$exec['name']}");
     }

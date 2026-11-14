@@ -183,9 +183,11 @@ export default function Bandeja({ user }: { user: UserSession }) {
   const [agents, setAgents]           = useState<{ id: string; name: string }[]>([])
   const [allAgents, setAllAgents]     = useState<{ id: string; name: string }[]>([])
 
-  const tabExec = initialExec  // deriva directo de searchParams → siempre sincronizado
+  const tabExec    = initialExec  // deriva directo de searchParams → siempre sincronizado
+  const initialConv = searchParams.get('conv') ?? null
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId]           = useState<string | null>(null)
+  const [deepLinkPending, setDeepLinkPending] = useState<string | null>(initialConv)
   const [messages, setMessages]           = useState<Message[]>([])
   const [activeConv, setActiveConv]       = useState<Conversation | null>(null)
   const [text, setText]                   = useState('')
@@ -373,6 +375,16 @@ export default function Bandeja({ user }: { user: UserSession }) {
     const iv = setInterval(loadConversations, 10000)
     return () => clearInterval(iv)
   }, [loadConversations])
+
+  // Auto-seleccionar conversación si llega por deep link (?conv=<id>)
+  useEffect(() => {
+    if (!deepLinkPending || conversations.length === 0) return
+    const target = conversations.find(c => c.id === deepLinkPending)
+    if (target) {
+      selectConv(target)
+      setDeepLinkPending(null)
+    }
+  }, [conversations, deepLinkPending]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load messages ─────────────────────────────────────────────────────────
   const loadMessages = useCallback(async (convId: string) => {

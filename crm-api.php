@@ -6493,5 +6493,92 @@ if (str_starts_with($action, 'e2e_')) {
     err("Acción e2e '$action' no reconocida", 404);
 }
 
+// ── stg_conv_detail — vista de conversación de staging para ejecutiva ─────────
+// GET ?action=stg_conv_detail&id=<conv_id>
+// Auth: token JWT normal del CRM (cookie crm_token o Authorization header)
+// Acceso: admin ve todo; ejecutiva solo ve conversaciones asignadas a ella
+if ($action === 'stg_conv_detail') {
+    $authUser = getAuthUser();
+    if (!$authUser) err('No autenticado', 401);
+
+    $convId = $_GET['id'] ?? '';
+    if (!$convId) err('id requerido', 400);
+
+    // Conectar a staging DB (mismas credenciales que los endpoints e2e_*)
+    $stg_db_user = getenv('STG_DB_USER') ?: '';
+    $stg_db_pass = getenv('STG_DB_PASS') ?: '';
+    if (!$stg_db_user) err('Staging DB no configurada en este servidor', 503);
+
+    try {
+        $stgConn = new PDO(
+            'mysql:host=localhost;dbname=transccl_crm_staging;charset=utf8mb4',
+            $stg_db_user, $stg_db_pass,
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+        );
+    } catch (PDOException $e) {
+        err('staging db error: ' . $e->getMessage(), 500);
+    }
+
+    // Obtener conversación
+    $stmt = $stgConn->prepare(
+        "SELECT c.id, c.phone, c.bot_active, c.stage, c.source,
+                c.contact_name, c.contact_rut, c.contact_email,
+                c.company_name, c.client_type,
+                c.service_origin, c.service_destination, c.service_date,
+                c.service_hour, c.service_hour_return,
+                c.service_passengers, c.service_type, c.service_vehicle,
+                c.service_km, c.assigned_to, c.handoff_requested_at,
+                c.wa_draft_quote_id, c.notes, c.last_msg_at,
+                c.last_customer_msg_at, c.created_at,
+                u.name AS assigned_name
+         FROM wa_cloud_conversations c
+         LEFT JOIN users u ON u.id = c.assigned_to
+         WHERE c.id = ? LIMIT 1"
+    );
+    $stmt->execute([$convId]);
+    $conv = $stmt->fetch();
+    if (!$conv) err('Conversación no encontrada', 404);
+
+    // Control de acceso: ejecutiva solo ve lo asignado a ella
+    $isAdmin = ($authUser['role'] ?? '') === 'admin';
+    if (!$isAdmin && $conv['assigned_to'] !== $authUser['id']) {
+        err('No tienes permiso para ver esta conversación', 403);
+    }
+
+    // Obtener mensajes
+    $msgs = $stgConn->prepare(
+        "SELECT id, direction, content, msg_type, status, sender_type, created_at
+         FROM wa_cloud_messages
+         WHERE conversation_id = ?
+         ORDER BY created_at ASC LIMIT 200"
+    );
+    $msgs->execute([$convId]);
+    $messages = $msgs->fetchAll();
+
+    // Obtener cotización borrador si existe
+    $quote = null;
+    if ($conv['wa_draft_quote_id']) {
+        // Intentar leer de staging (puede no tener tabla quotations completa)
+        try {
+            $qStmt = $stgConn->prepare(
+                "SELECT id, quote_number, total_bd, desde, hasta, distancia_km,
+                        fecha_salida, hora_salida, vehicle_type, pasajeros, status
+                 FROM wa_cloud_approvals
+                 WHERE quotation_id = ? OR conv_id = ?
+                 ORDER BY created_at DESC LIMIT 1"
+            );
+            $qStmt->execute([$conv['wa_draft_quote_id'], $convId]);
+            $quote = $qStmt->fetch() ?: null;
+        } catch (Throwable $e) { /* tabla puede no existir */ }
+    }
+
+    ok([
+        'conversation' => $conv,
+        'messages'     => $messages,
+        'quote'        => $quote,
+        'viewer'       => ['id' => $authUser['id'], 'name' => $authUser['name'], 'role' => $authUser['role']],
+    ]);
+}
+
 // ── Not found ─────────────────────────────────────────────────────────────────
 err("Acción '$action' no encontrada", 404);
