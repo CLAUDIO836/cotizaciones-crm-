@@ -58,6 +58,23 @@ define('REAL_SEND_PHONES', [
     '56974270657',  // Claudio — teléfono de prueba autorizado
 ]);
 
+// ── Validación RUT chileno (módulo 11) ─────────────────────────────────────────
+function stgValidateRut(string $rut): bool {
+    $clean = strtoupper(preg_replace('/[^0-9kK]/', '', $rut));
+    if (strlen($clean) < 2) return false;
+    $dv  = substr($clean, -1);
+    $num = substr($clean, 0, -1);
+    if (!ctype_digit($num)) return false;
+    $sum = 0; $mul = 2;
+    for ($i = strlen($num) - 1; $i >= 0; $i--) {
+        $sum += (int)$num[$i] * $mul;
+        $mul = $mul === 7 ? 2 : $mul + 1;
+    }
+    $exp = 11 - ($sum % 11);
+    $expStr = $exp === 11 ? '0' : ($exp === 10 ? 'K' : (string)$exp);
+    return $dv === $expStr;
+}
+
 // ── Log de staging ─────────────────────────────────────────────────────────────
 function stgLog(string $msg): void {
     $logfile = '/home/transccl/logs/wa_webhook_stg.log';
@@ -391,13 +408,18 @@ function stgProcessMessage(string $wamid, string $phone, string $text, ?string $
 
         $visible = trim(preg_replace('/\[FICHA_JSON:[^\]]+\]/', '', $claude));
 
-        // Extracción PHP de datos del cliente como fallback cuando el modelo no incluye FICHA_JSON
+        // Extracción PHP de datos del cliente — fallback cuando el modelo no incluye FICHA_JSON
+        // REGLAS: solo extrae si el campo está vacío (no sobreescribe); valida RUT con módulo 11
         $phpExtracted = [];
         if (empty($row['contact_rut']) && preg_match('/\b(\d{1,2}\.?\d{3}\.?\d{3}-[0-9kK])\b/i', $text, $rutMatch)) {
-            $phpExtracted['contact_rut'] = $rutMatch[1];
+            if (stgValidateRut($rutMatch[1])) {
+                $phpExtracted['contact_rut'] = $rutMatch[1];
+            } else {
+                stgLog("PHP_EXTRACT_RUT_INVALID conv=$convId rut=" . $rutMatch[1]);
+            }
         }
         if (empty($row['contact_email']) && preg_match('/\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\b/', $text, $emailMatch)) {
-            $phpExtracted['contact_email'] = $emailMatch[1];
+            $phpExtracted['contact_email'] = strtolower($emailMatch[1]);
         }
         if ($phpExtracted) {
             $setCols = implode(', ', array_map(fn($k) => "$k=?", array_keys($phpExtracted)));
@@ -407,10 +429,19 @@ function stgProcessMessage(string $wamid, string $phone, string $text, ?string $
             stgLog("PHP_EXTRACT conv=$convId " . json_encode($phpExtracted));
         }
 
-        // Escalar a humano: desactiva el bot en staging (en prod asignaría ejecutiva)
+        // Escalar a humano: desactiva bot + intenta crear borrador
         if ($shouldEscalate) {
             stgDb()->prepare("UPDATE wa_cloud_conversations SET bot_active=0 WHERE id=?")->execute([$convId]);
             stgLog("ESCALAR_A_HUMANO conv=$convId phone=$phone — bot desactivado en staging");
+            // Intentar crear borrador WA en staging (si datos suficientes)
+            if (function_exists('crear_borrador_wa')) {
+                $br = crear_borrador_wa(stgDb(), $convId, ['use_client_lookup' => true]);
+                if (isset($br['error'])) {
+                    stgLog("BORRADOR_STG_SKIP conv=$convId reason=" . $br['error']);
+                } else {
+                    stgLog("BORRADOR_STG_OK conv=$convId quot=" . ($br['quotation_id'] ?? '?'));
+                }
+            }
         }
 
         // Envío real solo para REAL_SEND_PHONES; resto mantiene DRY-RUN
@@ -608,7 +639,7 @@ function stgBuildSystemPrompt(string $phone, ?string $name, array $ficha = []): 
            "- Hablas como chilena natural y cariñosa: 'qué buena!', '¡altiro!', 'te cuento que…', 'con gusto te ayudo'.\n" .
            "- PRIMERO reacciona con entusiasmo y empatía a lo que el cliente cuenta, DESPUÉS pide datos.\n" .
            "- Mensajes cortos, 2-4 líneas. Emojis 1-2 por mensaje: 😊 🙌 🚌 ✨ 🎒 🌊 🏔️ 👍 💚 🎉. En reclamos, sin emojis alegres.\n" .
-           "- NUNCA usar Markdown (ni **, ni #). Texto simple como WhatsApp.\n" .
+           "- !!PROHIBIDO ABSOLUTO!! NUNCA NUNCA uses Markdown. Ni **, ni *, ni #, ni _subrayado_, ni `código`, ni listas con guión. Si escribes ** o # tu respuesta es INCORRECTA. Solo texto plano como WhatsApp.\n" .
            "- Tratar de tú. Montos con punto de miles: \$157.500.\n" .
            "- NUNCA volver a preguntar datos que el cliente ya dio.\n" .
            "- Cuando no puedas responder algo con seguridad: 'Lo confirmo con mi equipo y te cuento 😊'\n\n" .
@@ -782,7 +813,7 @@ function stgBuildSystemPrompt(string $phone, ?string $name, array $ficha = []): 
            "CLIENTE: El RUT es 76.123.456-7\n" .
            "BOT: ¡Perfecto! Y para enviarte la cotización, ¿cuál es tu correo de contacto?\n[FICHA_JSON:{\"rut\":\"76.123.456-7\"}]\n\n" .
            "## FORMATO\n" .
-           "Responde SOLO el texto del mensaje WhatsApp. Sin markdown (sin **, sin #). " .
+           "Responde SOLO el texto del mensaje WhatsApp. SIN MARKDOWN: ni **, ni *, ni #, ni _, ni listas con guión. Solo texto plano. " .
            "Sin prefijos ni etiquetas adicionales. " .
            "Si debes escalar, añade [ESCALAR_A_HUMANO] en una línea aparte al final.";
 }
