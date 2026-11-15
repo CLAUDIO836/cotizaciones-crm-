@@ -42,6 +42,21 @@ function db(): PDO {
     return $pdo;
 }
 
+// Conexión a producción para verificar perfiles de usuario (auth).
+// crm-api-stg.php usa staging DB para quotations/convs, pero los perfiles
+// son los mismos que producción — autenticar siempre contra transccl_crm.
+function prod_db(): PDO {
+    static $prod_pdo;
+    if (!$prod_pdo) {
+        $prod_pdo = new PDO(
+            'mysql:host=' . DB_HOST . ';dbname=transccl_crm;charset=utf8mb4',
+            DB_USER, DB_PASS,
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+        );
+    }
+    return $prod_pdo;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function ok($data = null)  { echo json_encode(['ok' => true, 'data' => $data]); exit; }
 function err($msg, $code = 400) { http_response_code($code); echo json_encode(['error' => $msg]); exit; }
@@ -95,8 +110,8 @@ function getAuthUser(): ?array {
     if (!$token) return null;
     $data = verifyJWT($token);
     if (!$data) return null;
-    // Leer role fresco desde DB para que cambios de rol surtan efecto sin re-login
-    $stmt = db()->prepare('SELECT role, active FROM profiles WHERE id = ?');
+    // Verificar perfil contra producción (staging y producción comparten los mismos usuarios)
+    $stmt = prod_db()->prepare('SELECT role, active FROM profiles WHERE id = ?');
     $stmt->execute([$data['id']]);
     $row = $stmt->fetch();
     if (!$row || !$row['active']) return null;
