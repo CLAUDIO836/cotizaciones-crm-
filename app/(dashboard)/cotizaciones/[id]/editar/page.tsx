@@ -1,22 +1,16 @@
 export const dynamic = 'force-dynamic'
-import { getSession, fetchQuotation, fetchClients, fetchProfiles, fetchCompanies } from '@/lib/api'
+import { getSession, getToken, fetchQuotation, fetchClients, fetchProfiles, fetchCompanies } from '@/lib/api'
 import QuotationForm from '@/components/quotations/QuotationForm'
 import { notFound, redirect } from 'next/navigation'
 
 const CRM_API_STG = (process.env.CRM_API_STG_URL ?? 'https://www.transccl.cl/crm-api-stg.php').replace('://transccl.cl', '://www.transccl.cl')
-const E2E_TOKEN = process.env.E2E_TEST_TOKEN ?? ''
 
-async function fetchStgQuotation(id: string, sessionId: string, sessionRole: string) {
+async function fetchStgQuotation(id: string, userToken: string) {
   try {
-    const res = await fetch(`${CRM_API_STG}?action=quotations_get&id=${encodeURIComponent(id)}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-e2e-token': E2E_TOKEN,
-        'x-user-id': sessionId,
-        'x-user-role': sessionRole,
-      },
-      cache: 'no-store',
-    })
+    const res = await fetch(
+      `${CRM_API_STG}?action=quotations_get&id=${encodeURIComponent(id)}&token=${encodeURIComponent(userToken)}`,
+      { cache: 'no-store' },
+    )
     const data = await res.json()
     return data?.data ?? null
   } catch { return null }
@@ -42,9 +36,11 @@ export default async function EditarCotizacionPage({ params, searchParams }: { p
   const isStaging = stg === '1'
   const session = await getSession()
   if (!session) redirect('/login')
+  const userToken = await getToken()
+  if (isStaging && !userToken) redirect('/login')
 
   const [q, clients, sellers, companies, pipelines] = await Promise.all([
-    isStaging ? fetchStgQuotation(id, session.id, session.role ?? '') : fetchQuotation(id),
+    isStaging ? fetchStgQuotation(id, userToken!) : fetchQuotation(id),
     fetchClients(),
     fetchProfiles(),
     fetchCompanies(),

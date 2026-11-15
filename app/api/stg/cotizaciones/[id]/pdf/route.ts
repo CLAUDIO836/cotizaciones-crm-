@@ -2,33 +2,27 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import { QuotationPDF } from '@/lib/pdf/generate'
 import { TKSQuotationPDF } from '@/lib/pdf/tks-quotation'
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/api'
+import { getToken } from '@/lib/api'
 import React from 'react'
 
 const CRM_API_STG = (process.env.CRM_API_STG_URL ?? 'https://www.transccl.cl/crm-api-stg.php').replace('://transccl.cl', '://www.transccl.cl')
-const E2E_TOKEN = process.env.E2E_TEST_TOKEN ?? ''
 
-async function fetchStgQuotation(id: string, session: { id: string; role?: string | null }) {
-  const res = await fetch(`${CRM_API_STG}?action=quotations_get&id=${encodeURIComponent(id)}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      'x-e2e-token': E2E_TOKEN,
-      'x-user-id': session.id,
-      'x-user-role': session.role ?? '',
-    },
-    cache: 'no-store',
-  })
+async function fetchStgQuotation(id: string, userToken: string) {
+  const res = await fetch(
+    `${CRM_API_STG}?action=quotations_get&id=${encodeURIComponent(id)}&token=${encodeURIComponent(userToken)}`,
+    { cache: 'no-store' },
+  )
   const data = await res.json()
   return data.data ?? null
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  const userToken = await getToken()
+  if (!userToken) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   const { id } = await params
 
-  const q = await fetchStgQuotation(id, session)
+  const q = await fetchStgQuotation(id, userToken)
   if (!q) return NextResponse.json({ error: 'No encontrado' }, { status: 404 })
 
   const items = (q.quotation_items ?? []).sort((a: {sort_order: number}, b: {sort_order: number}) => a.sort_order - b.sort_order)
