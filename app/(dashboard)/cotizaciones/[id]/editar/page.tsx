@@ -7,11 +7,10 @@ const CRM_API_STG = (process.env.CRM_API_STG_URL ?? 'https://www.transccl.cl/crm
 
 async function fetchStgQuotation(id: string, userToken: string) {
   try {
-    // Server-to-server fetch (Vercel → cPanel): ?token= es seguro (no llega al browser).
-    // Bearer se envía también pero cPanel/PHP-FPM puede bloquear el header Authorization.
+    // X-CRM-Token: header custom que Apache pasa a PHP-FPM (a diferencia de Authorization).
     const res = await fetch(
-      `${CRM_API_STG}?action=quotations_get&id=${encodeURIComponent(id)}&token=${encodeURIComponent(userToken)}`,
-      { cache: 'no-store', headers: { Authorization: `Bearer ${userToken}` } },
+      `${CRM_API_STG}?action=quotations_get&id=${encodeURIComponent(id)}`,
+      { cache: 'no-store', headers: { 'X-CRM-Token': userToken } },
     )
     const data = await res.json()
     return data?.data ?? null

@@ -36,10 +36,10 @@ export async function POST() {
   }
 
   const res = await fetch(
-    `${CRM_API_STG}?action=quotations_create&token=${encodeURIComponent(userToken)}`,
+    `${CRM_API_STG}?action=quotations_create`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userToken}` },
+      headers: { 'Content-Type': 'application/json', 'X-CRM-Token': userToken },
       body: JSON.stringify(payload),
       cache: 'no-store',
     },

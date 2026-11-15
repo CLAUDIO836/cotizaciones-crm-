@@ -94,18 +94,24 @@ function verifyJWT(string $token): ?array {
 }
 
 function getAuthUser(): ?array {
-    // Apache/cPanel puede bloquear HTTP_AUTHORIZATION; buscar en múltiples fuentes
-    $auth = $_SERVER['HTTP_AUTHORIZATION']
-         ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
-         ?? (function_exists('apache_request_headers') ? (apache_request_headers()['Authorization'] ?? '') : '')
-         ?? '';
+    // Orden de prioridad para autenticación:
+    // 1. X-CRM-Token (header custom — Apache no lo bloquea, preferido para server-to-server)
+    // 2. Authorization: Bearer (puede ser bloqueado por cPanel/PHP-FPM)
+    // 3. Cookie crm_token (browser)
     $token = null;
-    if (str_starts_with($auth, 'Bearer ')) {
-        $token = substr($auth, 7);
-    } elseif (!empty($_GET['token'])) {
-        $token = $_GET['token'];
-    } elseif (!empty($_COOKIE['crm_token'])) {
-        $token = $_COOKIE['crm_token'];
+    $xToken = $_SERVER['HTTP_X_CRM_TOKEN'] ?? null;
+    if (!empty($xToken)) {
+        $token = $xToken;
+    } else {
+        $auth = $_SERVER['HTTP_AUTHORIZATION']
+             ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
+             ?? (function_exists('apache_request_headers') ? (apache_request_headers()['Authorization'] ?? '') : '')
+             ?? '';
+        if (str_starts_with($auth, 'Bearer ')) {
+            $token = substr($auth, 7);
+        } elseif (!empty($_COOKIE['crm_token'])) {
+            $token = $_COOKIE['crm_token'];
+        }
     }
     if (!$token) return null;
     $data = verifyJWT($token);
