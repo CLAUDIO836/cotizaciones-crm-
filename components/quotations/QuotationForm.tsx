@@ -565,7 +565,10 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
       const qData = await qRes.json()
 
       if (isEditing) {
-        if (withPdf) {
+        if (isStaging) {
+          toast.success('Cotización staging actualizada')
+          router.push(`/cotizaciones/${quotation.id}/editar?stg=1`)
+        } else if (withPdf) {
           try {
             await fetch('/api/pipedrive/upload', {
               method: 'POST',
@@ -576,10 +579,11 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           } catch {
             toast.success('Cotización actualizada (PDF pendiente)')
           }
+          router.push(`/cotizaciones/${quotation.id}`)
         } else {
           toast.success('Cotización actualizada')
+          router.push(`/cotizaciones/${quotation.id}`)
         }
-        router.push(`/cotizaciones/${quotation.id}`)
       } else {
         // Al crear: crear deal en Pipedrive y subir PDF
         try {

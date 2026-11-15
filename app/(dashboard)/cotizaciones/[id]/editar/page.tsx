@@ -97,8 +97,18 @@ export default async function EditarCotizacionPage({ params, searchParams }: { p
   return (
     <div className="p-6 max-w-4xl">
       {isStaging && (
-        <div className="mb-4 px-4 py-2 bg-yellow-100 border border-yellow-400 rounded text-yellow-800 text-sm font-medium">
-          ⚠️ Modo staging — los cambios se guardan en la base de datos de pruebas
+        <div className="mb-4 px-4 py-2 bg-yellow-100 border border-yellow-400 rounded text-yellow-800 text-sm font-medium flex items-center justify-between">
+          <span>⚠️ Modo staging — los cambios se guardan en la base de datos de pruebas</span>
+          <div className="flex gap-2 ml-4">
+            <a href={`/api/stg/cotizaciones/${id}/html`} target="_blank" rel="noopener noreferrer"
+               className="px-3 py-1 bg-yellow-700 text-white text-xs rounded font-semibold hover:bg-yellow-800">
+              🖨 Ver / Imprimir
+            </a>
+            <a href={`/api/stg/cotizaciones/${id}/pdf`} target="_blank" rel="noopener noreferrer"
+               className="px-3 py-1 bg-purple-700 text-white text-xs rounded font-semibold hover:bg-purple-800">
+              📄 PDF staging
+            </a>
+          </div>
         </div>
       )}
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Editar cotización {q.number}</h1>
