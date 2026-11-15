@@ -176,6 +176,7 @@ interface Props {
   prefilledVehicle?: string
   quotation?: {
     id: string
+    number?: string
     client_id: string
     client_name?: string
     client_rut?: string
@@ -197,6 +198,7 @@ interface Props {
     terms?: string
     tax_pct: number
     items: Item[]
+    clients?: { email?: string; telefono_celular?: string }
   }
   isStaging?: boolean
 }
