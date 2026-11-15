@@ -526,7 +526,7 @@ function ConvTable({ convs, showApproval, onDecide, approvalsUrl = '/api/whatsap
                 </span>
                 {/* Gap 3: link directo a editar la cotización antes de aprobar */}
                 <a
-                  href={`/cotizaciones/${c.wa_draft_quote_id}/editar`}
+                  href={`/cotizaciones/${c.wa_draft_quote_id}/editar${isStaging ? '?stg=1' : ''}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{

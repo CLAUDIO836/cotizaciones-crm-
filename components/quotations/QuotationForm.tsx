@@ -198,6 +198,7 @@ interface Props {
     tax_pct: number
     items: Item[]
   }
+  isStaging?: boolean
 }
 
 const VEHICLES_CCL = [
@@ -246,7 +247,7 @@ const DEFAULT_DIARIO_ITEM: Item = {
   ruta_nombre: '', desde_item: '', hasta_item: '', hora_salida_item: '', hora_retorno_item: '', tiene_paradas: false, obs_paradas: '',
 }
 
-export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation, prefilledPhone, prefilledName, prefilledRUT, prefilledEmail, prefilledService, prefilledOrigin, prefilledDestination, prefilledDate, prefilledHoraSalida, prefilledHoraRetorno, prefilledPassengers, prefilledVehicle }: Props) {
+export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation, isStaging = false, prefilledPhone, prefilledName, prefilledRUT, prefilledEmail, prefilledService, prefilledOrigin, prefilledDestination, prefilledDate, prefilledHoraSalida, prefilledHoraRetorno, prefilledPassengers, prefilledVehicle }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
 
@@ -520,7 +521,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     try {
       const finalClientId = clientId
 
-      const qRes = await fetch('/api/quotations', {
+      const qRes = await fetch(isStaging ? '/api/stg/quotations' : '/api/quotations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

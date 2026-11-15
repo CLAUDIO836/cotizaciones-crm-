@@ -3,6 +3,25 @@ import { getSession, fetchQuotation, fetchClients, fetchProfiles, fetchCompanies
 import QuotationForm from '@/components/quotations/QuotationForm'
 import { notFound, redirect } from 'next/navigation'
 
+const CRM_API_STG = (process.env.CRM_API_STG_URL ?? 'https://www.transccl.cl/crm-api-stg.php').replace('://transccl.cl', '://www.transccl.cl')
+const E2E_TOKEN = process.env.E2E_TEST_TOKEN ?? ''
+
+async function fetchStgQuotation(id: string, sessionId: string, sessionRole: string) {
+  try {
+    const res = await fetch(`${CRM_API_STG}?action=quotations_get&id=${encodeURIComponent(id)}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-e2e-token': E2E_TOKEN,
+        'x-user-id': sessionId,
+        'x-user-role': sessionRole,
+      },
+      cache: 'no-store',
+    })
+    const data = await res.json()
+    return data?.quotation ?? data ?? null
+  } catch { return null }
+}
+
 async function getPipedrivePipelines() {
   const token = process.env.PIPEDRIVE_API_TOKEN
   if (!token) return []
@@ -17,13 +36,15 @@ async function getPipedrivePipelines() {
   } catch { return [] }
 }
 
-export default async function EditarCotizacionPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditarCotizacionPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ stg?: string }> }) {
   const { id } = await params
+  const { stg } = await searchParams
+  const isStaging = stg === '1'
   const session = await getSession()
   if (!session) redirect('/login')
 
   const [q, clients, sellers, companies, pipelines] = await Promise.all([
-    fetchQuotation(id),
+    isStaging ? fetchStgQuotation(id, session.id, session.role ?? '') : fetchQuotation(id),
     fetchClients(),
     fetchProfiles(),
     fetchCompanies(),
@@ -75,6 +96,11 @@ export default async function EditarCotizacionPage({ params }: { params: Promise
 
   return (
     <div className="p-6 max-w-4xl">
+      {isStaging && (
+        <div className="mb-4 px-4 py-2 bg-yellow-100 border border-yellow-400 rounded text-yellow-800 text-sm font-medium">
+          ⚠️ Modo staging — los cambios se guardan en la base de datos de pruebas
+        </div>
+      )}
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Editar cotización {q.number}</h1>
       <QuotationForm
         clients={clients ?? []}
@@ -83,6 +109,7 @@ export default async function EditarCotizacionPage({ params }: { params: Promise
         companies={companies ?? []}
         userId={session.id}
         quotation={quotationData}
+        isStaging={isStaging}
       />
     </div>
   )
