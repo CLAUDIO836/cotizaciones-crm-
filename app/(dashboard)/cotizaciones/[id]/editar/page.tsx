@@ -18,7 +18,7 @@ async function fetchStgQuotation(id: string, sessionId: string, sessionRole: str
       cache: 'no-store',
     })
     const data = await res.json()
-    return data?.quotation ?? data ?? null
+    return data?.data ?? null
   } catch { return null }
 }
 
