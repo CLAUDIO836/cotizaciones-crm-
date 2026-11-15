@@ -1,48 +1,53 @@
 import { NextResponse } from 'next/server'
-import { getSession } from '@/lib/api'
+import { getToken } from '@/lib/api'
 
 const CRM_API_STG = (process.env.CRM_API_STG_URL ?? 'https://www.transccl.cl/crm-api-stg.php').replace('://transccl.cl', '://www.transccl.cl')
-const E2E_TOKEN = process.env.E2E_TEST_TOKEN ?? ''
 
 // Endpoint temporal E2E — crea un borrador staging para pruebas visuales.
-// Solo accesible con sesión activa. No modifica producción.
+// Usa quotations_create (JWT normal) — no depende de E2E_STAGING_TOKEN.
 export async function POST() {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  const userToken = await getToken()
+  if (!userToken) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
-  const phone = '56911111002'
+  const payload = {
+    etapa: 'borrador_wa',
+    vehicle_type: 'Bus 45',
+    desde: 'Las Condes, Santiago',
+    hasta: 'San Bernardo, Santiago',
+    desde_lat: -33.4150,
+    desde_lng: -70.5869,
+    hasta_lat: -33.5870,
+    hasta_lng: -70.6937,
+    distancia_km: 28.5,
+    subtotal: 131775,
+    tax_pct: 19,
+    total: 156812,
+    observaciones: 'Borrador de prueba E2E staging',
+    items: [
+      {
+        codigo: 'BUS-45',
+        description: 'Bus 45 pasajeros — San Bernardo',
+        pasajeros: 42,
+        quantity: 2,
+        unit_price: 65887,
+        sort_order: 1,
+      },
+    ],
+  }
 
-  // Intentar limpiar conversación existente primero (idempotente)
-  try {
-    await fetch(`${CRM_API_STG}?action=e2e_reset_conv&phone=${phone}`, {
+  const res = await fetch(
+    `${CRM_API_STG}?action=quotations_create&token=${encodeURIComponent(userToken)}`,
+    {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-e2e-token': E2E_TOKEN },
-      body: JSON.stringify({ phone }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
       cache: 'no-store',
-    })
-  } catch { /* ignorar — puede no existir */ }
-
-  // Crear conversación + borrador
-  const res = await fetch(`${CRM_API_STG}?action=e2e_seed_borrador_phone`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-e2e-token': E2E_TOKEN },
-    body: JSON.stringify({
-      phone,
-      contact_name: 'Test E2E Staging',
-      service_origin: 'Las Condes, Santiago',
-      service_destination: 'San Bernardo, Santiago',
-      service_date: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-      service_passengers: 42,
-      service_type: 'privado',
-      service_vehicle: 'Bus 45',
-      service_km: 28.5,
-    }),
-    cache: 'no-store',
-  })
+    },
+  )
 
   const data = await res.json()
   if (!res.ok) return NextResponse.json(data, { status: res.status })
 
-  const quotId = data.data?.borrador?.quotation_id ?? data.data?.borrador?.id ?? null
-  return NextResponse.json({ ok: true, quot_id: quotId, raw: data.data?.borrador })
+  const id = data?.data?.id ?? data?.id ?? null
+  return NextResponse.json({ ok: true, id, data: data?.data ?? data })
 }
