@@ -557,11 +557,22 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     if (!selectedUserId) { toast.error('Selecciona un vendedor'); return }
     setLoadingAprobar(true)
     try {
-      const res = await fetch('/api/stg/quotations', {
+      // Datos del cliente para email/WA
+      const clientEmail = quotation?.clients?.email ?? newClientEmail ?? ''
+      const clientPhone = quotation?.clients?.telefono_celular ?? newClientCelular ?? ''
+      const clientName = quotation?.client_name ?? newClientEmpresaNombre ?? newClientName ?? ''
+
+      const res = await fetch('/api/stg/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          // datos del cliente para email/WA
+          client_email: clientEmail || null,
+          client_phone: clientPhone || null,
+          client_name: clientName || null,
+          // cotización
           id: quotation!.id,
+          number: quotation!.number,
           client_id: clientId,
           contact_id: contactId || null,
           user_id: selectedUserId,
@@ -595,13 +606,21 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           })),
         }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error ?? `HTTP ${res.status}`)
-      }
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+
       setEtapa('cotizacion')
-      toast.success('✅ Cotización aprobada — propuesta generada en nueva pestaña')
+      if (data.cartaUrl) setCartaUrl(data.cartaUrl)
+
+      // Abrir propuesta
       window.open(`/api/stg/cotizaciones/${quotation!.id}/propuesta`, '_blank')
+
+      // Toast con resumen de lo que hizo Sofía
+      if (data.waMessage) {
+        toast.success(`✅ Aprobada · ${data.emailSent ? '📧 Email enviado' : '📧 Email (sin clave Resend)'} · 💬 WA que enviaría Sofía: "${data.waMessage}"`, { duration: 8000 })
+      } else {
+        toast.success(`✅ Cotización aprobada${data.emailSent ? ' · 📧 Email enviado a ventas' : ''}`)
+      }
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Error al aprobar')
     } finally {
