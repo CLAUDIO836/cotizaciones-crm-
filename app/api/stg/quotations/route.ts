@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const res = await fetch(
-      `${CRM_API_STG}?action=quotations_get&id=${encodeURIComponent(id)}`,
+      `${CRM_API_STG}?action=quotations_get&id=${encodeURIComponent(id)}&token=${encodeURIComponent(userToken)}`,
       { cache: 'no-store', headers: { Authorization: `Bearer ${userToken}` } },
     )
     const data = await res.json()
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const action = body.id ? 'quotations_update' : 'quotations_create'
     const res = await fetch(
-      `${CRM_API_STG}?action=${action}`,
+      `${CRM_API_STG}?action=${action}&token=${encodeURIComponent(userToken)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userToken}` },
