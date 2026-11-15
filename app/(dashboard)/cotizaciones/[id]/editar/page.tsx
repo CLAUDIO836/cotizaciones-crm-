@@ -105,6 +105,10 @@ export default async function EditarCotizacionPage({ params, searchParams }: { p
                className="px-3 py-1 bg-purple-700 text-white text-xs rounded font-semibold hover:bg-purple-800">
               📄 PDF staging
             </a>
+            <a href={`/api/stg/cotizaciones/${id}/propuesta`} target="_blank" rel="noopener noreferrer"
+               className="px-3 py-1 bg-green-700 text-white text-xs rounded font-semibold hover:bg-green-800">
+              📋 Propuesta staging
+            </a>
           </div>
         </div>
       )}
