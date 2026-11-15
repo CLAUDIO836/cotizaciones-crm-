@@ -928,6 +928,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           formatoInicial={formatoPanel}
           fechaSalida={fechaSalida}
           fechaRetorno={fechaDestino}
+          autoAplicar={!quotation && items[items.length - 1]?.unit_price === 0}
           onAplicar={(precio, tarifa) => setItems(prev => prev.map((it, idx) => idx === prev.length - 1
             ? { ...it, unit_price: precio, tarifa, codigo: CODIGO_FORMATO[tarifa.formato].codigo }
             : it))}

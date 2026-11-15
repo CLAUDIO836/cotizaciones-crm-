@@ -21,18 +21,20 @@ const MODALIDADES: { id: Modalidad; label: string }[] = [
 ]
 const SELECT_CLS = 'h-9 rounded-md border border-input bg-white px-2 text-sm'
 
-export default function TarifaPanel({ kmMaps, formatoInicial, fechaSalida, fechaRetorno, onAplicar }: {
+export default function TarifaPanel({ kmMaps, formatoInicial, fechaSalida, fechaRetorno, onAplicar, autoAplicar }: {
   kmMaps: number | null
   formatoInicial: FormatoId
   fechaSalida: string   // YYYY-MM-DDTHH:MM
   fechaRetorno: string
   onAplicar: (precio: number, tarifa: TarifaRef) => void
+  autoAplicar?: boolean // si true, aplica precio lista automáticamente cuando km viene de ruta y el cálculo está disponible
 }) {
   const [formato, setFormato] = useState<FormatoId>(formatoInicial)
   const [modalidad, setModalidad] = useState<Modalidad>('mismo_dia')
   const [kmManual, setKmManual] = useState('')
   const [calculo, setCalculo] = useState<ResultadoTarifa | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const autoAplicado = useRef(false)
 
   const km = kmManual.trim() !== '' ? Number(kmManual.replace(',', '.')) : kmMaps
   const kmValido = km !== null && Number.isFinite(km) && km >= 0
@@ -57,6 +59,17 @@ export default function TarifaPanel({ kmMaps, formatoInicial, fechaSalida, fecha
       } catch { /* el panel queda con el último cálculo */ }
     }, 250)
   }, [kmValido, km, formato, modalidad, fechaSalida, fechaRetorno])
+
+  // Auto-aplicar precio lista cuando km viene de ruta (no manual) y aún no se aplicó
+  useEffect(() => {
+    if (!autoAplicar) return
+    if (autoAplicado.current) return
+    if (kmManual.trim() !== '') return   // km fue ingresado a mano, no auto-aplicar
+    if (kmMaps === null) { autoAplicado.current = false; return } // ruta limpiada, resetear
+    if (!calculo || calculo.precioLista === null) return
+    autoAplicado.current = true
+    onAplicar(calculo.precioLista, { servicio: 'salida', formato, km: km!, modalidad })
+  }, [autoAplicar, kmMaps, kmManual, calculo, formato, km, modalidad, onAplicar])
 
   const r = kmValido ? calculo : null
 
