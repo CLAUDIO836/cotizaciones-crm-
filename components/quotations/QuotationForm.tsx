@@ -327,6 +327,25 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
       })
       .catch(() => { setDistanciaKm(null); setDuracionText(null) })
   }, [desdePlaceId, hastaPlaceId])
+
+  // Al editar: geocodificar desde/hasta si no tienen placeId (vienen como texto de la BD)
+  useEffect(() => {
+    if (desdePlaceId && hastaPlaceId) return   // ya tienen placeId, no hacer nada
+    if (!desde || !hasta) return
+    async function geocodificarRuta() {
+      try {
+        const [resD, resH] = await Promise.all([
+          fetch(`/api/places?input=${encodeURIComponent(desde)}`).then(r => r.json()),
+          fetch(`/api/places?input=${encodeURIComponent(hasta)}`).then(r => r.json()),
+        ])
+        const pidD = resD.predictions?.[0]?.place_id
+        const pidH = resH.predictions?.[0]?.place_id
+        if (pidD) setDesdePlaceId(pidD)
+        if (pidH) setHastaPlaceId(pidH)
+      } catch { /* silencioso */ }
+    }
+    geocodificarRuta()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const [fechaSalida, setFechaSalida] = useState(quotation?.fecha_salida?.slice(0, 16) ?? '')
   const [fechaDestino, setFechaDestino] = useState(quotation?.fecha_destino?.slice(0, 16) ?? '')
 
