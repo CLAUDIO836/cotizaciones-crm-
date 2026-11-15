@@ -525,7 +525,65 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
 
   const isEditing = !!quotation?.id
   const [loadingPdf, setLoadingPdf] = useState(false)
+  const [loadingAprobar, setLoadingAprobar] = useState(false)
   const [motivo, setMotivo] = useState('')
+
+  async function aprobarStaging() {
+    if (!clientId) { toast.error('Busca y selecciona un cliente por RUT'); return }
+    if (!selectedUserId) { toast.error('Selecciona un vendedor'); return }
+    setLoadingAprobar(true)
+    try {
+      const res = await fetch('/api/stg/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: quotation!.id,
+          client_id: clientId,
+          contact_id: contactId || null,
+          user_id: selectedUserId,
+          company_id: companyId || null,
+          pipeline_id: pipelineId || null,
+          etapa: 'cotizacion',
+          vehicle_type: vehicleType || null,
+          issue_date: issueDate,
+          expiry_date: expiryDate || null,
+          desde: desde || null,
+          hasta: hasta || null,
+          distancia_km: distanciaKm ?? null,
+          fecha_salida: fechaSalida ? fechaSalida.slice(0, 10) : null,
+          hora_salida: fechaSalida ? fechaSalida.slice(11, 16) : null,
+          fecha_retorno: fechaDestino ? fechaDestino.slice(0, 10) : null,
+          hora_retorno: fechaDestino ? fechaDestino.slice(11, 16) : null,
+          subtotal: Math.round(subtotalNeto - descuentoAmt),
+          tax_pct: taxPct,
+          descuento_pct: descuentoPct,
+          total: Math.round(total),
+          observaciones: observaciones || null,
+          notes: notes || null,
+          terms: terms || null,
+          items: items.map((item, idx) => ({
+            codigo: item.codigo || null,
+            description: serializeItemDescription(item),
+            pasajeros: item.pasajeros || null,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            sort_order: idx,
+          })),
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error ?? `HTTP ${res.status}`)
+      }
+      setEtapa('cotizacion')
+      toast.success('✅ Cotización aprobada — propuesta generada en nueva pestaña')
+      window.open(`/api/stg/cotizaciones/${quotation!.id}/propuesta`, '_blank')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Error al aprobar')
+    } finally {
+      setLoadingAprobar(false)
+    }
+  }
 
   async function saveQuotation(withPdf: boolean) {
     if (!clientId) { toast.error('Busca y selecciona un cliente por RUT'); return }
@@ -1391,21 +1449,31 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
       <div className="flex gap-3 flex-wrap">
         {isEditing ? (
           <>
+            {isStaging && (
+              <Button type="button" disabled={loadingAprobar || loading || loadingPdf}
+                onClick={aprobarStaging}
+                className="text-white font-bold text-sm"
+                style={{ background: '#15803d' }}>
+                {loadingAprobar ? 'Aprobando...' : '✅ Aprobar y generar propuesta'}
+              </Button>
+            )}
             <Button type="submit" disabled={loading || loadingPdf} style={{ background: '#1B8A4B' }} className="text-white">
               {loading ? 'Guardando...' : 'Guardar cambios'}
             </Button>
-            <Button type="button" disabled={loading || loadingPdf}
-              onClick={() => saveQuotation(true)}
-              style={{ background: '#1d4ed8' }} className="text-white">
-              {loadingPdf ? 'Generando PDF...' : 'Guardar y generar PDF'}
-            </Button>
+            {!isStaging && (
+              <Button type="button" disabled={loading || loadingPdf}
+                onClick={() => saveQuotation(true)}
+                style={{ background: '#1d4ed8' }} className="text-white">
+                {loadingPdf ? 'Generando PDF...' : 'Guardar y generar PDF'}
+              </Button>
+            )}
           </>
         ) : (
           <Button type="submit" disabled={loading} style={{ background: '#1B8A4B' }} className="text-white">
             {loading ? 'Guardando...' : 'Crear cotización'}
           </Button>
         )}
-        <Button type="button" variant="outline" onClick={() => router.back()} disabled={loading || loadingPdf}>
+        <Button type="button" variant="outline" onClick={() => router.back()} disabled={loading || loadingPdf || loadingAprobar}>
           Cancelar
         </Button>
       </div>
