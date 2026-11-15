@@ -770,11 +770,11 @@ if ($action === 'quotations_get') {
                ct.phone_landline AS contact_phone_landline,
                co.name   AS company_real_name
         FROM quotations q
-        LEFT JOIN clients   c  ON c.id  = q.client_id
-        LEFT JOIN profiles  p  ON p.id  = q.user_id
-        LEFT JOIN pipelines pl ON pl.id = q.pipeline_id
-        LEFT JOIN contacts  ct ON ct.id = q.contact_id
-        LEFT JOIN companies co ON co.id = q.company_id
+        LEFT JOIN transccl_crm.clients   c  ON c.id  = q.client_id
+        LEFT JOIN transccl_crm.profiles  p  ON p.id  = q.user_id
+        LEFT JOIN transccl_crm.pipelines pl ON pl.id = q.pipeline_id
+        LEFT JOIN transccl_crm.contacts  ct ON ct.id = q.contact_id
+        LEFT JOIN transccl_crm.companies co ON co.id = q.company_id
         WHERE q.id = ?
     ');
     $stmt->execute([$id]);

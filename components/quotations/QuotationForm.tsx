@@ -528,6 +528,30 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   const [loadingAprobar, setLoadingAprobar] = useState(false)
   const [motivo, setMotivo] = useState('')
 
+  const [loadingCarta, setLoadingCarta] = useState(false)
+  const [cartaUrl, setCartaUrl] = useState<string | null>(null)
+
+  async function generarCartaStaging() {
+    if (!quotation?.id) return
+    setLoadingCarta(true)
+    try {
+      const res = await fetch('/api/stg/approval-letters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quotation_id: quotation.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+      setCartaUrl(data.url)
+      window.open(data.url, '_blank')
+      toast.success('📝 Carta generada — abre en nueva pestaña para revisar y copiar el link al cliente')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Error al generar carta')
+    } finally {
+      setLoadingCarta(false)
+    }
+  }
+
   async function aprobarStaging() {
     if (!clientId) { toast.error('Busca y selecciona un cliente por RUT'); return }
     if (!selectedUserId) { toast.error('Selecciona un vendedor'); return }
@@ -1456,6 +1480,21 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
                 style={{ background: '#15803d' }}>
                 {loadingAprobar ? 'Aprobando...' : '✅ Aprobar y generar propuesta'}
               </Button>
+            )}
+            {isStaging && isEditing && (
+              <Button type="button" disabled={loadingCarta || loading || loadingPdf}
+                onClick={generarCartaStaging}
+                className="text-white font-bold text-sm"
+                style={{ background: '#1d4ed8' }}>
+                {loadingCarta ? 'Generando...' : '📝 Carta de aprobación'}
+              </Button>
+            )}
+            {isStaging && cartaUrl && (
+              <a href={cartaUrl} target="_blank" rel="noreferrer"
+                className="text-xs underline self-center text-blue-700 truncate max-w-[260px]"
+                title={cartaUrl}>
+                🔗 Ver carta →
+              </a>
             )}
             <Button type="submit" disabled={loading || loadingPdf} style={{ background: '#1B8A4B' }} className="text-white">
               {loading ? 'Guardando...' : 'Guardar cambios'}
