@@ -307,7 +307,7 @@ export default function SofiaDashboard({
                 {botActive.length === 0 ? (
                   <EmptyState icon="🤖" msg="Sin oportunidades activas con Sofía en este momento" />
                 ) : (
-                  <ConvTable convs={botActive} showApproval approvalsUrl={approvalsUrl} />
+                  <ConvTable convs={botActive} showApproval approvalsUrl={approvalsUrl} isStaging={isStaging} />
                 )}
               </>
             )}
@@ -329,7 +329,7 @@ export default function SofiaDashboard({
                 {pendingApproval.length === 0 ? (
                   <EmptyState icon="✅" msg="Sin cotizaciones pendientes de aprobación" />
                 ) : (
-                  <ConvTable convs={pendingApproval} showApproval onDecide={load} approvalsUrl={approvalsUrl} />
+                  <ConvTable convs={pendingApproval} showApproval onDecide={load} approvalsUrl={approvalsUrl} isStaging={isStaging} />
                 )}
               </>
             )}
@@ -434,11 +434,12 @@ function EmptyState({ icon, msg }: { icon: string; msg: string }) {
   )
 }
 
-function ConvTable({ convs, showApproval, onDecide, approvalsUrl = '/api/whatsapp/cloud/approvals' }: {
+function ConvTable({ convs, showApproval, onDecide, approvalsUrl = '/api/whatsapp/cloud/approvals', isStaging = false }: {
   convs: WaConv[]
   showApproval?: boolean
   onDecide?: () => void
   approvalsUrl?: string
+  isStaging?: boolean
 }) {
   const [deciding, setDeciding] = useState<Record<string, 'approving' | 'rejecting' | 'done' | 'error'>>({})
 
