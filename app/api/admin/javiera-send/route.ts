@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            from:    'CRM Transccl <noreply@transccl.cl>',
+            from:    'TransCCL Ventas <ventas@transccl.cl>',
             to:      [JAVIERA.email],
             subject: `Tu cotización de TransCCL está lista — ${JAVIERA.quoteNumber}`,
             html,

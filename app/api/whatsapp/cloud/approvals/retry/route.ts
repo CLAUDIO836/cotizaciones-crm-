@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  from: 'CRM Transccl <noreply@transccl.cl>',
+                  from: 'TransCCL Ventas <ventas@transccl.cl>',
                   to: [clientEmail],
                   subject: `Tu cotización de TransCCL está lista — ${ap.quote_number}`,
                   html: buildQuotationEmailHtml({ clientName, clientEmail, quotationNumber: ap.quote_number, total: Number(ap.quote_total_bd ?? 0), desde: ap.desde ?? '', hasta: ap.hasta ?? '', fechaSalida: ap.fecha_salida ?? '', cartaUrl }),
