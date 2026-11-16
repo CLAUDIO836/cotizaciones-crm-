@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, getToken } from '@/lib/api'
-import { buildQuotationEmailHtml } from '@/lib/email'
 
 const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 
@@ -70,12 +69,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. Carta de aprobación + email al cliente (si tiene email)
-    const clientEmail = (data.client_email as string | null)?.trim() ?? null
-    const clientName  = (data.client_name  as string | null) ?? ''
-
-    if (quotationId && clientEmail && token) {
-      // Crear carta de aprobación
+    // 3. Carta de aprobación (solo para WA — ejecutivos envían email desde su cuenta)
+    if (quotationId && convId && token) {
       try {
         const cartaRes = await fetch(`${CRM_API}?action=letters_create&token=${encodeURIComponent(token)}`, {
           method: 'POST',
@@ -87,44 +82,6 @@ export async function POST(req: NextRequest) {
         const letter = cartaData.data as Record<string, unknown> | undefined
         if (letter?.token) cartaUrl = `${baseUrl}/firmar/${letter.token}`
       } catch { /* non-fatal */ }
-
-      // Enviar email vía Resend
-      if (cartaUrl) {
-        const resendKey = process.env.RESEND_API_KEY
-        // Usar el número PD si está disponible, si no el número BWA
-        const quoteNumber = typeof pdResult.dealId === 'number'
-          ? String(pdResult.dealId)
-          : (data.quote_number as string | null) ?? 'Cotización'
-
-        if (resendKey) {
-          try {
-            const html = buildQuotationEmailHtml({
-              clientName,
-              clientEmail,
-              quotationNumber: quoteNumber,
-              total:        Number(data.total       ?? 0),
-              desde:        (data.desde             as string | undefined) ?? '',
-              hasta:        (data.hasta             as string | undefined) ?? '',
-              fechaSalida:  (data.fecha_salida       as string | undefined) ?? '',
-              cartaUrl,
-            })
-            const r = await fetch('https://api.resend.com/emails', {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                from: 'TransCCL Ventas <ventas@transccl.cl>',
-                to: [clientEmail],
-                subject: `Tu cotización de TransCCL está lista — ${quoteNumber}`,
-                html,
-              }),
-            })
-            emailSent = r.ok
-            if (!r.ok) console.error('[approvals] Resend error:', await r.text())
-          } catch (e) {
-            console.error('[approvals] email error:', e)
-          }
-        }
-      }
     }
 
     // 4. Despacho WA (después del PD upload → número ya actualizado en DB)
