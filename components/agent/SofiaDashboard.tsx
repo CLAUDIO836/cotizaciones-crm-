@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { toast } from 'sonner'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -453,7 +454,7 @@ function ConvTable({ convs, showApproval, onDecide, approvalsUrl = '/api/whatsap
       })
       const d = await res.json()
       if (!res.ok) {
-        alert(d.error ?? 'Error al procesar la decisión')
+        toast.error(d.error ?? 'Error al procesar la decisión')
         setDeciding(prev => ({ ...prev, [convId]: 'error' }))
         return
       }

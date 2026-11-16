@@ -432,8 +432,9 @@ if ($action === 'clients_create') {
 
     $id = uuid();
     $phone = $b['phone'] ?? $b['telefono_celular'] ?? $b['telefono_fijo'] ?? null;
-    db()->prepare('INSERT INTO clients (id,name,rut,email,phone,address) VALUES (?,?,?,?,?,?)')->execute([
-        $id, $b['name'] ?? '', $storedRut, $b['email'] ?? null, $phone, $b['address'] ?? null
+    $tipo = in_array($b['tipo'] ?? '', ['natural','empresa','colegio']) ? $b['tipo'] : null;
+    db()->prepare('INSERT INTO clients (id,name,rut,email,phone,address,tipo) VALUES (?,?,?,?,?,?,?)')->execute([
+        $id, $b['name'] ?? '', $storedRut, $b['email'] ?? null, $phone, $b['address'] ?? null, $tipo
     ]);
     $stmt = db()->prepare('SELECT * FROM clients WHERE id = ?');
     $stmt->execute([$id]);
@@ -481,10 +482,37 @@ if ($action === 'clients_update') {
         }
     }
 
-    db()->prepare('UPDATE clients SET name=?,rut=?,email=?,phone=?,address=? WHERE id=?')->execute([
-        $b['name'] ?? '', $storedRut, $b['email'] ?? null, $b['phone'] ?? null, $b['address'] ?? null, $id
+    $tipo = in_array($b['tipo'] ?? '', ['natural','empresa','colegio']) ? $b['tipo'] : null;
+    db()->prepare('UPDATE clients SET name=?,rut=?,email=?,phone=?,address=?,tipo=? WHERE id=?')->execute([
+        $b['name'] ?? '', $storedRut, $b['email'] ?? null, $b['phone'] ?? null, $b['address'] ?? null, $tipo, $id
     ]);
     ok();
+}
+
+if ($action === 'migrate_tipo') {
+    requireAuth();
+    // Asignar tipo='colegio' a clientes cuyo nombre contiene keywords educacionales
+    $keywords = ['Colegio','Escuela','Liceo','Universidad','Jardín Infantil','Jardin Infantil',
+                 'Corporación Educacional','Fundación Educacional','Sociedad Educacional',
+                 'Instituto Educacional','Centro Educacional','Fundacion Educacional',
+                 'Corporacion Educacional'];
+    $conditions = implode(' OR ', array_fill(0, count($keywords), 'name LIKE ?'));
+    $params = array_map(fn($k) => '%'.$k.'%', $keywords);
+    $updated = db()->prepare("UPDATE clients SET tipo='colegio' WHERE tipo IS NULL AND ($conditions)");
+    $updated->execute($params);
+    $colegios = $updated->rowCount();
+    // Asignar tipo='empresa' a los que tienen RUT empresa (>50M o formato con guion y no tiene 'K' en posición personal)
+    // Heurística simple: si empieza con 7,8,9 o tiene más de 7 dígitos antes del guion = empresa
+    $emp = db()->prepare("UPDATE clients SET tipo='empresa' WHERE tipo IS NULL AND rut IS NOT NULL AND (
+        CAST(REPLACE(REPLACE(SUBSTRING_INDEX(rut,'-',1),'.',''),' ','') AS UNSIGNED) > 50000000
+    )");
+    $emp->execute();
+    $empresas = $emp->rowCount();
+    // Resto = natural
+    $nat = db()->prepare("UPDATE clients SET tipo='natural' WHERE tipo IS NULL AND rut IS NOT NULL");
+    $nat->execute();
+    $naturales = $nat->rowCount();
+    ok(['colegios' => $colegios, 'empresas' => $empresas, 'naturales' => $naturales]);
 }
 
 if ($action === 'clients_delete') {
@@ -5304,8 +5332,17 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
             }
             $new_cl_id = $pdo->query("SELECT UUID() AS u")->fetch(PDO::FETCH_ASSOC)['u'];
             try {
-                $pdo->prepare("INSERT INTO clients (id,name,rut,email,phone,created_at) VALUES (?,?,?,?,?,NOW())")
-                    ->execute([$new_cl_id, $nombre_cliente, $rut_norm, $email, $conv['phone'] ?? null]);
+                // Determinar tipo: empresa/natural desde client_type, colegio por keywords en nombre
+                $tipo_wa = null;
+                if ($client_type === 'empresa') {
+                    $kw = mb_strtolower($nombre_cliente);
+                    $es_colegio = preg_match('/colegio|escuela|liceo|universidad|jardín infantil|jardin infantil|corporación educacional|fundación educacional|sociedad educacional/', $kw);
+                    $tipo_wa = $es_colegio ? 'colegio' : 'empresa';
+                } elseif ($client_type === 'natural') {
+                    $tipo_wa = 'natural';
+                }
+                $pdo->prepare("INSERT INTO clients (id,name,rut,email,phone,tipo,created_at) VALUES (?,?,?,?,?,?,NOW())")
+                    ->execute([$new_cl_id, $nombre_cliente, $rut_norm, $email, $conv['phone'] ?? null, $tipo_wa]);
                 $client_id    = $new_cl_id;
                 $company_field = $nombre_cliente;
 

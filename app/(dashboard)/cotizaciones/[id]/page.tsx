@@ -368,7 +368,7 @@ export default async function CotizacionDetailPage({
                   </div>
                 )}
                 {/* Notas y términos */}
-                {(q.notes || q.terms) && (
+                {(q.notes || (q.terms && q.terms !== 'NULL')) && (
                   <div className="grid grid-cols-1 gap-4">
                     {q.notes && (
                       <div className="bg-white rounded-xl border p-4">
@@ -376,7 +376,7 @@ export default async function CotizacionDetailPage({
                         <p className="text-sm text-gray-600 whitespace-pre-wrap">{q.notes}</p>
                       </div>
                     )}
-                    {q.terms && (
+                    {q.terms && q.terms !== 'NULL' && (
                       <div className="bg-white rounded-xl border p-4">
                         <h3 className="font-semibold text-gray-700 mb-2 text-sm">Términos y condiciones</h3>
                         <p className="text-sm text-gray-600 whitespace-pre-wrap">{q.terms}</p>
@@ -384,7 +384,7 @@ export default async function CotizacionDetailPage({
                     )}
                   </div>
                 )}
-                {!q.notes && !q.terms && q.status !== 'open' && q.status !== 'won' && (
+                {!q.notes && (!q.terms || q.terms === 'NULL') && q.status !== 'open' && q.status !== 'won' && (
                   <p className="text-sm text-gray-400 italic">Sin notas ni términos en esta cotización.</p>
                 )}
               </div>

@@ -27,6 +27,7 @@ interface Client {
   email?: string
   phone?: string
   address?: string
+  tipo?: 'natural' | 'empresa' | 'colegio' | null
 }
 
 
@@ -34,7 +35,8 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
   const [clients, setClients] = useState<Client[]>(initialClients)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
-  const [form, setForm] = useState({ name: '', rut: '', email: '', phone: '', address: '' })
+  const [form, setForm] = useState({ name: '', rut: '', email: '', phone: '', address: '', tipo: '' as '' | 'natural' | 'empresa' | 'colegio' })
+  const [tipoFilter, setTipoFilter] = useState<'' | 'natural' | 'empresa' | 'colegio'>('')
   const [loading, setLoading] = useState(false)
   const [rutError, setRutError] = useState('')
   const [dupClient, setDupClient] = useState<{ id: string; name: string; rut: string } | null>(null)
@@ -159,7 +161,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
 
   function openNew() {
     setEditing(null)
-    setForm({ name: '', rut: '', email: '', phone: '', address: '' })
+    setForm({ name: '', rut: '', email: '', phone: '', address: '', tipo: '' })
     setRutError('')
     setDupClient(null)
     setOpen(true)
@@ -167,7 +169,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
 
   function openEdit(c: Client) {
     setEditing(c)
-    setForm({ name: c.name, rut: c.rut ? formatRut(c.rut) : '', email: c.email ?? '', phone: c.phone ?? '', address: c.address ?? '' })
+    setForm({ name: c.name, rut: c.rut ? formatRut(c.rut) : '', email: c.email ?? '', phone: c.phone ?? '', address: c.address ?? '', tipo: c.tipo ?? '' })
     setRutError('')
     setDupClient(null)
     setOpen(true)
@@ -235,6 +237,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
         email: form.email.trim() || null,
         phone: form.phone.trim() || null,
         address: form.address.trim() || null,
+        tipo: form.tipo || null,
       }
       const body = editing ? { ...payload, id: editing.id } : payload
       const res = await fetch('/api/clients', {
@@ -259,7 +262,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
       if (!res.ok) throw new Error(json.error ?? 'Error al guardar')
 
       if (editing) {
-        setClients(prev => prev.map(c => c.id === editing.id ? { ...c, ...payload } as Client : c))
+        setClients(prev => prev.map(c => c.id === editing.id ? { ...c, ...payload, tipo: (payload.tipo as Client['tipo']) ?? c.tipo } as Client : c))
         toast.success('Cliente actualizado')
       } else {
         setClients(prev => [...prev, json.data ?? json as Client].sort((a, b) => a.name.localeCompare(b.name)))
@@ -285,12 +288,13 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
 
   const searchLower = search.trim().toLowerCase()
   const searchRutKey = searchLower ? rutKey(search) : ''
-  const filtered = searchLower
-    ? clients.filter(c =>
-        c.name.toLowerCase().includes(searchLower) ||
-        (c.rut && rutKey(c.rut).includes(searchRutKey))
-      )
-    : clients
+  const filtered = clients.filter(c => {
+    const matchSearch = !searchLower ||
+      c.name.toLowerCase().includes(searchLower) ||
+      (c.rut && rutKey(c.rut).includes(searchRutKey))
+    const matchTipo = !tipoFilter || c.tipo === tipoFilter
+    return matchSearch && matchTipo
+  })
 
   return (
     <div className="space-y-4">
@@ -300,8 +304,8 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
           <span><strong>{duplicateCount} RUT{duplicateCount > 1 ? 's' : ''} duplicado{duplicateCount > 1 ? 's' : ''}</strong> — elimina los registros duplicados para mantener la base de datos limpia.</span>
         </div>
       )}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 max-w-sm min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           <input
             type="text"
@@ -315,6 +319,17 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
               <X className="w-3.5 h-3.5" />
             </button>
           )}
+        </div>
+        <div className="flex gap-1.5">
+          {([['', 'Todos'], ['natural', 'Natural'], ['empresa', 'Empresa'], ['colegio', 'Colegio']] as const).map(([v, label]) => (
+            <button key={v} onClick={() => setTipoFilter(v)}
+              className="px-2.5 py-1 rounded-full text-xs font-semibold border transition-all"
+              style={tipoFilter === v
+                ? { background: '#1B8A4B', color: 'white', borderColor: '#1B8A4B' }
+                : { background: 'white', color: '#6B7280', borderColor: '#E5E7EB' }}>
+              {label}
+            </button>
+          ))}
         </div>
         <p className="text-sm text-gray-400 whitespace-nowrap">
           {filtered.length} de {clients.length}
@@ -371,8 +386,11 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                         }
                       </td>
                       <td className="px-4 py-3 font-medium text-gray-900">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           {c.name}
+                          {c.tipo === 'natural' && <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">Natural</span>}
+                          {c.tipo === 'empresa' && <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-purple-50 text-purple-700">Empresa</span>}
+                          {c.tipo === 'colegio' && <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">Colegio</span>}
                           {isDup && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-600"><AlertTriangle className="w-3 h-3" />Duplicado</span>}
                         </div>
                       </td>
@@ -570,6 +588,20 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
             <div className="space-y-1.5">
               <Label>Dirección</Label>
               <Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Tipo de cliente</Label>
+              <div className="flex gap-2 flex-wrap">
+                {([['', 'Sin clasificar'], ['natural', 'Persona Natural'], ['empresa', 'Empresa'], ['colegio', 'Colegio / Institución']] as const).map(([v, label]) => (
+                  <button key={v} type="button" onClick={() => setForm(f => ({ ...f, tipo: v }))}
+                    className="px-3 py-1 rounded-full text-xs font-semibold border transition-all"
+                    style={form.tipo === v
+                      ? { background: '#1B8A4B', color: 'white', borderColor: '#1B8A4B' }
+                      : { background: 'white', color: '#6B7280', borderColor: '#E5E7EB' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex gap-3 pt-2">
               <Button onClick={handleSave} disabled={loading}>

@@ -385,7 +385,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   const [clienteCotizador, setClienteCotizador] = useState<{ id: string; name: string; rut?: string; contactId: string | null } | null>(null)
 
   // Nuevo cliente inline
-  const [newClientTipo, setNewClientTipo] = useState<'natural' | 'empresa'>('natural')
+  const [newClientTipo, setNewClientTipo] = useState<'natural' | 'empresa' | 'colegio'>('natural')
   const [newClientName, setNewClientName] = useState('')        // persona natural: nombre + apellido / empresa: nombre del contacto
   const [newClientRut, setNewClientRut] = useState('')          // RUT persona natural
   const [newClientEmpresaNombre, setNewClientEmpresaNombre] = useState('') // nombre de la empresa
@@ -463,15 +463,16 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           rut: newClientRut.trim(),
           telefono_celular: newClientCelular.trim(),
           email: newClientEmail.trim(),
+          tipo: 'natural',
         }),
       })
       const json = await res.json()
       if (!res.ok) { toast.error(json.error ?? 'Error al crear cliente'); return null }
       return json.data?.id ?? null
     } else {
-      // Empresa
-      if (!newClientEmpresaNombre.trim()) { toast.error('Escribe el nombre de la empresa'); return null }
-      if (!newClientEmpresaRut.trim()) { toast.error('El RUT de la empresa es obligatorio'); return null }
+      // Empresa o Colegio (mismo formulario)
+      if (!newClientEmpresaNombre.trim()) { toast.error('Escribe el nombre de la organización'); return null }
+      if (!newClientEmpresaRut.trim()) { toast.error('El RUT es obligatorio'); return null }
       if (!newClientName.trim()) { toast.error('Escribe el nombre del contacto'); return null }
       if (!newClientCelular.trim()) { toast.error('El celular del contacto es obligatorio'); return null }
       if (!newClientEmail.trim()) { toast.error('El email del contacto es obligatorio'); return null }
@@ -484,6 +485,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           contacto: newClientName.trim(),
           telefono_celular: newClientCelular.trim(),
           email: newClientEmail.trim(),
+          tipo: newClientTipo,
         }),
       })
       const json = await res.json()
@@ -809,16 +811,16 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
               <button type="button" className="text-xs text-amber-600 underline" onClick={() => setShowNewClient(false)}>Ocultar</button>
             </div>
 
-            {/* Toggle persona natural / empresa */}
-            <div className="flex gap-2">
-              {(['natural', 'empresa'] as const).map(t => (
+            {/* Toggle persona natural / empresa / colegio */}
+            <div className="flex gap-2 flex-wrap">
+              {(['natural', 'empresa', 'colegio'] as const).map(t => (
                 <button key={t} type="button"
                   onClick={() => setNewClientTipo(t)}
                   className="px-3 py-1 rounded-full text-xs font-semibold border transition-all"
                   style={newClientTipo === t
                     ? { background: '#1B8A4B', color: 'white', borderColor: '#1B8A4B' }
                     : { background: 'white', color: '#92400e', borderColor: '#fcd34d' }}>
-                  {t === 'natural' ? 'Persona Natural' : 'Empresa'}
+                  {t === 'natural' ? 'Persona Natural' : t === 'empresa' ? 'Empresa' : 'Colegio / Institución'}
                 </button>
               ))}
             </div>
@@ -849,7 +851,7 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
             ) : (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1 col-span-2">
-                  <label className="text-xs text-amber-700 font-medium">Nombre de la empresa *</label>
+                  <label className="text-xs text-amber-700 font-medium">{newClientTipo === 'colegio' ? 'Nombre del colegio / institución *' : 'Nombre de la empresa *'}</label>
                   <input type="text" value={newClientEmpresaNombre} onChange={e => setNewClientEmpresaNombre(e.target.value)}
                     placeholder="Empresa XYZ SpA" className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
                 </div>
