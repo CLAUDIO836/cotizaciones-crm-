@@ -86,46 +86,58 @@ export async function POST(req: NextRequest) {
       } catch { /* non-fatal */ }
     }
 
-    // 4. Email al cliente via Gmail del ejecutivo (si tiene token conectado)
-    if (quotationId && cartaUrl && token && session) {
+    // 4. Email al cliente via Gmail del vendedor asignado (no del aprobador)
+    if (quotationId && cartaUrl && token) {
       try {
-        // Obtener refresh_token del ejecutivo que aprobó
-        const gtRes = await fetch(`${CRM_API}?action=profile_gmail_token&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
+        // Obtener Gmail token + datos del vendedor asignado a la cotización
+        const gtRes = await fetch(`${CRM_API}?action=quotation_vendor_gmail_token&quotation_id=${encodeURIComponent(quotationId)}&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
         const gtData = await gtRes.json()
-        const refreshToken: string = gtData?.data?.refresh_token ?? ''
+        const vendorRefreshToken: string = gtData?.data?.refresh_token ?? ''
+        const vendorEmail: string        = gtData?.data?.email ?? 'ventas@transccl.cl'
+        const vendorName:  string        = gtData?.data?.name  ?? 'TransCCL Ventas'
 
-        if (refreshToken) {
-          // Obtener datos del cliente de la cotización
-          const qRes = await fetch(`${CRM_API}?action=quotations_get&id=${encodeURIComponent(quotationId)}&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
-          const qData = await qRes.json()
-          const q = qData?.data ?? qData?.quotation ?? {}
-          const clientEmail: string = q.contact_email ?? ''
-          const clientName:  string = q.contact_name  ?? q.client_name ?? ''
-          const quoteNumber: string = String(q.number ?? q.pipedrive_deal_id ?? quotationId.slice(0, 8))
-          const total:       number = Number(q.total ?? 0)
+        // Obtener datos del cliente de la cotización
+        const qRes = await fetch(`${CRM_API}?action=quotations_get&id=${encodeURIComponent(quotationId)}&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
+        const qData = await qRes.json()
+        const q = qData?.data ?? qData?.quotation ?? {}
+        const clientEmail: string = q.contact_email ?? ''
+        const clientName:  string = q.contact_name  ?? q.client_name ?? ''
+        const quoteNumber: string = String(q.number ?? q.pipedrive_deal_id ?? quotationId.slice(0, 8))
+        const total:       number = Number(q.total ?? 0)
 
-          if (clientEmail) {
-            const html = buildQuotationEmailHtml({
-              clientName,
-              clientEmail,
-              quotationNumber: quoteNumber,
-              total,
-              desde:       q.desde       ?? '',
-              hasta:       q.hasta       ?? '',
-              fechaSalida: q.fecha_salida ?? '',
-              cartaUrl,
-            })
-            const fromName = session.name ?? 'TransCCL'
-            const fromEmail = session.email ?? 'ventas@transccl.cl'
+        if (clientEmail) {
+          const html = buildQuotationEmailHtml({
+            clientName, clientEmail, quotationNumber: quoteNumber,
+            total, desde: q.desde ?? '', hasta: q.hasta ?? '',
+            fechaSalida: q.fecha_salida ?? '', cartaUrl,
+          })
+
+          if (vendorRefreshToken) {
+            // Vendedor tiene Gmail conectado → enviar desde su cuenta
             await sendViaGmail({
-              refreshToken,
-              from:    `${fromName} <${fromEmail}>`,
+              refreshToken: vendorRefreshToken,
+              from:    `${vendorName} <${vendorEmail}>`,
               to:      clientEmail,
               subject: `Tu cotización de TransCCL está lista — ${quoteNumber}`,
               html,
             })
-            emailSent = true
+          } else {
+            // Vendedor sin Gmail conectado → fallback a ventas@transccl.cl via Resend
+            const resendKey = process.env.RESEND_API_KEY
+            if (resendKey) {
+              await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  from:    'TransCCL Ventas <ventas@transccl.cl>',
+                  to:      [clientEmail],
+                  subject: `Tu cotización de TransCCL está lista — ${quoteNumber}`,
+                  html,
+                }),
+              })
+            }
           }
+          emailSent = true
         }
       } catch (e) {
         console.error('[approvals] Gmail send error:', e)

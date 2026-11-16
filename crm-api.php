@@ -226,6 +226,19 @@ if ($action === 'profile_gmail_token') {
     ok(['refresh_token' => $row['google_refresh_token'] ?? null]);
 }
 
+if ($action === 'quotation_vendor_gmail_token') {
+    requireAuth();
+    $quotationId = $_GET['quotation_id'] ?? '';
+    if (!$quotationId) err('quotation_id requerido');
+    $stmt = db()->prepare(
+        'SELECT p.email, p.name, p.google_refresh_token FROM quotations q LEFT JOIN profiles p ON p.id = q.user_id WHERE q.id = ? LIMIT 1'
+    );
+    $stmt->execute([$quotationId]);
+    $row = $stmt->fetch();
+    if (!$row) err('Cotización no encontrada', 404);
+    ok(['email' => $row['email'], 'name' => $row['name'], 'refresh_token' => $row['google_refresh_token'] ?? null]);
+}
+
 if ($action === 'me') {
     $user = requireAuth();
     $stmt = db()->prepare('SELECT celular FROM profiles WHERE id = ?');
