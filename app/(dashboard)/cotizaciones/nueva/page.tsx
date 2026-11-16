@@ -30,7 +30,12 @@ export default async function NuevaCotizacionPage({
     const waConvCheck = await fetchWaConv(params.conv_id)
     if (waConvCheck?.wa_draft_quote_id) {
       const draftId = waConvCheck.wa_draft_quote_id
-      redirect(`/cotizaciones/${draftId}/editar?conv_id=${params.conv_id}`)
+      const extra = [
+        `conv_id=${params.conv_id}`,
+        params.phone ? `phone=${encodeURIComponent(params.phone)}` : '',
+        params.name  ? `name=${encodeURIComponent(params.name)}`   : '',
+      ].filter(Boolean).join('&')
+      redirect(`/cotizaciones/${draftId}/editar?${extra}`)
     }
   }
 

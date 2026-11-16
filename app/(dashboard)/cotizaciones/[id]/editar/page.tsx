@@ -1,5 +1,5 @@
 export const dynamic = 'force-dynamic'
-import { getSession, getToken, fetchQuotation, fetchClients, fetchProfiles, fetchCompanies } from '@/lib/api'
+import { getSession, getToken, fetchQuotation, fetchClients, fetchProfiles, fetchCompanies, fetchWaConv } from '@/lib/api'
 import QuotationForm from '@/components/quotations/QuotationForm'
 import { notFound, redirect } from 'next/navigation'
 
@@ -31,21 +31,22 @@ async function getPipedrivePipelines() {
   } catch { return [] }
 }
 
-export default async function EditarCotizacionPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ stg?: string }> }) {
+export default async function EditarCotizacionPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ stg?: string; conv_id?: string; phone?: string; name?: string }> }) {
   const { id } = await params
-  const { stg } = await searchParams
+  const { stg, conv_id, phone, name } = await searchParams
   const isStaging = stg === '1'
   const session = await getSession()
   if (!session) redirect('/login')
   const userToken = await getToken()
   if (isStaging && !userToken) redirect('/login')
 
-  const [q, clients, sellers, companies, pipelines] = await Promise.all([
+  const [q, clients, sellers, companies, pipelines, waConv] = await Promise.all([
     isStaging ? fetchStgQuotation(id, userToken!) : fetchQuotation(id),
     fetchClients(),
     fetchProfiles(),
     fetchCompanies(),
     getPipedrivePipelines(),
+    conv_id ? fetchWaConv(conv_id) : Promise.resolve(null),
   ])
 
   if (!q) notFound()
@@ -121,6 +122,20 @@ export default async function EditarCotizacionPage({ params, searchParams }: { p
         userId={session.id}
         quotation={quotationData}
         isStaging={isStaging}
+        {...(!quotationData.client_id && (phone || waConv) ? {
+          prefilledPhone:       phone ?? waConv?.phone,
+          prefilledName:        name  ?? waConv?.contact_name ?? undefined,
+          prefilledRUT:         waConv?.contact_rut   ?? undefined,
+          prefilledEmail:       waConv?.contact_email ?? undefined,
+          prefilledService:     waConv?.service_type        ?? undefined,
+          prefilledOrigin:      waConv?.service_origin      ?? undefined,
+          prefilledDestination: waConv?.service_destination ?? undefined,
+          prefilledDate:        waConv?.service_date        ?? undefined,
+          prefilledHoraSalida:  waConv?.service_hour        ?? undefined,
+          prefilledHoraRetorno: waConv?.service_hour_return ?? undefined,
+          prefilledPassengers:  waConv?.service_passengers  ?? undefined,
+          prefilledVehicle:     waConv?.service_vehicle     ?? undefined,
+        } : {})}
       />
     </div>
   )
