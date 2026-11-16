@@ -404,7 +404,7 @@ export default function FormPage() {
       </div>
 
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '24px 20px 40px' }}>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} noValidate>
 
           {/* Tipo de cliente */}
           <div style={{ marginBottom: 20 }}>
@@ -522,7 +522,7 @@ export default function FormPage() {
                 <label style={labelStyle}>Fecha <span style={{ color: '#e53e3e' }}>*</span></label>
                 <input style={{ ...inputStyle, paddingRight: 8 }} type="date" value={date}
                   onChange={e => setDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]} required />
+                  min={(() => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().split('T')[0] })()} />
               </div>
               <div>
                 <label style={labelStyle}>Hora de salida <span style={{ color: '#e53e3e' }}>*</span></label>
@@ -558,7 +558,7 @@ export default function FormPage() {
                   <label style={labelStyle}>Fecha regreso <span style={{ color: '#e53e3e' }}>*</span></label>
                   <input style={{ ...inputStyle, paddingRight: 8 }} type="date" value={returnDate}
                     onChange={e => setReturnDate(e.target.value)}
-                    min={date || new Date().toISOString().split('T')[0]} required />
+                    min={date || (() => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().split('T')[0] })()} />
                 </div>
                 <div>
                   <label style={labelStyle}>Hora regreso <span style={{ color: '#e53e3e' }}>*</span></label>
