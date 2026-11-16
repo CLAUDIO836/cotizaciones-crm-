@@ -22,7 +22,8 @@ async function handleUpload(req: NextRequest) {
     return NextResponse.json({ error: 'PIPEDRIVE_API_TOKEN no configurado' }, { status: 500 })
   }
 
-  const token = await getToken()
+  // Acepta token desde cookie (browser) o header X-CRM-Token (server-to-server)
+  const token = (await getToken()) ?? req.headers.get('X-CRM-Token')
   if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   const { quotationId, pipelineId, fechaSalida, companyName, desde, hasta, resync, skipPdf, motivo } = await req.json()
