@@ -8,9 +8,9 @@ export async function GET() {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'openid email profile',
+    scope: 'openid email profile https://www.googleapis.com/auth/gmail.send',
     access_type: 'offline',
-    prompt: 'select_account',
+    prompt: 'consent',
   })
 
   return NextResponse.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`)

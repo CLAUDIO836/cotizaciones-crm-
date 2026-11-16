@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, getToken } from '@/lib/api'
+import { buildQuotationEmailHtml } from '@/lib/email'
+import { sendViaGmail } from '@/lib/gmail'
 
 const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 
@@ -69,8 +71,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. Carta de aprobación (solo para WA — ejecutivos envían email desde su cuenta)
-    if (quotationId && convId && token) {
+    // 3. Carta de aprobación (siempre — WA y ejecutivos)
+    if (quotationId && token) {
       try {
         const cartaRes = await fetch(`${CRM_API}?action=letters_create&token=${encodeURIComponent(token)}`, {
           method: 'POST',
@@ -84,7 +86,53 @@ export async function POST(req: NextRequest) {
       } catch { /* non-fatal */ }
     }
 
-    // 4. Despacho WA (después del PD upload → número ya actualizado en DB)
+    // 4. Email al cliente via Gmail del ejecutivo (si tiene token conectado)
+    if (quotationId && cartaUrl && token && session) {
+      try {
+        // Obtener refresh_token del ejecutivo que aprobó
+        const gtRes = await fetch(`${CRM_API}?action=profile_gmail_token&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
+        const gtData = await gtRes.json()
+        const refreshToken: string = gtData?.data?.refresh_token ?? ''
+
+        if (refreshToken) {
+          // Obtener datos del cliente de la cotización
+          const qRes = await fetch(`${CRM_API}?action=quotations_get&id=${encodeURIComponent(quotationId)}&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
+          const qData = await qRes.json()
+          const q = qData?.data ?? qData?.quotation ?? {}
+          const clientEmail: string = q.contact_email ?? ''
+          const clientName:  string = q.contact_name  ?? q.client_name ?? ''
+          const quoteNumber: string = String(q.number ?? q.pipedrive_deal_id ?? quotationId.slice(0, 8))
+          const total:       number = Number(q.total ?? 0)
+
+          if (clientEmail) {
+            const html = buildQuotationEmailHtml({
+              clientName,
+              clientEmail,
+              quotationNumber: quoteNumber,
+              total,
+              desde:       q.desde       ?? '',
+              hasta:       q.hasta       ?? '',
+              fechaSalida: q.fecha_salida ?? '',
+              cartaUrl,
+            })
+            const fromName = session.name ?? 'TransCCL'
+            const fromEmail = session.email ?? 'ventas@transccl.cl'
+            await sendViaGmail({
+              refreshToken,
+              from:    `${fromName} <${fromEmail}>`,
+              to:      clientEmail,
+              subject: `Tu cotización de TransCCL está lista — ${quoteNumber}`,
+              html,
+            })
+            emailSent = true
+          }
+        }
+      } catch (e) {
+        console.error('[approvals] Gmail send error:', e)
+      }
+    }
+
+    // 5. Despacho WA (después del PD upload → número ya actualizado en DB)
     if (convId && token) {
       try {
         const waRes = await fetch(`${CRM_API}?action=wa_quote_retry&token=${encodeURIComponent(token)}`, {

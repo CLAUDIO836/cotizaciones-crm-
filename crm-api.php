@@ -182,9 +182,13 @@ if ($action === 'login') {
 // Google OAuth — busca o crea perfil por email (sin contraseña)
 if ($action === 'google_auth') {
     $b = body();
-    $email = trim($b['email'] ?? '');
-    $name  = trim($b['name']  ?? '');
+    $email         = trim($b['email']          ?? '');
+    $name          = trim($b['name']           ?? '');
+    $refreshToken  = trim($b['google_refresh_token'] ?? '');
     if (!$email) err('Email requerido');
+
+    // Asegurar columna google_refresh_token existe (idempotente)
+    try { db()->exec('ALTER TABLE profiles ADD COLUMN google_refresh_token TEXT DEFAULT NULL'); } catch (\Exception $e) {}
 
     // Buscar perfil existente
     $stmt = db()->prepare('SELECT * FROM profiles WHERE email = ? AND active = 1 LIMIT 1');
@@ -197,16 +201,29 @@ if ($action === 'google_auth') {
         db()->prepare('INSERT INTO profiles (id, email, name, role, password_hash, active) VALUES (?, ?, ?, ?, ?, 0)')
              ->execute([$id, $email, $name ?: $email, 'vendedor', password_hash(bin2hex(random_bytes(16)), PASSWORD_BCRYPT)]);
         err('pending_approval', 403);
-    } elseif ($name && $name !== $user['name']) {
-        // Sincronizar nombre desde Google si cambió en Google Workspace
-        db()->prepare('UPDATE profiles SET name = ? WHERE id = ?')->execute([$name, $user['id']]);
-        $user['name'] = $name;
+    } else {
+        $updates = [];
+        $params  = [];
+        if ($name && $name !== $user['name']) { $updates[] = 'name = ?'; $params[] = $name; $user['name'] = $name; }
+        if ($refreshToken)                    { $updates[] = 'google_refresh_token = ?'; $params[] = $refreshToken; }
+        if ($updates) {
+            $params[] = $user['id'];
+            db()->prepare('UPDATE profiles SET ' . implode(', ', $updates) . ' WHERE id = ?')->execute($params);
+        }
     }
 
     $exp = time() + SESSION_HOURS * 3600;
     $payload = ['id' => $user['id'], 'email' => $user['email'], 'name' => $user['name'], 'role' => $user['role'], 'exp' => $exp];
     $jwt = createJWT($payload);
     ok(['token' => $jwt, 'user' => ['id' => $user['id'], 'email' => $user['email'], 'name' => $user['name'], 'role' => $user['role']]]);
+}
+
+if ($action === 'profile_gmail_token') {
+    $user = requireAuth();
+    $stmt = db()->prepare('SELECT google_refresh_token FROM profiles WHERE id = ? LIMIT 1');
+    $stmt->execute([$user['id']]);
+    $row = $stmt->fetch();
+    ok(['refresh_token' => $row['google_refresh_token'] ?? null]);
 }
 
 if ($action === 'me') {

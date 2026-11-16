@@ -49,11 +49,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${origin}/login?error=domain`)
     }
 
-    // 4. Buscar o crear perfil en CRM via PHP
+    // 4. Buscar o crear perfil en CRM via PHP (incluye refresh_token si Google lo devolvió)
     const crmRes = await fetch(`${CRM_API}?action=google_auth`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, name }),
+      body: JSON.stringify({ email, name, google_refresh_token: tokens.refresh_token ?? null }),
     })
     const crmJson = await crmRes.json()
     if (!crmRes.ok || !crmJson.data?.token) {
