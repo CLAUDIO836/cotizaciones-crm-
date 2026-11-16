@@ -13,12 +13,8 @@ export async function GET(req: NextRequest) {
   if (!convId) return NextResponse.json({ error: 'conv_id requerido' }, { status: 400 })
 
   try {
-    const res = await fetch(`${CRM_API}?action=wa_approvals_get&conv_id=${encodeURIComponent(convId)}`, {
-      headers: {
-        'x-user-id': session.id,
-        'x-user-role': session.role ?? '',
-        ...(token ? { 'X-CRM-Token': token } : {}),
-      },
+    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : ''
+    const res = await fetch(`${CRM_API}?action=wa_approvals_get&conv_id=${encodeURIComponent(convId)}${tokenParam}`, {
       cache: 'no-store',
     })
     const data = await res.json()
@@ -38,14 +34,10 @@ export async function POST(req: NextRequest) {
 
     // 1. Aprobar/rechazar en PHP — skip_dispatch=true para que Next.js controle el despacho WA
     //    después de subir a Pipedrive (así el número PD ya está actualizado en DB)
-    const res = await fetch(`${CRM_API}?action=wa_approvals_decide`, {
+    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : ''
+    const res = await fetch(`${CRM_API}?action=wa_approvals_decide${tokenParam}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-id': session.id,
-        'x-user-role': session.role ?? '',
-        ...(token ? { 'X-CRM-Token': token } : {}),
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...body, _executor_id: session.id, skip_dispatch: true }),
     })
     const data = await res.json()
@@ -85,9 +77,9 @@ export async function POST(req: NextRequest) {
     if (quotationId && clientEmail && token) {
       // Crear carta de aprobación
       try {
-        const cartaRes = await fetch(`${CRM_API}?action=letters_create`, {
+        const cartaRes = await fetch(`${CRM_API}?action=letters_create&token=${encodeURIComponent(token)}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CRM-Token': token },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ quotation_id: quotationId }),
           cache: 'no-store',
         })
@@ -138,9 +130,9 @@ export async function POST(req: NextRequest) {
     // 4. Despacho WA (después del PD upload → número ya actualizado en DB)
     if (convId && token) {
       try {
-        const waRes = await fetch(`${CRM_API}?action=wa_quote_retry`, {
+        const waRes = await fetch(`${CRM_API}?action=wa_quote_retry&token=${encodeURIComponent(token)}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CRM-Token': token },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ conv_id: convId }),
         })
         const waData = await waRes.json()
