@@ -42,14 +42,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const vendorEmail: string        = gtData?.data?.email ?? 'ventas@transccl.cl'
     const vendorName:  string        = gtData?.data?.name  ?? 'TransCCL Ventas'
 
-    // 3. Datos del cliente
+    // 3. Datos del cliente (cotización + carta para email)
     const qRes = await fetch(`${CRM_API}?action=quotations_get&id=${encodeURIComponent(quotationId)}&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
     const qData = await qRes.json()
     const q = qData?.data ?? qData?.quotation ?? {}
-    const clientEmail: string = q.contact_email ?? ''
-    const clientName:  string = q.contact_name  ?? q.client_name ?? ''
     const quoteNumber: string = String(q.number ?? q.pipedrive_deal_id ?? quotationId.slice(0, 8))
     const total:       number = Number(q.total ?? 0)
+
+    // Email del cliente: desde cotización o desde la carta de aprobación
+    let clientEmail: string = q.contact_email ?? q.client_email ?? ''
+    let clientName:  string = q.contact_name  ?? q.client_name  ?? ''
+    if (!clientEmail && letters.length > 0) {
+      const l = letters[0] as Record<string, string>
+      clientEmail = l.client_email ?? ''
+      clientName  = clientName || l.client_name || ''
+    }
 
     if (!clientEmail) return NextResponse.json({ error: 'La cotización no tiene email de contacto' }, { status: 400 })
 
