@@ -4957,7 +4957,8 @@ if ($action === 'wa_approvals_decide') {
     $b    = body();
     $convId    = $b['conv_id']     ?? '';
     $decision  = $b['decision']    ?? ''; // 'approved' | 'rejected'
-    $notes     = trim($b['notes']  ?? '');
+    $notes        = trim($b['notes']       ?? '');
+    $skipDispatch = !empty($b['skip_dispatch']);
     if (!$convId || !in_array($decision, ['approved', 'rejected'])) err('conv_id y decision requeridos');
 
     // Obtener aprobación pendiente
@@ -4997,7 +4998,8 @@ if ($action === 'wa_approvals_decide') {
     // ── Despacho automático WA (controlado por flag WA_DISPATCH_ENABLED) ────────
     // Para habilitar: agregar WA_DISPATCH_ENABLED=1 en crm-secrets.php
     // Por defecto deshabilitado hasta activación general autorizada por Gerencia
-    $dispatchEnabled = (getenv('WA_DISPATCH_ENABLED') === '1');
+    // skip_dispatch=true: Next.js controlará el despacho después de subir a Pipedrive
+    $dispatchEnabled = !$skipDispatch && (getenv('WA_DISPATCH_ENABLED') === '1');
     $waToken   = defined('META_WA_TOKEN')           ? META_WA_TOKEN           : (getenv('META_WA_TOKEN')           ?: '');
     $waPhoneId = defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : (getenv('META_WA_PHONE_NUMBER_ID') ?: '');
 
@@ -5007,15 +5009,22 @@ if ($action === 'wa_approvals_decide') {
         $dispatchResult = ['ok' => false, 'envio_pendiente' => true, 'motivo' => $dispatchEnabled ? 'credenciales_wa_no_configuradas' : 'despacho_deshabilitado'];
     }
 
-    $q = db()->prepare("SELECT number, total, desde, hasta, fecha_salida FROM quotations WHERE id=?");
+    $q = db()->prepare("SELECT q.number, q.total, q.desde, q.hasta, q.fecha_salida, c.email AS client_email, c.name AS client_name FROM quotations q LEFT JOIN clients c ON c.id=q.client_id WHERE q.id=?");
     $q->execute([$apRow['quotation_id']]);
     $qRow = $q->fetch();
     ok([
         'aprobado'       => true,
         'aprobado_por'   => $user['id'],
         'timestamp'      => date('c'),
-        'quote_number'   => $qRow['number'] ?? null,
-        'total'          => $qRow['total']  ?? null,
+        'quotation_id'   => $apRow['quotation_id'],
+        'conv_id'        => $convId,
+        'quote_number'   => $qRow['number']       ?? null,
+        'total'          => $qRow['total']        ?? null,
+        'desde'          => $qRow['desde']        ?? null,
+        'hasta'          => $qRow['hasta']        ?? null,
+        'fecha_salida'   => $qRow['fecha_salida'] ?? null,
+        'client_email'   => $qRow['client_email'] ?? null,
+        'client_name'    => $qRow['client_name']  ?? null,
         'despacho'       => $dispatchResult,
     ]);
 }
