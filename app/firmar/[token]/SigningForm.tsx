@@ -86,7 +86,7 @@ export default function SigningForm({ letter }: { letter: Letter }) {
       {/* Datos del servicio */}
       <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 24 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: '0 0 16px' }}>Detalle del Servicio</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px 24px' }}>
           <Row label="Empresa" value={letter.client_name as string} />
           {letter.client_rut && <Row label="RUT" value={letter.client_rut as string} />}
           {letter.desde && <Row label="Origen" value={letter.desde as string} />}
@@ -110,7 +110,7 @@ export default function SigningForm({ letter }: { letter: Letter }) {
       {/* Términos */}
       <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 16px' }}>Términos y Condiciones</h2>
-        <div style={{ maxHeight: 320, overflowY: 'auto', paddingRight: 4 }}>
+        <div style={{ maxHeight: 320, overflowY: 'auto', WebkitOverflowScrolling: 'touch' as const, paddingRight: 4 }}>
           {CLAUSES.map(c => (
             <div key={c.title} style={{ marginBottom: 14 }}>
               <p style={{ margin: '0 0 3px', fontSize: 12, fontWeight: 700, color: '#374151' }}>{c.title}</p>
@@ -186,7 +186,7 @@ function Field({ label, value, onChange, placeholder }: { label: string; value: 
         placeholder={placeholder}
         style={{
           width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8,
-          border: '1px solid #d1d5db', fontSize: 14, color: '#111827', outline: 'none',
+          border: '1px solid #d1d5db', fontSize: 16, color: '#111827', outline: 'none',
           fontFamily: 'inherit',
         }}
       />
