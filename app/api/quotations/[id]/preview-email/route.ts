@@ -57,7 +57,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // 4. Construir HTML (sin enviar)
     const cartaToken = letters.length > 0 ? (letters[0] as Record<string, string>).token : cartaUrl.split('/firmar/')[1] ?? ''
-    const propuestaUrl = cartaToken ? `${baseUrl}/api/cotizaciones/${quotationId}/propuesta?token=${cartaToken}` : undefined
+    const propuestaUrl = cartaToken ? `${baseUrl}/api/cotizaciones/${quotationId}/html?token=${cartaToken}` : undefined
 
     const html = buildQuotationEmailHtml({
       clientName, clientEmail, quotationNumber: quoteNumber,
