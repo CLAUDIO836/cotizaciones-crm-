@@ -52,6 +52,19 @@ function uuid(): string {
     return $stmt->fetch()['u'];
 }
 
+// Registra un cambio de estado en quotation_status_log (silencioso si la tabla no existe aún)
+function logStatusChange(string $quotationId, ?string $oldStatus, string $newStatus, ?string $userId = null, string $source = 'crm'): void {
+    if ($oldStatus === $newStatus) return;
+    try {
+        db()->prepare(
+            'INSERT INTO quotation_status_log (id, quotation_id, old_status, new_status, changed_at, changed_by, source)
+             VALUES (?, ?, ?, ?, NOW(3), ?, ?)'
+        )->execute([uuid(), $quotationId, $oldStatus, $newStatus, $userId, $source]);
+    } catch (\Exception $e) {
+        // Silencioso: si la tabla no existe aún, no romper el flujo principal
+    }
+}
+
 // ── JWT / Auth ────────────────────────────────────────────────────────────────
 function b64url(string $data): string {
     return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
@@ -970,8 +983,22 @@ if ($action === 'quotations_update') {
         }
     }
     if (empty($setClauses)) { ok(); }
+
+    // Leer status actual antes de actualizar (para log)
+    $prevRow = null;
+    if (array_key_exists('status', $b)) {
+        $prevRow = db()->prepare('SELECT status, user_id FROM quotations WHERE id = ?');
+        $prevRow->execute([$id]);
+        $prevRow = $prevRow->fetch();
+    }
+
     $params[] = $id;
     db()->prepare('UPDATE quotations SET ' . implode(', ', $setClauses) . ' WHERE id = ?')->execute($params);
+
+    // Log si cambió el status
+    if ($prevRow && array_key_exists('status', $b) && $b['status'] !== $prevRow['status']) {
+        logStatusChange($id, $prevRow['status'], $b['status'], $user['id'] ?? $prevRow['user_id'] ?? null, 'crm');
+    }
 
     // Reemplazar items
     if (isset($b['items']) && is_array($b['items'])) {
@@ -994,6 +1021,67 @@ if ($action === 'quotations_by_pipedrive_deal') {
     $row = $stmt->fetch();
     echo json_encode(['data' => $row ?: null]);
     exit;
+}
+
+if ($action === 'run_migration') {
+    if (($_GET['secret'] ?? '') !== 'transccl-migrate-2024') err('Unauthorized', 401);
+    $num = $_GET['num'] ?? '';
+    if ($num === 'fix_view_v2') {
+        db()->exec("CREATE OR REPLACE VIEW quotations_summary AS
+            SELECT q.id, q.number, q.status, q.etapa, q.company, q.company_id,
+                   q.total, q.issue_date, q.fecha_salida,
+                   YEAR(COALESCE(q.fecha_salida, q.issue_date)) AS `year`,
+                   MONTH(COALESCE(q.fecha_salida, q.issue_date)) AS `month`,
+                   q.user_id AS vendedor_id, p.name AS vendedor_name,
+                   c.name AS client_name, q.client_id, q.pipeline_id,
+                   q.pipedrive_deal_id, q.created_at,
+                   q.crm_updated_at AS updated_at
+            FROM quotations q
+            LEFT JOIN profiles p ON p.id = q.user_id
+            LEFT JOIN clients c ON c.id = q.client_id
+            WHERE q.is_deleted = 0 OR q.is_deleted IS NULL");
+        $count = (int)db()->query("SELECT COUNT(*) FROM quotations_summary")->fetchColumn();
+        ok(['migration' => 'fix_view_v2', 'view_recreated' => true, 'rows' => $count]);
+    }
+
+    if ($num === 'create_status_log') {
+        // 1. Crear tabla de log de cambios de estado
+        db()->exec("CREATE TABLE IF NOT EXISTS quotation_status_log (
+            id           VARCHAR(36)  NOT NULL PRIMARY KEY,
+            quotation_id VARCHAR(36)  NOT NULL,
+            old_status   VARCHAR(20)  NULL,
+            new_status   VARCHAR(20)  NOT NULL,
+            changed_at   DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            changed_by   VARCHAR(36)  NULL COMMENT 'user_id del ejecutivo, null si viene de Pipedrive/sistema',
+            source       VARCHAR(20)  NOT NULL DEFAULT 'crm' COMMENT 'crm | pipedrive | approval',
+            INDEX idx_qid  (quotation_id),
+            INDEX idx_date (changed_at),
+            INDEX idx_new  (new_status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+        // 2. Actualizar vista para usar el log como updated_at
+        db()->exec("CREATE OR REPLACE VIEW quotations_summary AS
+            SELECT q.id, q.number, q.status, q.etapa, q.company, q.company_id,
+                   q.total, q.issue_date, q.fecha_salida,
+                   YEAR(COALESCE(q.fecha_salida, q.issue_date)) AS `year`,
+                   MONTH(COALESCE(q.fecha_salida, q.issue_date)) AS `month`,
+                   q.user_id AS vendedor_id, p.name AS vendedor_name,
+                   c.name AS client_name, q.client_id, q.pipeline_id,
+                   q.pipedrive_deal_id, q.created_at,
+                   (SELECT sl.changed_at FROM quotation_status_log sl
+                    WHERE sl.quotation_id = q.id
+                    ORDER BY sl.changed_at DESC LIMIT 1) AS updated_at
+            FROM quotations q
+            LEFT JOIN profiles p ON p.id = q.user_id
+            LEFT JOIN clients c ON c.id = q.client_id
+            WHERE q.is_deleted = 0 OR q.is_deleted IS NULL");
+
+        $logCount = (int)db()->query("SELECT COUNT(*) FROM quotation_status_log")->fetchColumn();
+        $viewCount = (int)db()->query("SELECT COUNT(*) FROM quotations_summary")->fetchColumn();
+        ok(['migration' => 'create_status_log', 'table_created' => true, 'view_updated' => true, 'log_rows' => $logCount, 'view_rows' => $viewCount]);
+    }
+
+    err('migration not found');
 }
 
 if ($action === 'admin_fix_quotation') {
@@ -1526,10 +1614,12 @@ if ($action === 'pipedrive_webhook') {
     // Pipedrive v2.0 "won" event: event="updated.deal", current.status="won"
     // Pipedrive v2.0 "lost" event: event="updated.deal", current.status="lost"
     $pdStatus = $current['status'] ?? null;
+    $pdStatusChanged = false;
     if ($pdStatus && in_array($pdStatus, ['won', 'lost', 'open'])) {
         if ($pdStatus !== $quot['status']) {
             $updates[] = 'status = ?';
             $params[]  = $pdStatus;
+            $pdStatusChanged = true;
         }
     }
 
@@ -1564,6 +1654,9 @@ if ($action === 'pipedrive_webhook') {
     $sqlSet = implode(', ', $updates);
     try {
         db()->prepare('UPDATE quotations SET ' . $sqlSet . ' WHERE id = ?')->execute($params);
+        if ($pdStatusChanged) {
+            logStatusChange($quot['id'], $quot['status'], $pdStatus, null, 'pipedrive');
+        }
         $afterData = json_encode(['status' => $pdStatus, 'pd_stage_id' => $pdStageId]);
         db()->prepare("UPDATE sync_log SET result='updated', before_data=?, after_data=? WHERE id=?")
             ->execute([$beforeData, $afterData, $logId]);
@@ -1586,7 +1679,13 @@ if ($action === 'quotations_delete') {
 if ($action === 'quotations_set_status') {
     requireAuth();
     $b = body();
+    $prev = db()->prepare('SELECT status, user_id FROM quotations WHERE id = ?');
+    $prev->execute([$b['id']]);
+    $prev = $prev->fetch();
     db()->prepare('UPDATE quotations SET status = ? WHERE id = ?')->execute([$b['status'], $b['id']]);
+    if ($prev && $b['status'] !== $prev['status']) {
+        logStatusChange($b['id'], $prev['status'], $b['status'], $user['id'] ?? $prev['user_id'] ?? null, 'crm');
+    }
     ok();
 }
 
