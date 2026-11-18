@@ -252,21 +252,33 @@ export default async function CotizacionDetailPage({
             </div>
           ) : null}
 
-          {/* Fecha de cierre previsto */}
-          {q.fecha_salida && q.status === 'open' && (() => {
-            const today = new Date(new Date().getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
-            const overdue = q.fecha_salida.slice(0, 10) < today
+          {/* Fecha de cierre previsto — todos los estados */}
+          {q.fecha_salida && (() => {
+            const today   = new Date(new Date().getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
+            const cp      = q.fecha_salida.slice(0, 10)
+            const msLeft  = new Date(cp + 'T12:00:00').getTime() - new Date(today + 'T12:00:00').getTime()
+            const daysLeft = Math.ceil(msLeft / 86400000)
+            const overdue  = q.status === 'open' && daysLeft < 0
+            const nearClose = q.status === 'open' && daysLeft >= 0 && daysLeft <= 2
+            const bgClass  = overdue ? 'bg-amber-50' : nearClose ? 'bg-orange-50' : ''
+            const textClass = overdue ? 'text-amber-600' : nearClose ? 'text-orange-500' : q.status === 'won' ? 'text-green-600' : q.status === 'lost' ? 'text-red-500' : 'text-gray-900'
             return (
-              <div className={`px-3 py-2.5 border-b ${overdue ? 'bg-amber-50' : ''}`}>
+              <div className={`px-3 py-2.5 border-b ${bgClass}`}>
                 {overdue && (
                   <div className="flex items-center gap-1 mb-1">
                     <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
                     <span className="text-xs font-semibold text-amber-600">Requiere tu intervención</span>
                   </div>
                 )}
-                <p className="text-xs text-gray-400">Fecha de cierre previsto</p>
-                <p className={`text-sm font-semibold ${overdue ? 'text-amber-600' : 'text-gray-900'}`}>
-                  {formatDate(q.fecha_salida.slice(0, 10))}
+                {nearClose && !overdue && (
+                  <p className="text-xs font-semibold text-orange-500 mb-1">
+                    🔔 {daysLeft === 0 ? 'Hoy' : daysLeft === 1 ? 'Mañana' : `En ${daysLeft} días`}
+                  </p>
+                )}
+                <p className="text-xs text-gray-400">Fecha del servicio</p>
+                <p className={`text-sm font-semibold ${textClass}`}>
+                  {q.status === 'won' ? '✅ ' : q.status === 'lost' ? '❌ ' : '📅 '}
+                  {formatDate(cp)}
                 </p>
               </div>
             )

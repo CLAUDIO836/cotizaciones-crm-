@@ -27,6 +27,7 @@ interface Quotation {
   company?: string
   year?: number
   month?: number
+  activity_count?: number
 }
 
 interface Props {
@@ -54,9 +55,14 @@ function getVendedorColor(name: string) {
   return vendedorColorMap[name]
 }
 
-// Fecha de cierre previsto = fecha del servicio exacta
 function getClosePrev(q: Quotation): string | null {
   return q.fecha_salida?.slice(0, 10) ?? null
+}
+
+function daysUntil(dateStr: string, today: string): number {
+  const a = new Date(dateStr + 'T12:00:00')
+  const b = new Date(today  + 'T12:00:00')
+  return Math.ceil((a.getTime() - b.getTime()) / 86400000)
 }
 
 function todayStr(): string {
@@ -194,7 +200,10 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                   const vColor     = q.vendedor_name ? getVendedorColor(q.vendedor_name) : 'var(--pipe-orange)'
                   const brand      = getBrandBadge(q.company)
                   const closePrev  = getClosePrev(q)
-                  const overdue    = q.status === 'open' && closePrev !== null && closePrev < today
+                  const daysLeft   = closePrev ? daysUntil(closePrev, today) : null
+                  const overdue    = q.status === 'open' && daysLeft !== null && daysLeft < 0
+                  const nearClose  = q.status === 'open' && daysLeft !== null && daysLeft >= 0 && daysLeft <= 2
+                  const noGestion  = q.status === 'open' && (q.activity_count ?? 0) === 0
 
                   // Fondo y borde por estado
                   let cardStyle: React.CSSProperties
@@ -209,13 +218,25 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                       <div className="rounded-xl border hover:shadow-md transition-all cursor-pointer overflow-hidden group"
                         style={cardStyle}>
 
-                        {/* Alerta: cierre vencido */}
-                        {overdue && (
-                          <div className="flex items-center gap-1.5 px-3 pt-2 pb-0">
-                            <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0" />
-                            <span className="text-xs font-semibold text-amber-600">
-                              Requiere tu intervención
-                            </span>
+                        {/* Alertas top — solo deals abiertos */}
+                        {(overdue || nearClose || noGestion) && (
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 pt-2 pb-0">
+                            {overdue && (
+                              <span className="flex items-center gap-1 text-xs font-semibold text-amber-600">
+                                <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                                Requiere tu intervención
+                              </span>
+                            )}
+                            {!overdue && nearClose && (
+                              <span className="text-xs font-semibold text-orange-500">
+                                🔔 {daysLeft === 0 ? 'Hoy' : daysLeft === 1 ? 'Mañana' : `En ${daysLeft} días`}
+                              </span>
+                            )}
+                            {noGestion && (
+                              <span className="text-xs font-semibold text-red-600">
+                                🚨 Sin gestión
+                              </span>
+                            )}
                           </div>
                         )}
 
@@ -265,10 +286,16 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                             )}
                           </div>
 
-                          {/* Fecha de cierre previsto */}
-                          {closePrev && q.status === 'open' && (
-                            <p className={`text-xs mt-1 font-medium ${overdue ? 'text-amber-600' : 'text-gray-400'}`}>
-                              Cierre previsto: {formatDateShort(closePrev)}
+                          {/* Fecha de cierre previsto — todos los estados */}
+                          {closePrev && (
+                            <p className={`text-xs mt-1 font-medium ${
+                              overdue        ? 'text-amber-600' :
+                              nearClose      ? 'text-orange-500' :
+                              q.status === 'won'  ? 'text-green-600' :
+                              q.status === 'lost' ? 'text-red-500' :
+                              'text-gray-400'
+                            }`}>
+                              {q.status === 'won' ? '✅' : q.status === 'lost' ? '❌' : '📅'} {formatDateShort(closePrev)}
                             </p>
                           )}
                         </div>

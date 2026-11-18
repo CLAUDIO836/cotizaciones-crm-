@@ -1103,6 +1103,30 @@ if ($action === 'run_migration') {
         ok(['migration' => 'create_status_log', 'table_created' => true, 'view_updated' => true, 'log_rows' => $logCount, 'view_rows' => $viewCount]);
     }
 
+    if ($num === 'add_activity_count') {
+        // Agrega activity_count al view para detectar negocios sin gestión
+        db()->exec("CREATE OR REPLACE VIEW quotations_summary AS
+            SELECT q.id, q.number, q.status, q.etapa, q.company, q.company_id,
+                   q.total, q.issue_date, q.fecha_salida,
+                   YEAR(COALESCE(q.fecha_salida, q.issue_date)) AS `year`,
+                   MONTH(COALESCE(q.fecha_salida, q.issue_date)) AS `month`,
+                   q.user_id AS vendedor_id, p.name AS vendedor_name,
+                   c.name AS client_name, c.rut AS client_rut,
+                   q.client_id, q.pipeline_id,
+                   q.pipedrive_deal_id, q.created_at,
+                   (SELECT sl.changed_at FROM quotation_status_log sl
+                    WHERE sl.quotation_id = q.id
+                    ORDER BY sl.changed_at DESC LIMIT 1) AS updated_at,
+                   (SELECT COUNT(*) FROM quotation_activities a
+                    WHERE a.quotation_id = q.id) AS activity_count
+            FROM quotations q
+            LEFT JOIN profiles p ON p.id = q.user_id
+            LEFT JOIN clients c ON c.id = q.client_id
+            WHERE q.is_deleted = 0 OR q.is_deleted IS NULL");
+        $count = (int)db()->query("SELECT COUNT(*) FROM quotations_summary")->fetchColumn();
+        ok(['migration' => 'add_activity_count', 'view_updated' => true, 'rows' => $count]);
+    }
+
     if ($num === 'backfill_from_sync_log') {
         // Reconstruir historial de cambios de estado desde sync_log (webhooks Pipedrive)
         // after_data contiene {"status":"won"|"lost"|"open",...} cuando cambió el status

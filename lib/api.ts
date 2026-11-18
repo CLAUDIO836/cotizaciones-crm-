@@ -241,6 +241,7 @@ export interface QuotationSummary {
   fecha_salida?: string  // fecha del servicio (departure date)
   created_at?: string
   updated_at?: string   // última vez que cambió el estado (quotation_status_log)
+  activity_count?: number  // cantidad de gestiones registradas
 }
 
 export interface Quotation {
