@@ -1272,6 +1272,22 @@ if ($action === 'run_migration') {
         ok(['migration' => 'format_phones', 'clients_updated' => $updClients, 'contacts_updated' => $updContacts]);
     }
 
+    if ($num === 'backfill_etapa') {
+        // 1) won/lost → cierre
+        $r1 = db()->exec("UPDATE quotations SET etapa = 'cierre' WHERE status IN ('won','lost') AND (etapa IS NULL OR etapa != 'cierre')");
+        // 2) open con actividades o emails → cotizacion (si están en lead o contactado)
+        $r2 = db()->exec("
+            UPDATE quotations q SET etapa = 'cotizacion'
+            WHERE q.status = 'open'
+              AND (q.etapa IS NULL OR q.etapa IN ('lead','contactado'))
+              AND (
+                  EXISTS (SELECT 1 FROM quotation_activities a WHERE a.quotation_id = q.id LIMIT 1)
+                  OR EXISTS (SELECT 1 FROM quotation_emails e WHERE e.quotation_id = q.id LIMIT 1)
+              )
+        ");
+        ok(['won_lost_a_cierre' => $r1, 'open_con_gestion_a_cotizacion' => $r2]);
+    }
+
     err('migration not found');
 }
 
@@ -1895,6 +1911,147 @@ if ($action === 'quotations_set_etapa_auto') {
     requireAuth();
     $b = body();
     if (!empty($b['id']) && !empty($b['trigger'])) autoAdvanceEtapa($b['id'], $b['trigger']);
+    ok();
+}
+
+// ── BILLING ──────────────────────────────────────────────────────────────────
+if ($action === 'quotation_save_billing') {
+    requireAuth();
+    $b = body();
+    // Crear tabla si no existe
+    db()->exec("CREATE TABLE IF NOT EXISTS quotation_billing (
+        id VARCHAR(36) PRIMARY KEY,
+        quotation_id VARCHAR(36) NOT NULL,
+        forma_pago VARCHAR(50) NOT NULL,
+        billing_name VARCHAR(200) NULL,
+        billing_rut VARCHAR(30) NULL,
+        billing_address VARCHAR(300) NULL,
+        billing_giro VARCHAR(200) NULL,
+        notas TEXT NULL,
+        requires_auth TINYINT(1) DEFAULT 0,
+        auth_by VARCHAR(36) NULL,
+        auth_at DATETIME NULL,
+        created_at DATETIME DEFAULT NOW(),
+        INDEX(quotation_id)
+    )");
+    db()->prepare('INSERT INTO quotation_billing (id,quotation_id,forma_pago,billing_name,billing_rut,billing_address,billing_giro,notas,requires_auth) VALUES (?,?,?,?,?,?,?,?,?)')
+        ->execute([uuid(), $b['quotation_id'], $b['forma_pago'], $b['billing_name']??null, $b['billing_rut']??null, $b['billing_address']??null, $b['billing_giro']??null, $b['notas']??null, $b['requires_auth']??0]);
+    ok();
+}
+
+if ($action === 'quotation_get_billing') {
+    requireAuth();
+    $qid = $_GET['quotation_id'] ?? '';
+    $stmt = db()->prepare('SELECT * FROM quotation_billing WHERE quotation_id = ? ORDER BY created_at DESC LIMIT 1');
+    $stmt->execute([$qid]);
+    ok($stmt->fetch() ?: null);
+}
+
+if ($action === 'billing_pending_auth') {
+    requireAuth();
+    if (!isAdmin($user)) err('Forbidden', 403);
+    $stmt = db()->query("SELECT b.*, q.number AS quotation_number, q.total, c.name AS client_name FROM quotation_billing b LEFT JOIN quotations q ON q.id=b.quotation_id LEFT JOIN clients c ON c.id=q.client_id WHERE b.requires_auth=1 AND b.auth_by IS NULL ORDER BY b.created_at DESC");
+    ok($stmt->fetchAll());
+}
+
+if ($action === 'billing_approve') {
+    requireAuth();
+    if (!isAdmin($user)) err('Forbidden', 403);
+    $b = body();
+    db()->prepare('UPDATE quotation_billing SET auth_by=?, auth_at=NOW() WHERE id=?')->execute([$user['id'], $b['id']]);
+    ok();
+}
+
+// ── WA PENDING REMINDERS ─────────────────────────────────────────────────────
+if ($action === 'send_pending_reminders') {
+    // Puede ser llamado por cron sin token; verificar secret
+    $secret = $_GET['secret'] ?? '';
+    if ($secret !== 'transccl-cron-2024' && !defined('META_WA_TOKEN')) err('Unauthorized', 401);
+
+    $waToken = defined('META_WA_TOKEN') ? META_WA_TOKEN : (getenv('WHATSAPP_TOKEN') ?: '');
+    $phoneId = defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : (getenv('WHATSAPP_PHONE_NUMBER_ID') ?: '');
+
+    // Hora Chile actual (UTC-3)
+    $nowChile = new DateTime('now', new DateTimeZone('America/Santiago'));
+    $today    = $nowChile->format('Y-m-d');
+
+    // Gestiones pendientes (no hechas, con due_date <= hoy, negocio abierto)
+    $stmt = db()->prepare("
+        SELECT a.user_id, p.name AS user_name, p.celular,
+               a.id AS act_id, a.type, a.subject, a.due_date, q.number AS quotation_number, q.id AS quotation_id
+        FROM quotation_activities a
+        LEFT JOIN profiles p ON p.id = a.user_id
+        LEFT JOIN quotations q ON q.id = a.quotation_id
+        WHERE a.done = 0
+          AND a.due_date IS NOT NULL
+          AND DATE(a.due_date) <= ?
+          AND q.status = 'open'
+          AND p.active = 1
+          AND p.celular IS NOT NULL AND p.celular != ''
+        ORDER BY a.user_id, a.due_date ASC
+    ");
+    $stmt->execute([$today]);
+    $rows = $stmt->fetchAll();
+
+    // Agrupar por usuario
+    $byUser = [];
+    foreach ($rows as $r) {
+        $uid = $r['user_id'];
+        if (!isset($byUser[$uid])) {
+            $byUser[$uid] = ['name' => $r['user_name'], 'celular' => $r['celular'], 'tasks' => []];
+        }
+        $byUser[$uid]['tasks'][] = $r;
+    }
+
+    $sent = 0;
+    foreach ($byUser as $uid => $data) {
+        $celular = preg_replace('/[^0-9+]/', '', $data['celular']);
+        if (!str_starts_with($celular, '+')) $celular = '+56' . ltrim($celular, '0');
+
+        $lines = ["🔔 *Gestiones pendientes – TransCCL CRM*\n\nHola {$data['name']}, tienes " . count($data['tasks']) . " gestión(es) pendiente(s):\n"];
+        foreach ($data['tasks'] as $t) {
+            $typeEmoji = ['llamada'=>'📞','reunion'=>'👥','email'=>'📧','visita'=>'📍','tarea'=>'✅'][$t['type']] ?? '📌';
+            $fecha = (new DateTime($t['due_date']))->format('d/m H:i');
+            $lines[] = "$typeEmoji *{$t['subject']}*\n   Negocio #{$t['quotation_number']} · {$fecha}";
+        }
+        $lines[] = "\nRevísalas en: https://crm.transccl.cl/cotizaciones";
+        $text = implode("\n", $lines);
+
+        $payload = ['messaging_product'=>'whatsapp','to'=>$celular,'type'=>'text','text'=>['body'=>$text]];
+        $ch = curl_init("https://graph.facebook.com/v21.0/{$phoneId}/messages");
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>10,
+            CURLOPT_HTTPHEADER=>["Authorization: Bearer {$waToken}", 'Content-Type: application/json'],
+            CURLOPT_POSTFIELDS=>json_encode($payload)]);
+        $r = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        if ($code < 400) $sent++;
+    }
+    ok(['total_users' => count($byUser), 'wa_sent' => $sent, 'pending_tasks' => count($rows)]);
+}
+
+// ── ADMIN: EMAIL TEMPLATES ────────────────────────────────────────────────────
+if ($action === 'email_templates_list') {
+    requireAuth();
+    db()->exec("CREATE TABLE IF NOT EXISTS email_templates (id VARCHAR(36) PRIMARY KEY, label VARCHAR(100), subject VARCHAR(200), body TEXT, created_by VARCHAR(36) NULL, updated_at DATETIME DEFAULT NOW())");
+    $rows = db()->query('SELECT * FROM email_templates ORDER BY label')->fetchAll();
+    ok($rows);
+}
+
+if ($action === 'email_templates_save') {
+    requireAuth();
+    if (!isAdmin($user)) err('Forbidden', 403);
+    $b = body();
+    if (empty($b['id'])) {
+        db()->prepare('INSERT INTO email_templates (id,label,subject,body,created_by,updated_at) VALUES (?,?,?,?,?,NOW())')->execute([uuid(), $b['label'], $b['subject'], $b['body'], $user['id']]);
+    } else {
+        db()->prepare('UPDATE email_templates SET label=?,subject=?,body=?,updated_at=NOW() WHERE id=?')->execute([$b['label'], $b['subject'], $b['body'], $b['id']]);
+    }
+    ok();
+}
+
+if ($action === 'email_templates_delete') {
+    requireAuth();
+    if (!isAdmin($user)) err('Forbidden', 403);
+    db()->prepare('DELETE FROM email_templates WHERE id=?')->execute([body()['id']]);
     ok();
 }
 

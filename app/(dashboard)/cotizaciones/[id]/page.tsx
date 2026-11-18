@@ -172,6 +172,9 @@ export default async function CotizacionDetailPage({
                 total={q.total}
                 status={q.status}
                 pipedriveDealId={q.pipedrive_deal_id}
+                billingName={q.clients?.name ?? ''}
+                billingRut={(q.clients as { rut?: string })?.rut ?? ''}
+                billingAddr={(q.clients as { address?: string })?.address ?? ''}
                 inline
               />
             </div>

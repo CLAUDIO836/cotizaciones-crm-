@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { CheckCircle, XCircle, RotateCcw } from 'lucide-react'
+import BillingModal from './BillingModal'
 
 interface Props {
   quotationId: string
@@ -16,14 +17,19 @@ interface Props {
   pipedriveDealId?: string
   inline?: boolean
   btnWidth?: number
+  // billing pre-fill
+  billingName?: string
+  billingRut?:  string
+  billingAddr?: string
 }
 
 const ERP_IMPORT_URL = process.env.NEXT_PUBLIC_ERP_IMPORT_URL ?? 'https://erp.transccl.cl/api/crm-import'
 const ERP_TOKEN      = process.env.NEXT_PUBLIC_CRM_SYNC_TOKEN ?? ''
 
-export default function StatusActions({ quotationId, quotationNumber, clientId, userId, total, status, pipedriveDealId, inline, btnWidth }: Props) {
+export default function StatusActions({ quotationId, quotationNumber, clientId, userId, total, status, pipedriveDealId, inline, btnWidth, billingName = '', billingRut = '', billingAddr = '' }: Props) {
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
+  const [loading,       setLoading]       = useState(false)
+  const [showBilling,   setShowBilling]   = useState(false)
 
   async function setStatus(newStatus: string) {
     const res = await fetch('/api/quotations', {
@@ -35,18 +41,14 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
   }
 
   async function markWon() {
-    const approvalRes = await fetch(`/api/quotation-approvals/by-quotation?quotation_id=${quotationId}`)
-    const approvalData = await approvalRes.json()
-    const clientApproved = approvalData.approval?.response === 'accepted'
+    // Open billing modal instead of window.confirm
+    setShowBilling(true)
+  }
 
-    const confirmMsg = clientApproved
-      ? '¿Marcar esta cotización como ganada?'
-      : '⚠️ El cliente aún NO ha enviado su aprobación digital.\n\n¿Deseas marcarla como ganada de todas formas?'
-
-    if (!window.confirm(confirmMsg)) return
+  async function finalizarWon() {
+    setShowBilling(false)
     setLoading(true)
     try {
-      await setStatus('won')
       // Create contract via API
       await fetch('/api/quotations', {
         method: 'POST',
@@ -59,16 +61,19 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
           value: total,
         }),
       })
-      if (!clientApproved) {
-        try {
+      // Notify manual win if no digital approval
+      try {
+        const approvalRes  = await fetch(`/api/quotation-approvals/by-quotation?quotation_id=${quotationId}`)
+        const approvalData = await approvalRes.json()
+        if (approvalData.approval?.response !== 'accepted') {
           await fetch('/api/quotation-approvals/notify-manual-win', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ quotation_id: quotationId }),
           })
-        } catch { /* no bloquea */ }
-      }
-      toast.success('¡Cotización ganada!')
+        }
+      } catch { /* no bloquea */ }
+      toast.success('¡Negocio ganado! Solicitud enviada a contabilidad.')
       router.refresh()
     } catch (err) {
       toast.error('Error: ' + (err instanceof Error ? err.message : 'desconocido'))
@@ -107,35 +112,50 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
 
   if (status === 'won' || status === 'lost') {
     return (
-      <Button variant="outline" size="sm" onClick={reopen} disabled={loading}>
-        <RotateCcw className="w-4 h-4 mr-1.5" />
-        {loading ? 'Reabriendo...' : 'Reabrir'}
-      </Button>
+      <>
+        <Button variant="outline" size="sm" onClick={reopen} disabled={loading}>
+          <RotateCcw className="w-4 h-4 mr-1.5" />
+          {loading ? 'Reabriendo...' : 'Reabrir'}
+        </Button>
+      </>
     )
   }
 
   return (
-    <div className="flex gap-2">
-      <Button
-        size="sm"
-        style={{ background: '#1B8A4B', ...(btnWidth ? { width: btnWidth } : {}) }}
-        className="text-white font-semibold"
-        onClick={markWon}
-        disabled={loading}
-      >
-        <CheckCircle className="w-4 h-4 mr-1.5" />
-        Ganado
-      </Button>
-      <Button
-        size="sm"
-        style={{ background: '#D33A2C', ...(btnWidth ? { width: btnWidth } : {}) }}
-        className="text-white font-semibold"
-        onClick={markLost}
-        disabled={loading}
-      >
-        <XCircle className="w-4 h-4 mr-1.5" />
-        Perdido
-      </Button>
-    </div>
+    <>
+      {showBilling && (
+        <BillingModal
+          quotationId={quotationId}
+          billingName={billingName}
+          billingRut={billingRut}
+          billingAddr={billingAddr}
+          onSuccess={finalizarWon}
+          onClose={() => setShowBilling(false)}
+        />
+      )}
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          style={{ background: '#1B8A4B', ...(btnWidth ? { width: btnWidth } : {}) }}
+          className="text-white font-semibold"
+          onClick={markWon}
+          disabled={loading}
+        >
+          <CheckCircle className="w-4 h-4 mr-1.5" />
+          Ganado
+        </Button>
+        <Button
+          size="sm"
+          style={{ background: '#D33A2C', ...(btnWidth ? { width: btnWidth } : {}) }}
+          className="text-white font-semibold"
+          onClick={markLost}
+          disabled={loading}
+        >
+          <XCircle className="w-4 h-4 mr-1.5" />
+          Perdido
+        </Button>
+      </div>
+    </>
   )
 }
+

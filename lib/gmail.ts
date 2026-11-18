@@ -18,21 +18,34 @@ async function getAccessToken(refreshToken: string): Promise<string> {
   return j.access_token
 }
 
+export interface MailAttachment {
+  filename:    string
+  contentType: string
+  data:        Buffer   // raw bytes
+}
+
 function buildMime(opts: {
-  from:      string
-  to:        string
-  subject:   string
-  html:      string
-  threadId?: string   // para incluir In-Reply-To si es un hilo
-  messageId?: string  // Message-ID del mensaje anterior
+  from:         string
+  to:           string
+  cc?:          string
+  subject:      string
+  html:         string
+  attachments?: MailAttachment[]
+  threadId?:    string
+  messageId?:   string
 }): string {
-  const boundary = `boundary_${Date.now()}`
+  const outerBoundary = `outer_${Date.now()}`
+  const hasAttachments = opts.attachments && opts.attachments.length > 0
+
   const lines = [
     `From: ${opts.from}`,
     `To: ${opts.to}`,
+    ...(opts.cc ? [`Cc: ${opts.cc}`] : []),
     `Subject: =?UTF-8?B?${Buffer.from(opts.subject).toString('base64')}?=`,
     'MIME-Version: 1.0',
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    hasAttachments
+      ? `Content-Type: multipart/mixed; boundary="${outerBoundary}"`
+      : `Content-Type: multipart/alternative; boundary="${outerBoundary}"`,
   ]
   if (opts.messageId) {
     lines.push(`In-Reply-To: ${opts.messageId}`)
@@ -40,14 +53,27 @@ function buildMime(opts: {
   }
   lines.push(
     '',
-    `--${boundary}`,
+    `--${outerBoundary}`,
     'Content-Type: text/html; charset=UTF-8',
     'Content-Transfer-Encoding: base64',
     '',
     Buffer.from(opts.html).toString('base64'),
     '',
-    `--${boundary}--`,
   )
+  if (hasAttachments) {
+    for (const att of opts.attachments!) {
+      lines.push(
+        `--${outerBoundary}`,
+        `Content-Type: ${att.contentType}; name="${att.filename}"`,
+        'Content-Transfer-Encoding: base64',
+        `Content-Disposition: attachment; filename="${att.filename}"`,
+        '',
+        att.data.toString('base64'),
+        '',
+      )
+    }
+  }
+  lines.push(`--${outerBoundary}--`)
   const mime = lines.join('\r\n')
   return Buffer.from(mime).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
@@ -142,15 +168,17 @@ export async function fetchGmailThread(refreshToken: string, threadId: string): 
 }
 
 export async function sendViaGmail(opts: {
-  refreshToken: string
-  from:         string
-  to:           string
-  subject:      string
-  html:         string
-  threadId?:    string  // si se pasa, el mensaje se envía dentro del hilo
+  refreshToken:  string
+  from:          string
+  to:            string
+  cc?:           string
+  subject:       string
+  html:          string
+  attachments?:  MailAttachment[]
+  threadId?:     string
 }): Promise<{ messageId: string; threadId: string }> {
   const accessToken = await getAccessToken(opts.refreshToken)
-  const raw = buildMime({ from: opts.from, to: opts.to, subject: opts.subject, html: opts.html })
+  const raw = buildMime({ from: opts.from, to: opts.to, cc: opts.cc, subject: opts.subject, html: opts.html, attachments: opts.attachments })
 
   const body: Record<string, string> = { raw }
   if (opts.threadId) body.threadId = opts.threadId
