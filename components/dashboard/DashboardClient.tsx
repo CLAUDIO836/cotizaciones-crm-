@@ -421,27 +421,34 @@ export default function DashboardClient({
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="text-left px-4 py-2.5 font-medium text-gray-500">Ejecutiva</th>
-                <th className="text-right px-3 py-2.5 font-medium text-blue-500">Abiertas</th>
+                <th className="text-right px-3 py-2.5 font-medium text-blue-500">Ab.</th>
                 <th className="text-right px-3 py-2.5 font-medium" style={{ color: '#1B8A4B' }}>Gan.</th>
                 <th className="text-right px-3 py-2.5 font-medium text-red-500">Perd.</th>
-                <th className="text-right px-3 py-2.5 font-medium text-gray-400">Monto gan.</th>
+                <th className="text-right px-3 py-2.5 font-medium text-blue-400">$ Ab.</th>
+                <th className="text-right px-3 py-2.5 font-medium" style={{ color: '#1B8A4B' }}>$ Gan.</th>
+                <th className="text-right px-3 py-2.5 font-medium text-red-400">$ Perd.</th>
               </tr>
             </thead>
             <tbody>
               {profiles
                 .map(p => {
                   const pqs = inRange.filter(q => q.vendedor_id === p.id)
+                  const wonQ  = pqs.filter(q => q.status === 'won')
+                  const lostQ = pqs.filter(q => q.status === 'lost')
+                  const openQ = pqs.filter(q => q.status === 'open')
                   return {
-                    name:  p.name,
-                    open:  pqs.filter(q => q.status === 'open').length,
-                    won:   pqs.filter(q => q.status === 'won').length,
-                    lost:  pqs.filter(q => q.status === 'lost').length,
-                    monto: sum(pqs.filter(q => q.status === 'won')),
-                    total: pqs.length,
+                    name:      p.name,
+                    open:      openQ.length,
+                    won:       wonQ.length,
+                    lost:      lostQ.length,
+                    montoGan:  sum(wonQ),
+                    montoPerd: sum(lostQ),
+                    montoAb:   sum(openQ),
+                    total:     pqs.length,
                   }
                 })
                 .filter(v => v.total > 0)
-                .sort((a, b) => b.won - a.won || b.monto - a.monto)
+                .sort((a, b) => b.won - a.won || b.montoGan - a.montoGan)
                 .map(e => (
                   <tr key={e.name} className="border-b last:border-0 hover:bg-gray-50">
                     <td className="px-4 py-2.5">
@@ -455,14 +462,20 @@ export default function DashboardClient({
                     <td className="px-3 py-2.5 text-right text-blue-600">{e.open}</td>
                     <td className="px-3 py-2.5 text-right font-bold" style={{ color: '#1B8A4B' }}>{e.won}</td>
                     <td className="px-3 py-2.5 text-right text-red-500">{e.lost}</td>
-                    <td className="px-3 py-2.5 text-right text-xs font-medium text-gray-700">
-                      {e.monto > 0 ? formatCLP(e.monto) : '—'}
+                    <td className="px-3 py-2.5 text-right text-xs text-blue-500">
+                      {e.montoAb > 0 ? formatCLP(e.montoAb) : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-xs font-medium" style={{ color: '#1B8A4B' }}>
+                      {e.montoGan > 0 ? formatCLP(e.montoGan) : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-xs text-red-500">
+                      {e.montoPerd > 0 ? formatCLP(e.montoPerd) : '—'}
                     </td>
                   </tr>
                 ))}
               {profiles.every(p => !inRange.find(q => q.vendedor_id === p.id)) && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-gray-400 text-sm">
+                  <td colSpan={7} className="px-4 py-6 text-center text-gray-400 text-sm">
                     Sin actividad en el período
                   </td>
                 </tr>
