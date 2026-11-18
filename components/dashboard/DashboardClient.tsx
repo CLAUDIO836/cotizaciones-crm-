@@ -488,17 +488,18 @@ export default function DashboardClient({
 
       {/* ── Por cliente ── */}
       {(() => {
-        // Agrupar por client_id (o client_name si no hay id)
+        // Agrupar por RUT (identificador único); si no hay RUT, por client_id
         const map = new Map<string, {
-          key: string; name: string
+          key: string; name: string; rut: string | null
           won: number; lost: number; open: number
           montoGan: number; montoPerd: number; montoAb: number
           qs: QuotationSummary[]
         }>()
         inRange.forEach(q => {
-          const key  = q.client_id ?? q.client_name ?? 'Sin cliente'
+          const rut  = q.client_rut?.trim() || null
+          const key  = rut ?? q.client_id ?? q.client_name ?? 'Sin cliente'
           const name = q.client_name ?? 'Sin cliente'
-          if (!map.has(key)) map.set(key, { key, name, won:0, lost:0, open:0, montoGan:0, montoPerd:0, montoAb:0, qs:[] })
+          if (!map.has(key)) map.set(key, { key, name, rut, won:0, lost:0, open:0, montoGan:0, montoPerd:0, montoAb:0, qs:[] })
           const e = map.get(key)!
           e.qs.push(q)
           if (q.status === 'won')  { e.won++;  e.montoGan  += Number(q.total ?? 0) }
@@ -547,7 +548,13 @@ export default function DashboardClient({
                   <tbody>
                     {rows.map(e => (
                       <tr key={e.key} className="border-b last:border-0 hover:bg-gray-50">
-                        <td className="px-4 py-2.5 font-medium text-gray-900 max-w-[180px] truncate">{e.name}</td>
+                        <td className="px-4 py-2.5 max-w-[200px]">
+                          <p className="font-medium text-gray-900 truncate">{e.name}</p>
+                          {e.rut
+                            ? <p className="text-xs text-gray-400">{e.rut}</p>
+                            : <p className="text-xs text-amber-500 font-medium">Sin RUT</p>
+                          }
+                        </td>
                         <td className="px-3 py-2.5 text-right text-blue-600">{e.open || '—'}</td>
                         <td className="px-3 py-2.5 text-right font-bold" style={{ color: '#1B8A4B' }}>{e.won || '—'}</td>
                         <td className="px-3 py-2.5 text-right text-red-500">{e.lost || '—'}</td>

@@ -237,6 +237,7 @@ export interface QuotationSummary {
   client_id?: string
   pipeline_id?: string
   pipeline_name?: string
+  client_rut?: string
   created_at?: string
   updated_at?: string   // crm_updated_at: última vez que cambió el estado en el CRM
 }

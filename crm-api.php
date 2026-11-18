@@ -1044,6 +1044,28 @@ if ($action === 'run_migration') {
         ok(['migration' => 'fix_view_v2', 'view_recreated' => true, 'rows' => $count]);
     }
 
+    if ($num === 'fix_view_v3') {
+        // Agrega client_rut a la vista; updated_at desde quotation_status_log
+        db()->exec("CREATE OR REPLACE VIEW quotations_summary AS
+            SELECT q.id, q.number, q.status, q.etapa, q.company, q.company_id,
+                   q.total, q.issue_date, q.fecha_salida,
+                   YEAR(COALESCE(q.fecha_salida, q.issue_date)) AS `year`,
+                   MONTH(COALESCE(q.fecha_salida, q.issue_date)) AS `month`,
+                   q.user_id AS vendedor_id, p.name AS vendedor_name,
+                   c.name AS client_name, c.rut AS client_rut,
+                   q.client_id, q.pipeline_id,
+                   q.pipedrive_deal_id, q.created_at,
+                   (SELECT sl.changed_at FROM quotation_status_log sl
+                    WHERE sl.quotation_id = q.id
+                    ORDER BY sl.changed_at DESC LIMIT 1) AS updated_at
+            FROM quotations q
+            LEFT JOIN profiles p ON p.id = q.user_id
+            LEFT JOIN clients c ON c.id = q.client_id
+            WHERE q.is_deleted = 0 OR q.is_deleted IS NULL");
+        $count = (int)db()->query("SELECT COUNT(*) FROM quotations_summary")->fetchColumn();
+        ok(['migration' => 'fix_view_v3', 'view_recreated' => true, 'rows' => $count]);
+    }
+
     if ($num === 'create_status_log') {
         // 1. Crear tabla de log de cambios de estado
         db()->exec("CREATE TABLE IF NOT EXISTS quotation_status_log (
