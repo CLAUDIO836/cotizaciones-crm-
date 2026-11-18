@@ -85,18 +85,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     })
 
     let sentFrom = vendorEmail
+    let messageId = ''
+    let threadId = ''
 
-    const crmCc = `crm+negocio${quoteNumber}@transccl.cl`
+    const subject = `Tu cotización de TransCCL está lista — ${quoteNumber}`
 
     if (vendorRefreshToken) {
-      await sendViaGmail({
+      const result = await sendViaGmail({
         refreshToken: vendorRefreshToken,
         from:    `${vendorName} <${vendorEmail}>`,
         to:      clientEmail,
-        cc:      crmCc,
-        subject: `Tu cotización de TransCCL está lista — ${quoteNumber}`,
+        bcc:     `crm+negocio${quoteNumber}@transccl.cl`,
+        subject,
         html,
       })
+      messageId = result.messageId
+      threadId  = result.threadId
     } else {
       const resendKey = process.env.RESEND_API_KEY
       if (!resendKey) return NextResponse.json({ error: 'Sin método de envío configurado' }, { status: 500 })
@@ -106,13 +110,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         body: JSON.stringify({
           from:    'TransCCL Ventas <ventas@transccl.cl>',
           to:      [clientEmail],
-          cc:      [crmCc],
-          subject: `Tu cotización de TransCCL está lista — ${quoteNumber}`,
+          subject,
           html,
         }),
       })
       sentFrom = 'ventas@transccl.cl'
     }
+
+    // Registrar correo enviado en la BD del CRM
+    await fetch(`${CRM_API}?action=emails_save&token=${encodeURIComponent(token)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quotation_id:     quotationId,
+        gmail_message_id: messageId,
+        gmail_thread_id:  threadId,
+        from_email:       sentFrom,
+        to_email:         clientEmail,
+        subject,
+        body_html:        html,
+      }),
+    }).catch(() => { /* no bloquea si falla el registro */ })
 
     return NextResponse.json({ ok: true, sent_to: clientEmail, sent_from: sentFrom, carta_url: cartaUrl })
   } catch (err) {

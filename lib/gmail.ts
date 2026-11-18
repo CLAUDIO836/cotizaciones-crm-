@@ -28,6 +28,7 @@ function buildMime(opts: {
   from:         string
   to:           string
   cc?:          string
+  bcc?:         string
   subject:      string
   html:         string
   attachments?: MailAttachment[]
@@ -41,6 +42,7 @@ function buildMime(opts: {
     `From: ${opts.from}`,
     `To: ${opts.to}`,
     ...(opts.cc ? [`Cc: ${opts.cc}`] : []),
+    ...(opts.bcc ? [`Bcc: ${opts.bcc}`] : []),
     `Subject: =?UTF-8?B?${Buffer.from(opts.subject).toString('base64')}?=`,
     'MIME-Version: 1.0',
     hasAttachments
@@ -172,13 +174,14 @@ export async function sendViaGmail(opts: {
   from:          string
   to:            string
   cc?:           string
+  bcc?:          string
   subject:       string
   html:          string
   attachments?:  MailAttachment[]
   threadId?:     string
 }): Promise<{ messageId: string; threadId: string }> {
   const accessToken = await getAccessToken(opts.refreshToken)
-  const raw = buildMime({ from: opts.from, to: opts.to, cc: opts.cc, subject: opts.subject, html: opts.html, attachments: opts.attachments })
+  const raw = buildMime({ from: opts.from, to: opts.to, cc: opts.cc, bcc: opts.bcc, subject: opts.subject, html: opts.html, attachments: opts.attachments })
 
   const body: Record<string, string> = { raw }
   if (opts.threadId) body.threadId = opts.threadId

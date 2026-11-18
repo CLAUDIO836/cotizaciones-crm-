@@ -284,12 +284,19 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                               {formatCLP(q.total)}
                             </p>
                             {isAdmin && q.vendedor_name && (
-                              <div className="flex items-center gap-1.5 flex-shrink-0">
-                                <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold uppercase"
-                                  style={{ background: vColor }}>
-                                  {q.vendedor_name[0]}
+                              <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold uppercase"
+                                    style={{ background: vColor }}>
+                                    {q.vendedor_name[0]}
+                                  </div>
+                                  <span className="text-xs text-gray-500 truncate max-w-[70px]">{q.vendedor_name}</span>
                                 </div>
-                                <span className="text-xs text-gray-500 truncate max-w-[70px]">{q.vendedor_name}</span>
+                                {q.created_at && (
+                                  <span className="text-[10px] text-gray-400">
+                                    {new Date(q.created_at).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                  </span>
+                                )}
                               </div>
                             )}
                           </div>
