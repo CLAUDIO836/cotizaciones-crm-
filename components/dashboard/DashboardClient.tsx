@@ -124,20 +124,27 @@ export default function DashboardClient({
   const weekStart = toDateStr(getWeekStart(now))
   const monthStart = toDateStr(new Date(now.getFullYear(), now.getMonth(), 1))
 
-  const [preset, setPreset]       = useState<Preset>('today')
+  const [preset, setPreset]         = useState<Preset>('today')
   const [customFrom, setCustomFrom] = useState(monthStart)
   const [customTo,   setCustomTo]   = useState(todayStr)
-  const [ejecutiva, setEjecutiva] = useState('all')
-  const [empresa,   setEmpresa]   = useState('all')
-  const [drill,     setDrill]     = useState<DrillItem | null>(null)
+  const [ejecutiva, setEjecutiva]   = useState('all')
+  const [empresa,   setEmpresa]     = useState('all')
+  const [drill,     setDrill]       = useState<DrillItem | null>(null)
+  const [selMonth,  setSelMonth]    = useState(now.getMonth() + 1)   // 1-12
+  const [selYear,   setSelYear]     = useState(now.getFullYear())
 
   // Active date range
   const range = useMemo((): { from: string; to: string } => {
-    if (preset === 'today')  return { from: todayStr,   to: todayStr }
-    if (preset === 'week')   return { from: weekStart,  to: todayStr }
-    if (preset === 'month')  return { from: monthStart, to: todayStr }
+    if (preset === 'today')  return { from: todayStr,  to: todayStr }
+    if (preset === 'week')   return { from: weekStart, to: todayStr }
+    if (preset === 'month') {
+      const from = `${selYear}-${String(selMonth).padStart(2, '0')}-01`
+      const isCurrent = selYear === now.getFullYear() && selMonth === now.getMonth() + 1
+      const to = isCurrent ? todayStr : toDateStr(new Date(selYear, selMonth, 0))
+      return { from, to }
+    }
     return { from: customFrom, to: customTo }
-  }, [preset, customFrom, customTo, todayStr, weekStart, monthStart])
+  }, [preset, customFrom, customTo, todayStr, weekStart, selMonth, selYear, now])
 
   // Base filter (ejecutiva + empresa)
   const filtered = useMemo(() =>
@@ -251,8 +258,18 @@ export default function DashboardClient({
 
   const rangeDescription = preset === 'today' ? 'hoy'
     : preset === 'week'  ? 'esta semana'
-    : preset === 'month' ? 'este mes'
+    : preset === 'month' ? `${getMonthName(selMonth)} ${selYear}`
     : `${range.from} → ${range.to}`
+
+  // Available years from data (always include current year)
+  const availableYears = useMemo(() => {
+    const years = new Set<number>([now.getFullYear()])
+    quotations.forEach(q => {
+      const d = q.created_at ? utcToChileDate(q.created_at) : null
+      if (d) years.add(Number(d.slice(0, 4)))
+    })
+    return [...years].sort((a, b) => b - a) // desc: more recent first
+  }, [quotations, now])
 
   const presets = [
     { key: 'today' as Preset,  label: 'Hoy' },
@@ -289,6 +306,30 @@ export default function DashboardClient({
               </button>
             ))}
           </div>
+
+          {/* Mes / Año — solo cuando preset === 'month' */}
+          {preset === 'month' && (
+            <div className="flex items-center gap-1 rounded-lg border overflow-hidden text-sm bg-white">
+              <select
+                value={selMonth}
+                onChange={e => { setSelMonth(Number(e.target.value)); setDrill(null) }}
+                className="px-2 py-1.5 text-gray-700 bg-white border-r outline-none"
+              >
+                {Array.from({ length: 12 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>{getMonthName(i + 1)}</option>
+                ))}
+              </select>
+              <select
+                value={selYear}
+                onChange={e => { setSelYear(Number(e.target.value)); setDrill(null) }}
+                className="px-2 py-1.5 text-gray-700 bg-white outline-none"
+              >
+                {availableYears.map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Ejecutiva */}
           <select
