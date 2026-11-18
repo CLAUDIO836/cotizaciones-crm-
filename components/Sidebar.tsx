@@ -160,7 +160,7 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
         <NavItem href="/dashboard"      icon={LayoutDashboard} label="Dashboard"   active={isActive('/dashboard')} />
         <NavItem href="/prospectos"     icon={PhoneCall}       label="Prospectos"  active={isActive('/prospectos')} />
         <NavItem href="/cotizaciones"   icon={Briefcase}       label="Negocios"    active={isActive('/cotizaciones')} />
-        <NavItem href="/cotizador"      icon={Calculator}      label="Cotizador"   active={isActive('/cotizador')} />
+        <NavItem href="/cotizador"      icon={Calculator}      label="Consulta Precios"   active={isActive('/cotizador')} />
         <NavItem href="/autorizaciones" icon={ShieldCheck}     label="Por aprobar" active={isActive('/autorizaciones')}
           badgeCount={profile?.autz_pending} />
 
