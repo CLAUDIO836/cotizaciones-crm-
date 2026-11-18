@@ -9,7 +9,7 @@ import { formatCLP, getMonthName } from '@/lib/utils'
 import type { QuotationSummary } from '@/lib/api'
 
 interface Profile { id: string; name: string }
-type Preset = 'today' | 'week' | 'month' | 'custom'
+type Mode = 'day' | 'week' | 'month' | 'year' | 'range'
 
 // Convierte un timestamp UTC del servidor a fecha Chile (UTC-3)
 function utcToChileDate(isoUtc: string): string {
@@ -127,31 +127,41 @@ export default function DashboardClient({
   companies: string[]
 }) {
   const now = new Date()
-  const todayStr  = toDateStr(now)
-  const weekStart = toDateStr(getWeekStart(now))
-  const monthStart = toDateStr(new Date(now.getFullYear(), now.getMonth(), 1))
+  const todayStr = toDateStr(now)
 
-  const [preset, setPreset]         = useState<Preset>('today')
-  const [customFrom, setCustomFrom] = useState(monthStart)
-  const [customTo,   setCustomTo]   = useState(todayStr)
-  const [ejecutiva, setEjecutiva]   = useState('all')
-  const [empresa,   setEmpresa]     = useState('all')
-  const [drill,     setDrill]       = useState<DrillItem | null>(null)
-  const [selMonth,  setSelMonth]    = useState(now.getMonth() + 1)   // 1-12
-  const [selYear,   setSelYear]     = useState(now.getFullYear())
+  const [mode,      setMode]      = useState<Mode>('day')
+  const [selDay,    setSelDay]    = useState(todayStr)
+  const [selMonth,  setSelMonth]  = useState(now.getMonth() + 1)
+  const [selYear,   setSelYear]   = useState(now.getFullYear())
+  const [rangeFrom, setRangeFrom] = useState(toDateStr(new Date(now.getFullYear(), now.getMonth(), 1)))
+  const [rangeTo,   setRangeTo]   = useState(todayStr)
+  const [ejecutiva, setEjecutiva] = useState('all')
+  const [empresa,   setEmpresa]   = useState('all')
+  const [drill,     setDrill]     = useState<DrillItem | null>(null)
 
   // Active date range
   const range = useMemo((): { from: string; to: string } => {
-    if (preset === 'today')  return { from: todayStr,  to: todayStr }
-    if (preset === 'week')   return { from: weekStart, to: todayStr }
-    if (preset === 'month') {
+    if (mode === 'day')  return { from: selDay, to: selDay }
+    if (mode === 'week') {
+      const ws = toDateStr(getWeekStart(parseDateLocal(selDay)))
+      const we = toDateStr(new Date(parseDateLocal(selDay).getFullYear(),
+                                    parseDateLocal(selDay).getMonth(),
+                                    parseDateLocal(selDay).getDate() - parseDateLocal(selDay).getDay() + (parseDateLocal(selDay).getDay() === 0 ? -6 : 1) + 6))
+      return { from: ws, to: we > todayStr ? todayStr : we }
+    }
+    if (mode === 'month') {
       const from = `${selYear}-${String(selMonth).padStart(2, '0')}-01`
       const isCurrent = selYear === now.getFullYear() && selMonth === now.getMonth() + 1
       const to = isCurrent ? todayStr : toDateStr(new Date(selYear, selMonth, 0))
       return { from, to }
     }
-    return { from: customFrom, to: customTo }
-  }, [preset, customFrom, customTo, todayStr, weekStart, selMonth, selYear, now])
+    if (mode === 'year') {
+      const from = `${selYear}-01-01`
+      const to   = selYear === now.getFullYear() ? todayStr : `${selYear}-12-31`
+      return { from, to }
+    }
+    return { from: rangeFrom, to: rangeTo }
+  }, [mode, selDay, selMonth, selYear, rangeFrom, rangeTo, todayStr, now])
 
   // Base filter (ejecutiva + empresa)
   const filtered = useMemo(() =>
@@ -163,18 +173,14 @@ export default function DashboardClient({
     [quotations, ejecutiva, empresa],
   )
 
-  // Para preset "mes": filtramos por año/mes del servicio (COALESCE(fecha_salida, issue_date))
-  // Para otros presets: filtramos por fecha de actividad (created_at para abiertas, updated_at para won/lost)
+  // month/year: filtrar por año/mes del servicio (COALESCE(fecha_salida, issue_date))
+  // day/week/range: filtrar por fecha de actividad (created_at para abiertas, updated_at para won/lost)
   const inRange = useMemo(() => {
-    if (preset === 'month') {
-      return filtered.filter(q => q.year === selYear && q.month === selMonth)
-    }
+    if (mode === 'month') return filtered.filter(q => q.year === selYear && q.month === selMonth)
+    if (mode === 'year')  return filtered.filter(q => q.year === selYear)
     const { from, to } = range
-    return filtered.filter(q => {
-      const ds = getActivityDate(q)
-      return ds >= from && ds <= to
-    })
-  }, [filtered, range, preset, selYear, selMonth])
+    return filtered.filter(q => { const ds = getActivityDate(q); return ds >= from && ds <= to })
+  }, [filtered, range, mode, selYear, selMonth])
 
   // Los tres KPIs miden gestión real: abiertas por created_at, ganadas/perdidas por updated_at
   const wonInRange  = inRange.filter(q => q.status === 'won')
@@ -197,18 +203,17 @@ export default function DashboardClient({
     const toD   = parseDateLocal(to)
 
     if (gran === 'day') {
-      // En modo mes: agrupamos por fecha de servicio (fecha_salida/issue_date)
-      const dateFn = preset === 'month' ? getServiceDate : getActivityDate
-      const monthDeals = preset === 'month'
+      const dateFn = (mode === 'month' || mode === 'year') ? getServiceDate : getActivityDate
+      const baseDeals = mode === 'month'
         ? filtered.filter(q => q.year === selYear && q.month === selMonth)
+        : mode === 'year'
+        ? filtered.filter(q => q.year === selYear)
         : null
       const result = []
       const cur = new Date(fromD)
       while (cur <= toD) {
         const ds = toDateStr(cur)
-        const dq = monthDeals
-          ? monthDeals.filter(q => dateFn(q) === ds)
-          : filtered.filter(q => dateFn(q) === ds)
+        const dq = (baseDeals ?? filtered).filter(q => dateFn(q) === ds)
         result.push({
           label: formatLabel(cur, 'day'),
           Ganadas:  dq.filter(q => q.status === 'won').length,
@@ -272,23 +277,25 @@ export default function DashboardClient({
   const statusColor = { won: '#1B8A4B', lost: '#ef4444', open: '#3b82f6' }
   const statusLabel = { won: 'Ganadas', lost: 'Perdidas', open: 'Abiertas' }
 
-  const rangeDescription = preset === 'today' ? 'hoy'
-    : preset === 'week'  ? 'esta semana'
-    : preset === 'month' ? `${getMonthName(selMonth)} ${selYear}`
-    : `${range.from} → ${range.to}`
+  const rangeDescription =
+    mode === 'day'   ? selDay === todayStr ? 'hoy' : selDay
+    : mode === 'week'  ? `semana del ${range.from}`
+    : mode === 'month' ? `${getMonthName(selMonth)} ${selYear}`
+    : mode === 'year'  ? String(selYear)
+    : `${rangeFrom} → ${rangeTo}`
 
-  // Años disponibles: derivados del campo year del view (COALESCE(fecha_salida, issue_date))
   const availableYears = useMemo(() => {
     const years = new Set<number>([now.getFullYear()])
     quotations.forEach(q => { if (q.year) years.add(q.year) })
-    return [...years].sort((a, b) => b - a) // desc: más reciente primero
+    return [...years].sort((a, b) => b - a)
   }, [quotations, now])
 
-  const presets = [
-    { key: 'today' as Preset,  label: 'Hoy' },
-    { key: 'week'  as Preset,  label: 'Semana' },
-    { key: 'month' as Preset,  label: 'Mes' },
-    { key: 'custom' as Preset, label: 'Personalizado' },
+  const modes: { key: Mode; label: string }[] = [
+    { key: 'day',   label: 'Día' },
+    { key: 'week',  label: 'Semana' },
+    { key: 'month', label: 'Mes' },
+    { key: 'year',  label: 'Año' },
+    { key: 'range', label: 'Rango' },
   ]
 
   return (
@@ -304,102 +311,97 @@ export default function DashboardClient({
         </div>
 
         <div className="flex flex-wrap gap-2 items-center">
-          {/* Período preset */}
+
+          {/* ── Selector de modo ── */}
           <div className="flex rounded-lg border overflow-hidden text-sm font-medium">
-            {presets.map(p => (
-              <button
-                key={p.key}
-                onClick={() => { setPreset(p.key); setDrill(null) }}
+            {modes.map(m => (
+              <button key={m.key}
+                onClick={() => { setMode(m.key); setDrill(null) }}
                 className="px-3 py-1.5 transition-colors"
-                style={preset === p.key
+                style={mode === m.key
                   ? { background: '#1B8A4B', color: '#fff' }
-                  : { background: '#fff', color: '#374151' }}
-              >
-                {p.label}
+                  : { background: '#fff', color: '#374151' }}>
+                {m.label}
               </button>
             ))}
           </div>
 
-          {/* Mes / Año — solo cuando preset === 'month' */}
-          {preset === 'month' && (
+          {/* ── Controles según modo ── */}
+          {mode === 'day' && (
+            <input type="date" value={selDay} max={todayStr}
+              onChange={e => { setSelDay(e.target.value); setDrill(null) }}
+              className="rounded-lg border px-3 py-1.5 text-sm text-gray-700 bg-white"
+              style={{ fontSize: 14 }} />
+          )}
+
+          {mode === 'week' && (
+            <div className="flex items-center gap-1.5 text-sm text-gray-600">
+              <span className="text-xs text-gray-400">semana que contiene</span>
+              <input type="date" value={selDay} max={todayStr}
+                onChange={e => { setSelDay(e.target.value); setDrill(null) }}
+                className="rounded-lg border px-3 py-1.5 text-sm text-gray-700 bg-white"
+                style={{ fontSize: 14 }} />
+            </div>
+          )}
+
+          {mode === 'month' && (
             <div className="flex items-center gap-1 rounded-lg border overflow-hidden text-sm bg-white">
-              <select
-                value={selMonth}
+              <select value={selMonth}
                 onChange={e => { setSelMonth(Number(e.target.value)); setDrill(null) }}
-                className="px-2 py-1.5 text-gray-700 bg-white border-r outline-none"
-              >
+                className="px-2 py-1.5 text-gray-700 bg-white border-r outline-none">
                 {Array.from({ length: 12 }, (_, i) => (
                   <option key={i + 1} value={i + 1}>{getMonthName(i + 1)}</option>
                 ))}
               </select>
-              <select
-                value={selYear}
+              <select value={selYear}
                 onChange={e => { setSelYear(Number(e.target.value)); setDrill(null) }}
-                className="px-2 py-1.5 text-gray-700 bg-white outline-none"
-              >
-                {availableYears.map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
+                className="px-2 py-1.5 text-gray-700 bg-white outline-none">
+                {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
           )}
 
+          {mode === 'year' && (
+            <select value={selYear}
+              onChange={e => { setSelYear(Number(e.target.value)); setDrill(null) }}
+              className="rounded-lg border px-3 py-1.5 text-sm text-gray-700 bg-white">
+              {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          )}
+
+          {mode === 'range' && (
+            <div className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="date" value={rangeFrom} max={rangeTo}
+                onChange={e => { setRangeFrom(e.target.value); setDrill(null) }}
+                className="rounded-lg border px-3 py-1.5 text-gray-700 bg-white"
+                style={{ fontSize: 14 }} />
+              <span className="text-gray-400">→</span>
+              <input type="date" value={rangeTo} min={rangeFrom} max={todayStr}
+                onChange={e => { setRangeTo(e.target.value); setDrill(null) }}
+                className="rounded-lg border px-3 py-1.5 text-gray-700 bg-white"
+                style={{ fontSize: 14 }} />
+            </div>
+          )}
+
           {/* Ejecutiva */}
-          <select
-            value={ejecutiva}
+          <select value={ejecutiva}
             onChange={e => { setEjecutiva(e.target.value); setDrill(null) }}
-            className="rounded-lg border px-3 py-1.5 text-sm text-gray-700 bg-white"
-          >
+            className="rounded-lg border px-3 py-1.5 text-sm text-gray-700 bg-white">
             <option value="all">Todas las ejecutivas</option>
             {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
 
           {/* Empresa */}
           {companies.length > 1 && (
-            <select
-              value={empresa}
+            <select value={empresa}
               onChange={e => { setEmpresa(e.target.value); setDrill(null) }}
-              className="rounded-lg border px-3 py-1.5 text-sm text-gray-700 bg-white"
-            >
+              className="rounded-lg border px-3 py-1.5 text-sm text-gray-700 bg-white">
               <option value="all">Todas las empresas</option>
               {companies.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           )}
         </div>
       </div>
-
-      {/* ── Rango personalizado ── */}
-      {preset === 'custom' && (
-        <div className="bg-white rounded-xl border p-4 flex flex-wrap items-center gap-4">
-          <span className="text-sm font-medium text-gray-600">Rango de fechas:</span>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500">Desde</label>
-            <input
-              type="date"
-              value={customFrom}
-              max={customTo}
-              onChange={e => { setCustomFrom(e.target.value); setDrill(null) }}
-              className="rounded-lg border px-3 py-1.5 text-sm text-gray-700"
-              style={{ fontSize: 16 }}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500">Hasta</label>
-            <input
-              type="date"
-              value={customTo}
-              min={customFrom}
-              max={todayStr}
-              onChange={e => { setCustomTo(e.target.value); setDrill(null) }}
-              className="rounded-lg border px-3 py-1.5 text-sm text-gray-700"
-              style={{ fontSize: 16 }}
-            />
-          </div>
-          <span className="text-xs text-gray-400">
-            {days} día{days !== 1 ? 's' : ''} · vista {gran === 'day' ? 'diaria' : gran === 'week' ? 'semanal' : 'mensual'}
-          </span>
-        </div>
-      )}
 
       {/* ── KPIs del rango ── */}
       <div>
