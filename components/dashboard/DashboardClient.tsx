@@ -11,21 +11,30 @@ import type { QuotationSummary } from '@/lib/api'
 interface Profile { id: string; name: string }
 type Preset = 'today' | 'week' | 'month' | 'custom'
 
-function toDateStr(d: Date) { return d.toISOString().slice(0, 10) }
+// Fecha en zona horaria Chile (UTC-3) para evitar desfase de día
+function toChileDate(d: Date) {
+  const chile = new Date(d.getTime() - 3 * 60 * 60 * 1000)
+  return chile.toISOString().slice(0, 10)
+}
+function toDateStr(d: Date) { return toChileDate(d) }
+
+// Convierte un timestamp UTC del servidor a fecha Chile
+function utcToChileDate(isoUtc: string): string {
+  return toChileDate(new Date(isoUtc))
+}
 
 // Fecha de creación (para "abiertas" — cuándo se abrió la cotización)
 function getCreatedDate(q: QuotationSummary): string {
-  if (q.created_at) return q.created_at.slice(0, 10)
+  if (q.created_at) return utcToChileDate(q.created_at)
   if (q.issue_date) return q.issue_date.slice(0, 10)
   return ''
 }
 
 // Fecha de último cambio de estado (para "ganadas"/"perdidas" — cuándo cambió)
+// Si no hay updated_at, el estado cambió antes de que existiera la columna → sin fecha confiable
 function getStatusDate(q: QuotationSummary): string {
-  if (q.updated_at) return q.updated_at.slice(0, 10)
-  if (q.created_at) return q.created_at.slice(0, 10)
-  if (q.issue_date) return q.issue_date.slice(0, 10)
-  return ''
+  if (q.updated_at) return utcToChileDate(q.updated_at)
+  return ''   // histórico sin fecha de gestión — no filtrar por día
 }
 
 // Para el gráfico de tendencia usamos la fecha de gestión correcta por status
