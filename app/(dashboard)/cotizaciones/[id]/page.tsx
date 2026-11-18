@@ -410,6 +410,26 @@ export default async function CotizacionDetailPage({
                         <ApprovalLetterButton quotationId={id} />
                       </div>
                     )}
+                    {isDiario && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Resultado de la cotización</p>
+                        <p className="text-xs text-blue-600 mb-3">Registra si el cliente aprueba o rechaza esta propuesta de Traslado Diario.</p>
+                        <StatusActions
+                          quotationId={q.id}
+                          quotationNumber={q.number}
+                          clientId={q.client_id ?? ''}
+                          userId={q.user_id ?? ''}
+                          total={q.total}
+                          status={q.status}
+                          pipedriveDealId={q.pipedrive_deal_id}
+                          billingName={q.clients?.name ?? ''}
+                          billingRut={(q.clients as { rut?: string })?.rut ?? ''}
+                          billingAddr={(q.clients as { address?: string })?.address ?? ''}
+                          wonLabel="Apruebo Cotización"
+                          lostLabel="Rechazo Cotización"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
                 {/* Notas y términos */}

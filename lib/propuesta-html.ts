@@ -1185,6 +1185,45 @@ ${stagingBanner}
   </div>
 </div>
 
+${(() => {
+  const vehiclePhotoMap: Record<string, string> = {
+    'B': 'flota-bus45.jpg',
+    'T': 'flota-taxibus.jpg',
+    'M': 'flota-minibus.jpg',
+    'V': 'flota-minibus.jpg',
+  }
+  const usedCodigos = [...new Set(items.filter(i => i.codigo).map(i => i.codigo!.toUpperCase()))]
+  if (usedCodigos.length === 0) return ''
+  return `
+<!-- ══════════════════════════════════════ PÁGINA: VEHÍCULOS -->
+<div class="page">
+  <div class="sp">
+    ${sectionHeader(15, 'Vehículos asignados a su servicio')}
+
+    <div class="flota-grid" style="margin-top:14px;">
+      ${usedCodigos.map(codigo => {
+        const group = codigo[0] ?? ''
+        const photoFile = vehiclePhotoMap[group] ?? 'flota-bus45.jpg'
+        const title = vehicleLabel(codigo) || codigo
+        return `
+      <div class="flota-card">
+        <img class="flota-photo" src="${img(photoFile)}" alt="${title}"/>
+        <div class="flota-body">
+          <div class="flota-title">${title}</div>
+          <div class="flota-spec" style="font-size:10px;color:#6b7280;">Vehículo asignado a su cotización</div>
+        </div>
+      </div>`
+      }).join('')}
+    </div>
+
+    <div class="page-footer">
+      <span>Transccl SpA · RUT 77.282.952-3 · ventas@transccl.cl · +56 2 2945 5713</span>
+      <span>www.transccl.cl</span>
+    </div>
+  </div>
+</div>`
+})()}
+
 </body>
 </html>`
 }

@@ -17,6 +17,8 @@ interface Props {
   pipedriveDealId?: string
   inline?: boolean
   btnWidth?: number
+  wonLabel?: string
+  lostLabel?: string
   // billing pre-fill
   billingName?: string
   billingRut?:  string
@@ -26,7 +28,7 @@ interface Props {
 const ERP_IMPORT_URL = process.env.NEXT_PUBLIC_ERP_IMPORT_URL ?? 'https://erp.transccl.cl/api/crm-import'
 const ERP_TOKEN      = process.env.NEXT_PUBLIC_CRM_SYNC_TOKEN ?? ''
 
-export default function StatusActions({ quotationId, quotationNumber, clientId, userId, total, status, pipedriveDealId, inline, btnWidth, billingName = '', billingRut = '', billingAddr = '' }: Props) {
+export default function StatusActions({ quotationId, quotationNumber, clientId, userId, total, status, pipedriveDealId, inline, btnWidth, wonLabel, lostLabel, billingName = '', billingRut = '', billingAddr = '' }: Props) {
   const router = useRouter()
   const [loading,       setLoading]       = useState(false)
   const [showBilling,   setShowBilling]   = useState(false)
@@ -161,7 +163,7 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
           disabled={loading}
         >
           <CheckCircle className="w-4 h-4 mr-1.5" />
-          Ganado
+          {wonLabel ?? 'Ganado'}
         </Button>
         <Button
           size="sm"
@@ -171,7 +173,7 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
           disabled={loading}
         >
           <XCircle className="w-4 h-4 mr-1.5" />
-          Perdido
+          {lostLabel ?? 'Perdido'}
         </Button>
       </div>
     </>
