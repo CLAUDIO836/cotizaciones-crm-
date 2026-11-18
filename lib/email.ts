@@ -7,6 +7,7 @@ export function buildQuotationEmailHtml(opts: {
   hasta?:          string
   fechaSalida?:    string
   cartaUrl:        string
+  propuestaUrl?:   string
   vendorName?:     string
   vendorEmail?:    string
   vendorPhone?:    string
@@ -15,6 +16,7 @@ export function buildQuotationEmailHtml(opts: {
   const {
     clientName, clientEmail, quotationNumber, total,
     desde, hasta, fechaSalida, cartaUrl,
+    propuestaUrl,
     vendorName = 'TransCCL Ventas',
     vendorEmail = 'ventas@transccl.cl',
     vendorPhone = '+56 2 2945 5713',
@@ -33,16 +35,22 @@ export function buildQuotationEmailHtml(opts: {
     ? `<tr><td style="background:#fbbf24;color:#78350f;padding:8px 16px;font-size:12px;font-weight:700;text-align:center">⚠️ PRUEBA STAGING — Destinatario real sería: ${clientEmail ?? ''}</td></tr>`
     : ''
 
+  const ctaUrl = propuestaUrl ?? cartaUrl
+
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1c3050">
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#eef2f7">
 <tr><td align="center" style="padding:28px 12px">
 <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width:600px;width:100%;background:#ffffff;border-collapse:collapse">
   ${stagingBanner}
-  <!-- Header -->
-  <tr><td style="background:#082e62;padding:24px 30px;color:white;border-bottom:5px solid #e52832">
-    <div style="font-size:30px;font-weight:800;letter-spacing:-1px">Trans<span style="color:#7fc76a">ccl</span></div>
-    <div style="font-size:12px;margin-top:5px;color:#d7e4f4">Transportes de Pasajeros</div>
+  <!-- Header blanco con logo oficial -->
+  <tr><td style="background:#ffffff;padding:16px 24px;border-bottom:4px solid #e52832;box-shadow:0 2px 4px rgba(0,0,0,0.06)">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td><img src="https://crm.transccl.cl/logo-transccl.png" alt="TransCCL" height="56" style="display:block;height:56px;width:auto;border:0" /></td>
+      <td align="right" style="font-size:11px;color:#667890;vertical-align:middle">Transportes de Pasajeros</td>
+    </tr>
+    </table>
   </td></tr>
 
   <!-- Hero -->
@@ -74,11 +82,12 @@ export function buildQuotationEmailHtml(opts: {
   <!-- CTA -->
   <tr><td align="center" style="padding:0 30px 27px">
     <table role="presentation" cellpadding="0" cellspacing="0">
-    <tr><td bgcolor="#e52832" style="border-radius:7px">
-      <a href="${cartaUrl}" style="display:inline-block;padding:16px 26px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none">REVISAR MI COTIZACIÓN</a>
+    <tr><td bgcolor="#1B8A4B" style="border-radius:7px">
+      <a href="${ctaUrl}" style="display:inline-block;padding:16px 30px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none">VER MI COTIZACIÓN</a>
     </td></tr>
     </table>
-    <div style="font-size:12px;color:#667890;margin-top:12px">También encontrará el documento adjunto en PDF.</div>
+    ${propuestaUrl ? `<div style="margin-top:14px"><a href="${cartaUrl}" style="font-size:13px;color:#082e62;font-weight:600;text-decoration:underline">Firmar y aprobar el servicio →</a></div>` : ''}
+    <div style="font-size:12px;color:#667890;margin-top:10px">También encontrará el documento adjunto en PDF.</div>
   </td></tr>
 
   <!-- Texto cierre -->

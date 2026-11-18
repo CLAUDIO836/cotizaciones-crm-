@@ -545,30 +545,6 @@ export default function EmailsPanel({
         </div>
       </div>
 
-      {/* Enviar cotización oficial */}
-      {status === 'open' && (
-        <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-blue-800">📧 Cotización oficial TransCCL</p>
-            <p className="text-xs text-blue-500 mt-0.5">Envía la plantilla branded con el PDF adjunto y link de aprobación</p>
-            {officialMsg && (
-              <p className={`text-xs mt-1 font-medium ${officialMsg.startsWith('Error') ? 'text-red-600' : 'text-green-700'}`}>
-                {officialMsg}
-              </p>
-            )}
-          </div>
-          <Button
-            size="sm"
-            onClick={sendOfficial}
-            disabled={sendingOfficial}
-            className="text-xs h-7 px-3 text-white flex-shrink-0"
-            style={{ background: '#082e62' }}
-          >
-            <Send className="w-3 h-3 mr-1" />
-            {sendingOfficial ? 'Enviando...' : 'Enviar'}
-          </Button>
-        </div>
-      )}
 
       {/* BCC address */}
       {bccAddress && (

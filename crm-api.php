@@ -829,8 +829,23 @@ if ($action === 'quotations_summary') {
 }
 
 if ($action === 'quotations_get') {
-    requireAuth();
     $id = $_GET['id'] ?? '';
+    // Acceso público vía carta-token (para propuesta desde email al cliente)
+    if (!empty($token) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $token)) {
+        $sc = db()->prepare('SELECT q.*, c.name AS client_name, c.rut AS client_rut, c.email AS client_email, c.phone AS client_phone, c.address AS client_address, p.name AS profile_name, p.email AS profile_email, pl.name AS pipeline_name, ct.name AS contact_name, ct.cargo AS contact_cargo, ct.email AS contact_email, ct.phone_mobile AS contact_phone_mobile, ct.phone_landline AS contact_phone_landline, co.name AS company_real_name FROM approval_letters al JOIN quotations q ON q.id = al.quotation_id LEFT JOIN clients c ON c.id = q.client_id LEFT JOIN profiles p ON p.id = q.user_id LEFT JOIN pipelines pl ON pl.id = q.pipeline_id LEFT JOIN contacts ct ON ct.id = q.contact_id LEFT JOIN companies co ON co.id = q.company_id WHERE al.token = ? AND q.id = ?');
+        $sc->execute([$token, $id]);
+        $qc = $sc->fetch();
+        if ($qc) {
+            $si = db()->prepare('SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order');
+            $si->execute([$id]);
+            $qc['quotation_items'] = $si->fetchAll();
+            $qc['clients']   = ['name' => $qc['client_name'], 'rut' => $qc['client_rut'], 'email' => $qc['client_email'], 'phone' => $qc['client_phone'], 'address' => $qc['client_address']];
+            $qc['profiles']  = ['name' => $qc['profile_name'], 'email' => $qc['profile_email']];
+            $qc['pipelines'] = ['name' => $qc['pipeline_name']];
+            ok(['data' => $qc]); exit;
+        }
+    }
+    requireAuth();
     $stmt = db()->prepare('
         SELECT q.*,
                c.name    AS client_name,  c.rut     AS client_rut,
