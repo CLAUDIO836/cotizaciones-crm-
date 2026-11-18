@@ -475,6 +475,7 @@ export default async function CotizacionDetailPage({
                   quotationId={id}
                   initialActivities={activities}
                   userId={user?.id ?? ''}
+                  quotationStatus={q.status}
                 />
               </div>
             )}

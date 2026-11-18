@@ -1,8 +1,17 @@
 'use client'
 
 import { useState } from 'react'
+import NoGestionBanner from './NoGestionBanner'
 // supabase replaced by internal API routes
 import { Phone, Users, Mail, MapPin, CheckCircle2, Circle, Plus, Trash2, Clock } from 'lucide-react'
+
+const NOTE_SNIPPETS: Record<string, string[]> = {
+  llamada:  ['No contesta', 'Confirmó disponibilidad', 'Pide llamar más tarde', 'Interesado, pide cotización', 'Dejé mensaje de voz'],
+  reunion:  ['Reunión confirmada', 'Presentamos propuesta', 'Cliente muy interesado', 'Pide ajuste de precio', 'Seguimiento acordado'],
+  email:    ['Envié cotización por correo', 'Cliente revisó propuesta', 'Solicita más información', 'Pide rebaja de precio', 'Sin respuesta aún'],
+  visita:   ['Visita confirmada', 'Presentamos propuesta en terreno', 'Cliente revisó instalaciones', 'Interesado, coordinamos siguiente paso'],
+  tarea:    ['Preparar propuesta', 'Coordinar visita', 'Enviar documentos', 'Pendiente respuesta cliente', 'Seguimiento programado'],
+}
 
 export interface Activity {
   id: string
@@ -18,9 +27,10 @@ export interface Activity {
 }
 
 interface Props {
-  quotationId: string
-  initialActivities: Activity[]
-  userId: string
+  quotationId:        string
+  initialActivities:  Activity[]
+  userId:             string
+  quotationStatus?:   string
 }
 
 export const TYPE_CONFIG: Record<string, { label: string; icon: typeof Phone; color: string }> = {
@@ -31,7 +41,7 @@ export const TYPE_CONFIG: Record<string, { label: string; icon: typeof Phone; co
   tarea:    { label: 'Tarea',    icon: CheckCircle2, color: '#f97316' },
 }
 
-export default function ActivitiesPanel({ quotationId, initialActivities, userId }: Props) {
+export default function ActivitiesPanel({ quotationId, initialActivities, userId, quotationStatus }: Props) {
   const [activities, setActivities] = useState<Activity[]>(initialActivities)
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -75,8 +85,17 @@ export default function ActivitiesPanel({ quotationId, initialActivities, userId
     // TODO: add delete endpoint
   }
 
+  const showBanner = quotationStatus === 'open' && activities.length === 0
+
   return (
     <div className="space-y-4">
+      {showBanner && (
+        <NoGestionBanner
+          quotationId={quotationId}
+          userId={userId}
+          onCreated={() => window.location.reload()}
+        />
+      )}
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-gray-700">Gestiones</h3>
         <button onClick={() => setShowForm(v => !v)}
@@ -109,6 +128,16 @@ export default function ActivitiesPanel({ quotationId, initialActivities, userId
           <input type="datetime-local" value={form.due_date}
             onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
             className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-200" />
+          {/* Snippets rápidos */}
+          <div className="flex flex-wrap gap-1.5">
+            {(NOTE_SNIPPETS[form.type] ?? []).map(s => (
+              <button key={s} type="button"
+                onClick={() => setForm(f => ({ ...f, note: f.note ? `${f.note}. ${s}` : s }))}
+                className="text-xs px-2.5 py-1 rounded-full border bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors">
+                {s}
+              </button>
+            ))}
+          </div>
           <textarea placeholder="Nota (opcional)" value={form.note}
             onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
             rows={2} className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-200 resize-none" />

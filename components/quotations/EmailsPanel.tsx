@@ -15,6 +15,35 @@ interface EmailRecord {
   direction?: 'sent' | 'received'
 }
 
+interface EmailTemplate {
+  label:   string
+  subject: string
+  body:    string
+}
+
+const EMAIL_TEMPLATES: EmailTemplate[] = [
+  {
+    label:   '📄 Envío de cotización',
+    subject: 'Cotización de servicio de traslado – TransCCL',
+    body:    'Estimado/a {{nombre}},\n\nAdjunto nuestra propuesta para el servicio solicitado. Hemos preparado una solución a medida para sus necesidades de traslado.\n\nQuedamos atentos a cualquier consulta o ajuste que requiera.\n\nSaludos cordiales,',
+  },
+  {
+    label:   '🔁 Seguimiento de propuesta',
+    subject: 'Seguimiento cotización TransCCL',
+    body:    'Estimado/a {{nombre}},\n\nQuisiera consultar si ha tenido la oportunidad de revisar nuestra propuesta. Estamos disponibles para resolver cualquier duda o coordinar una reunión si lo prefiere.\n\n¿Tiene alguna consulta sobre la cotización?\n\nSaludos cordiales,',
+  },
+  {
+    label:   '✅ Confirmación de servicio',
+    subject: 'Confirmación de servicio – TransCCL',
+    body:    'Estimado/a {{nombre}},\n\nNos complace confirmar que hemos recibido su confirmación para el servicio de traslado. En los próximos días nos comunicaremos para coordinar los detalles operativos.\n\nMuchas gracias por elegir TransCCL.\n\nSaludos cordiales,',
+  },
+  {
+    label:   '🙏 Gracias por considerarnos',
+    subject: 'Gracias por considerarnos – TransCCL',
+    body:    'Estimado/a {{nombre}},\n\nAgradecemos la oportunidad que nos dio de presentar nuestra propuesta. Lamentamos no haber podido concretar esta vez, pero quedamos a su disposición para futuras necesidades de traslado.\n\nSaludos cordiales,',
+  },
+]
+
 interface Props {
   quotationId:     string
   quotationNumber?: string
@@ -46,7 +75,8 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
   const [error, setError]         = useState('')
 
   const [copied, setCopied]   = useState(false)
-  const [to, setTo]           = useState(clientEmail)
+  const [to, setTo]             = useState(clientEmail)
+  const [tplOpen, setTplOpen]   = useState(false)
   const bccAddress = quotationNumber
     ? `crm+negocio${quotationNumber.replace(/\D/g, '')}@transccl.cl`
     : null
@@ -92,6 +122,14 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
     try { await navigator.clipboard.writeText(bccAddress) } catch { /* fallback silencioso */ }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  function applyTemplate(tpl: EmailTemplate) {
+    const nombre = clientName || 'cliente'
+    setSubject(tpl.subject)
+    setBody(tpl.body.replace(/\{\{nombre\}\}/g, nombre))
+    setTplOpen(false)
+    setComposing(true)
   }
 
   function openCompose(replyTo?: EmailRecord) {
@@ -200,6 +238,29 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
             <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Redactar correo</span>
           </div>
           <div className="p-4 space-y-3">
+            {/* Selector de plantilla */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setTplOpen(v => !v)}
+                className="w-full flex items-center justify-between gap-2 text-xs px-3 py-2 rounded-lg border bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors font-medium"
+              >
+                <span>📋 Usar plantilla</span>
+                <span className="text-gray-400">{tplOpen ? '▲' : '▼'}</span>
+              </button>
+              {tplOpen && (
+                <div className="absolute z-10 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg overflow-hidden">
+                  {EMAIL_TEMPLATES.map(tpl => (
+                    <button key={tpl.label} type="button"
+                      onClick={() => applyTemplate(tpl)}
+                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 border-b last:border-b-0 transition-colors">
+                      <p className="font-medium text-gray-800">{tpl.label}</p>
+                      <p className="text-xs text-gray-400 truncate mt-0.5">{tpl.subject}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div>
               <label className="text-xs text-gray-400 font-medium mb-1 block">Para</label>
               <input
