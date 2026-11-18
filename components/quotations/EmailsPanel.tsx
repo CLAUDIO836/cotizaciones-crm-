@@ -557,21 +557,7 @@ export default function EmailsPanel({
       </div>
 
 
-      {/* BCC address */}
-      {bccAddress && (
-        <div className="flex items-center gap-2 bg-gray-50 border rounded-xl px-3 py-2">
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-400 font-medium mb-0.5">📋 BCC en tus correos de Gmail</p>
-            <p className="text-xs font-mono text-gray-600 truncate">{bccAddress}</p>
-          </div>
-          <button
-            onClick={copyBcc}
-            className="flex-shrink-0 text-xs px-2.5 py-1.5 rounded-lg border bg-white hover:bg-gray-50 font-medium text-gray-600 transition-colors"
-          >
-            {copied ? '✓ Copiado' : 'Copiar'}
-          </button>
-        </div>
-      )}
+      {/* BCC address — oculto: mailbox no existe en servidor */}
 
       {/* Redactor */}
       {composing && (

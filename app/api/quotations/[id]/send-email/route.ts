@@ -95,7 +95,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         refreshToken: vendorRefreshToken,
         from:    `${vendorName} <${vendorEmail}>`,
         to:      clientEmail,
-        bcc:     `crm+negocio${quoteNumber}@transccl.cl`,
         subject,
         html,
       })
