@@ -41,6 +41,7 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
   const [composing, setComposing] = useState(false)
   const [sending, setSending]     = useState(false)
   const [syncing, setSyncing]     = useState(false)
+  const [syncMsg, setSyncMsg]     = useState('')
   const [expanded, setExpanded]   = useState<string | null>(null)
   const [error, setError]         = useState('')
 
@@ -67,6 +68,7 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
 
   async function sync() {
     setSyncing(true)
+    setSyncMsg('')
     try {
       const r = await fetch(`/api/quotations/${quotationId}/sync-emails`, {
         method: 'POST',
@@ -74,9 +76,14 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
         body: JSON.stringify({ clientEmail, createdAt }),
       })
       const d = await r.json()
-      if (d.synced > 0) await load()
+      if (d.error) { setSyncMsg(`Error: ${d.error}`); return }
+      if (d.synced > 0) { await load(); setSyncMsg(`+${d.synced} correo${d.synced > 1 ? 's' : ''} nuevos`) }
+      else setSyncMsg('Al día — sin correos nuevos')
+    } catch (e) {
+      setSyncMsg(`Error: ${String(e)}`)
     } finally {
       setSyncing(false)
+      setTimeout(() => setSyncMsg(''), 4000)
     }
   }
 
@@ -155,7 +162,7 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
             className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded-lg border hover:bg-gray-50 transition-colors"
           >
             <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
-            {syncing ? 'Sincronizando...' : 'Sincronizar'}
+            {syncing ? 'Sincronizando...' : syncMsg || 'Sincronizar'}
           </button>
           <Button
             size="sm"
