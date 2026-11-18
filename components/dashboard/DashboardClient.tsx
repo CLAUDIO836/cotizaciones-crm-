@@ -134,11 +134,10 @@ export default function DashboardClient({
     })
   }, [filtered, range])
 
-  // KPI: ganadas + perdidas = from issue_date in range
-  // KPI: abiertas = ALL currently open (regardless of date) — point-in-time metric
+  // Los tres KPIs filtran por issue_date dentro del rango — miden gestión del período
   const wonInRange  = inRange.filter(q => q.status === 'won')
+  const openInRange = inRange.filter(q => q.status === 'open')
   const lostInRange = inRange.filter(q => q.status === 'lost')
-  const allOpen     = filtered.filter(q => q.status === 'open')  // total actualmente abiertas
 
   // Eficiencia (all filtered)
   const totalCotizado = sum(filtered)
@@ -328,7 +327,7 @@ export default function DashboardClient({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <KpiCard label="Ganadas" count={wonInRange.length} monto={sum(wonInRange)} color="#1B8A4B" bg="#f0fdf4" />
           {/* Abiertas = total actualmente abiertas, no filtrado por fecha */}
-          <KpiCard label="Abiertas (actualmente)" count={allOpen.length} monto={sum(allOpen)} color="#3b82f6" bg="#eff6ff" />
+          <KpiCard label="Abiertas" count={openInRange.length} monto={sum(openInRange)} color="#3b82f6" bg="#eff6ff" />
           <KpiCard label="Perdidas" count={lostInRange.length} monto={sum(lostInRange)} color="#ef4444" bg="#fef2f2" />
         </div>
       </div>
@@ -394,7 +393,7 @@ export default function DashboardClient({
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="text-left px-4 py-2.5 font-medium text-gray-500">Ejecutiva</th>
-                <th className="text-right px-3 py-2.5 font-medium text-blue-500">Abiertas*</th>
+                <th className="text-right px-3 py-2.5 font-medium text-blue-500">Abiertas</th>
                 <th className="text-right px-3 py-2.5 font-medium" style={{ color: '#1B8A4B' }}>Gan.</th>
                 <th className="text-right px-3 py-2.5 font-medium text-red-500">Perd.</th>
                 <th className="text-right px-3 py-2.5 font-medium text-gray-400">Monto gan.</th>
@@ -403,15 +402,14 @@ export default function DashboardClient({
             <tbody>
               {profiles
                 .map(p => {
-                  const pRange = inRange.filter(q => q.vendedor_id === p.id)
-                  const pOpen  = filtered.filter(q => q.status === 'open' && q.vendedor_id === p.id)
+                  const pqs = inRange.filter(q => q.vendedor_id === p.id)
                   return {
                     name:  p.name,
-                    open:  pOpen.length,
-                    won:   pRange.filter(q => q.status === 'won').length,
-                    lost:  pRange.filter(q => q.status === 'lost').length,
-                    monto: sum(pRange.filter(q => q.status === 'won')),
-                    total: pRange.length + pOpen.length,
+                    open:  pqs.filter(q => q.status === 'open').length,
+                    won:   pqs.filter(q => q.status === 'won').length,
+                    lost:  pqs.filter(q => q.status === 'lost').length,
+                    monto: sum(pqs.filter(q => q.status === 'won')),
+                    total: pqs.length,
                   }
                 })
                 .filter(v => v.total > 0)
@@ -434,7 +432,7 @@ export default function DashboardClient({
                     </td>
                   </tr>
                 ))}
-              {profiles.every(p => !inRange.find(q => q.vendedor_id === p.id) && !allOpen.find(q => q.vendedor_id === p.id)) && (
+              {profiles.every(p => !inRange.find(q => q.vendedor_id === p.id)) && (
                 <tr>
                   <td colSpan={5} className="px-4 py-6 text-center text-gray-400 text-sm">
                     Sin actividad en el período
@@ -442,11 +440,6 @@ export default function DashboardClient({
                 </tr>
               )}
             </tbody>
-            <tfoot>
-              <tr className="bg-gray-50 border-t">
-                <td className="px-4 py-2 text-xs text-gray-400" colSpan={5}>* Abiertas = total actualmente abiertas (independiente del período)</td>
-              </tr>
-            </tfoot>
           </table>
         </div>
 
