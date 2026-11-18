@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Mail, Plus, Send, X, ChevronDown, ChevronUp, RefreshCw, ArrowDownLeft } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Mail, Plus, Send, X, ChevronDown, ChevronUp, RefreshCw, ArrowDownLeft, Settings, Trash2, Pencil, Check, Paperclip } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface EmailRecord {
@@ -16,12 +16,15 @@ interface EmailRecord {
 }
 
 interface EmailTemplate {
-  label:   string
-  subject: string
-  body:    string
+  id?:        string
+  label:      string
+  subject:    string
+  body:       string
+  scope?:     'team' | 'personal'
+  created_by?: string
 }
 
-const EMAIL_TEMPLATES: EmailTemplate[] = [
+const DEFAULT_TEMPLATES: EmailTemplate[] = [
   {
     label:   '📄 Envío de cotización',
     subject: 'Cotización de servicio de traslado – TransCCL',
@@ -45,11 +48,12 @@ const EMAIL_TEMPLATES: EmailTemplate[] = [
 ]
 
 interface Props {
-  quotationId:     string
+  quotationId:      string
   quotationNumber?: string
-  clientEmail?:    string
-  clientName?:     string
-  createdAt?:      string
+  clientEmail?:     string
+  clientName?:      string
+  createdAt?:       string
+  userRole?:        string
 }
 
 function timeAgo(dateStr: string): string {
@@ -64,26 +68,244 @@ function timeAgo(dateStr: string): string {
   return `hace ${days}d`
 }
 
-export default function EmailsPanel({ quotationId, quotationNumber, clientEmail = '', clientName = '', createdAt }: Props) {
-  const [emails, setEmails]       = useState<EmailRecord[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [composing, setComposing] = useState(false)
-  const [sending, setSending]     = useState(false)
-  const [syncing, setSyncing]     = useState(false)
-  const [syncMsg, setSyncMsg]     = useState('')
-  const [expanded, setExpanded]   = useState<string | null>(null)
-  const [error, setError]         = useState('')
+// ── Template Manager Modal ─────────────────────────────────────────────────────
+function TemplateManager({
+  templates, isAdmin, onClose, onSaved,
+}: {
+  templates: EmailTemplate[]
+  isAdmin: boolean
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [editing,  setEditing]  = useState<EmailTemplate | null>(null)
+  const [saving,   setSaving]   = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [err,      setErr]      = useState('')
+  const isNew = editing && !editing.id
 
-  const [copied, setCopied]   = useState(false)
-  const [to, setTo]             = useState(clientEmail)
-  const [tplOpen, setTplOpen]   = useState(false)
+  function startNew(scope: 'team' | 'personal') {
+    setEditing({ label: '', subject: '', body: '', scope })
+    setErr('')
+  }
+
+  async function save() {
+    if (!editing) return
+    if (!editing.label.trim() || !editing.subject.trim() || !editing.body.trim()) {
+      setErr('Nombre, asunto y mensaje son obligatorios')
+      return
+    }
+    setSaving(true)
+    setErr('')
+    try {
+      const r = await fetch('/api/email-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editing),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error ?? 'Error al guardar')
+      setEditing(null)
+      onSaved()
+    } catch (e) {
+      setErr(String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function del(id: string) {
+    if (!confirm('¿Eliminar esta plantilla?')) return
+    setDeleting(id)
+    try {
+      const r = await fetch(`/api/email-templates/${id}`, { method: 'DELETE' })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error ?? 'Error')
+      onSaved()
+    } catch (e) {
+      alert(String(e))
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  const teamTpls     = templates.filter(t => t.scope === 'team'     || !t.scope)
+  const personalTpls = templates.filter(t => t.scope === 'personal')
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <h3 className="font-semibold text-gray-900">Gestionar plantillas</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+
+          {/* Editor */}
+          {editing && (
+            <div className="bg-gray-50 rounded-xl border p-4 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                {isNew ? 'Nueva plantilla' : 'Editar plantilla'}
+                {editing.scope === 'team' ? ' · Equipo' : ' · Personal'}
+              </p>
+              <input
+                type="text" placeholder="Nombre de la plantilla"
+                value={editing.label}
+                onChange={e => setEditing(v => v && { ...v, label: e.target.value })}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+              />
+              <input
+                type="text" placeholder="Asunto del correo"
+                value={editing.subject}
+                onChange={e => setEditing(v => v && { ...v, subject: e.target.value })}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+              />
+              <textarea
+                placeholder="Cuerpo del mensaje (usa {{nombre}} para el nombre del cliente)"
+                value={editing.body}
+                onChange={e => setEditing(v => v && { ...v, body: e.target.value })}
+                rows={5}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200 resize-none"
+              />
+              {err && <p className="text-xs text-red-500">{err}</p>}
+              <div className="flex gap-2">
+                <Button size="sm" onClick={save} disabled={saving}
+                  className="text-white text-xs h-7" style={{ background: '#1B8A4B' }}>
+                  <Check className="w-3 h-3 mr-1" />
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setEditing(null)}
+                  className="text-xs h-7">
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Equipo */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Equipo</p>
+              {isAdmin && !editing && (
+                <button onClick={() => startNew('team')}
+                  className="text-xs text-green-700 hover:underline font-medium flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> Nueva
+                </button>
+              )}
+            </div>
+            {teamTpls.length === 0
+              ? <p className="text-xs text-gray-300 italic">Sin plantillas de equipo</p>
+              : teamTpls.map(t => (
+                <div key={t.id ?? t.label} className="flex items-start gap-2 py-2 border-b last:border-b-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{t.label}</p>
+                    <p className="text-xs text-gray-400 truncate">{t.subject}</p>
+                  </div>
+                  {isAdmin && t.id && !editing && (
+                    <div className="flex gap-1 flex-shrink-0">
+                      <button onClick={() => { setEditing(t); setErr('') }}
+                        className="p-1 text-gray-400 hover:text-gray-700">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => del(t.id!)} disabled={deleting === t.id}
+                        className="p-1 text-gray-400 hover:text-red-500">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            }
+          </div>
+
+          {/* Personales */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Mis plantillas</p>
+              {!editing && (
+                <button onClick={() => startNew('personal')}
+                  className="text-xs text-green-700 hover:underline font-medium flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> Nueva
+                </button>
+              )}
+            </div>
+            {personalTpls.length === 0
+              ? <p className="text-xs text-gray-300 italic">Sin plantillas personales</p>
+              : personalTpls.map(t => (
+                <div key={t.id} className="flex items-start gap-2 py-2 border-b last:border-b-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{t.label}</p>
+                    <p className="text-xs text-gray-400 truncate">{t.subject}</p>
+                  </div>
+                  {t.id && !editing && (
+                    <div className="flex gap-1 flex-shrink-0">
+                      <button onClick={() => { setEditing(t); setErr('') }}
+                        className="p-1 text-gray-400 hover:text-gray-700">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => del(t.id!)} disabled={deleting === t.id}
+                        className="p-1 text-gray-400 hover:text-red-500">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────────
+export default function EmailsPanel({
+  quotationId, quotationNumber, clientEmail = '', clientName = '', createdAt, userRole,
+}: Props) {
+  const [emails,       setEmails]       = useState<EmailRecord[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [composing,    setComposing]    = useState(false)
+  const [sending,      setSending]      = useState(false)
+  const [syncing,      setSyncing]      = useState(false)
+  const [syncMsg,      setSyncMsg]      = useState('')
+  const [expanded,     setExpanded]     = useState<string | null>(null)
+  const [error,        setError]        = useState('')
+  const [copied,       setCopied]       = useState(false)
+  const [showManage,   setShowManage]   = useState(false)
+
+  // Compose fields
+  const [to,         setTo]         = useState(clientEmail)
+  const [tplOpen,    setTplOpen]    = useState(false)
+  const [subject,    setSubject]    = useState('')
+  const [body,       setBody]       = useState('')
+  const [attachPdf,  setAttachPdf]  = useState(false)
+
+  // Templates
+  const [templates,       setTemplates]       = useState<EmailTemplate[]>([])
+  const [templatesLoaded, setTemplatesLoaded] = useState(false)
+
+  const tplRef = useRef<HTMLDivElement>(null)
   const bccAddress = quotationNumber
     ? `crm+negocio${quotationNumber.replace(/\D/g, '')}@transccl.cl`
     : null
-  const [subject, setSubject] = useState('')
-  const [body, setBody]       = useState('')
+
+  const isAdmin = userRole === 'admin' || userRole === 'superadmin'
 
   useEffect(() => { load().then(() => sync()) }, [quotationId])
+
+  // Close template dropdown on outside click
+  useEffect(() => {
+    function onOutside(e: MouseEvent) {
+      if (tplRef.current && !tplRef.current.contains(e.target as Node)) setTplOpen(false)
+    }
+    document.addEventListener('mousedown', onOutside)
+    return () => document.removeEventListener('mousedown', onOutside)
+  }, [])
 
   async function load() {
     setLoading(true)
@@ -96,9 +318,36 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
     }
   }
 
+  async function loadTemplates() {
+    if (templatesLoaded) return
+    try {
+      const r = await fetch('/api/email-templates')
+      const d = await r.json()
+      const loaded: EmailTemplate[] = Array.isArray(d) ? d : (d.data ?? [])
+      setTemplates(loaded.length ? loaded : DEFAULT_TEMPLATES)
+    } catch {
+      setTemplates(DEFAULT_TEMPLATES)
+    } finally {
+      setTemplatesLoaded(true)
+    }
+  }
+
+  async function reloadTemplates() {
+    setTemplatesLoaded(false)
+    try {
+      const r = await fetch('/api/email-templates')
+      const d = await r.json()
+      const loaded: EmailTemplate[] = Array.isArray(d) ? d : (d.data ?? [])
+      setTemplates(loaded.length ? loaded : DEFAULT_TEMPLATES)
+    } catch {
+      setTemplates(DEFAULT_TEMPLATES)
+    } finally {
+      setTemplatesLoaded(true)
+    }
+  }
+
   async function sync() {
-    setSyncing(true)
-    setSyncMsg('')
+    setSyncing(true); setSyncMsg('')
     try {
       const r = await fetch(`/api/quotations/${quotationId}/sync-emails`, {
         method: 'POST',
@@ -119,7 +368,7 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
 
   async function copyBcc() {
     if (!bccAddress) return
-    try { await navigator.clipboard.writeText(bccAddress) } catch { /* fallback silencioso */ }
+    try { await navigator.clipboard.writeText(bccAddress) } catch { /* fallback */ }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -141,8 +390,10 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
       setSubject('')
     }
     setBody('')
+    setAttachPdf(false)
     setError('')
     setComposing(true)
+    if (!templatesLoaded) loadTemplates()
   }
 
   async function handleSend() {
@@ -153,7 +404,6 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
     setSending(true)
     setError('')
     try {
-      // Buscar thread_id del último correo al mismo destinatario para encadenar
       const prevThread = emails.find(e => e.to_email === to.trim())?.gmail_thread_id
       const html = body
         .split('\n')
@@ -163,7 +413,7 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
       const r = await fetch(`/api/quotations/${quotationId}/compose-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: to.trim(), subject: subject.trim(), html, thread_id: prevThread }),
+        body: JSON.stringify({ to: to.trim(), subject: subject.trim(), html, thread_id: prevThread, attachPdf }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error ?? 'Error al enviar')
@@ -171,6 +421,7 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
       setTo(clientEmail)
       setSubject('')
       setBody('')
+      setAttachPdf(false)
       await load()
     } catch (e) {
       setError(String(e))
@@ -179,8 +430,20 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
     }
   }
 
+  const allTemplates = templatesLoaded ? templates : DEFAULT_TEMPLATES
+
   return (
     <div className="space-y-3">
+
+      {/* Template Manager Modal */}
+      {showManage && (
+        <TemplateManager
+          templates={templates.length ? templates : []}
+          isAdmin={isAdmin}
+          onClose={() => setShowManage(false)}
+          onSaved={() => { reloadTemplates(); setShowManage(false) }}
+        />
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
@@ -233,65 +496,95 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
       {/* Redactor */}
       {composing && (
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-          <div className="bg-gray-50 px-4 py-2 border-b flex items-center gap-2">
-            <Mail className="w-3.5 h-3.5 text-gray-400" />
-            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Redactar correo</span>
+          <div className="bg-gray-50 px-4 py-2 border-b flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Mail className="w-3.5 h-3.5 text-gray-400" />
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Redactar correo</span>
+            </div>
+            <button
+              onClick={() => { setShowManage(true); if (!templatesLoaded) loadTemplates() }}
+              title="Gestionar plantillas"
+              className="text-gray-400 hover:text-gray-700 transition-colors"
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </button>
           </div>
           <div className="p-4 space-y-3">
             {/* Selector de plantilla */}
-            <div className="relative">
+            <div className="relative" ref={tplRef}>
               <button
                 type="button"
-                onClick={() => setTplOpen(v => !v)}
+                onClick={() => { setTplOpen(v => !v); if (!templatesLoaded) loadTemplates() }}
                 className="w-full flex items-center justify-between gap-2 text-xs px-3 py-2 rounded-lg border bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors font-medium"
               >
                 <span>📋 Usar plantilla</span>
                 <span className="text-gray-400">{tplOpen ? '▲' : '▼'}</span>
               </button>
               {tplOpen && (
-                <div className="absolute z-10 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg overflow-hidden">
-                  {EMAIL_TEMPLATES.map(tpl => (
-                    <button key={tpl.label} type="button"
+                <div className="absolute z-10 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+                  {allTemplates.map((tpl, i) => (
+                    <button key={tpl.id ?? i} type="button"
                       onClick={() => applyTemplate(tpl)}
                       className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 border-b last:border-b-0 transition-colors">
-                      <p className="font-medium text-gray-800">{tpl.label}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-gray-800 flex-1">{tpl.label}</p>
+                        {tpl.scope === 'personal' && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-500">mía</span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-400 truncate mt-0.5">{tpl.subject}</p>
                     </button>
                   ))}
                 </div>
               )}
             </div>
+
+            {/* Para */}
             <div>
               <label className="text-xs text-gray-400 font-medium mb-1 block">Para</label>
               <input
-                type="email"
-                value={to}
-                onChange={e => setTo(e.target.value)}
+                type="email" value={to} onChange={e => setTo(e.target.value)}
                 placeholder="correo@cliente.cl"
                 className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
               />
             </div>
+
+            {/* Asunto */}
             <div>
               <label className="text-xs text-gray-400 font-medium mb-1 block">Asunto</label>
               <input
-                type="text"
-                value={subject}
-                onChange={e => setSubject(e.target.value)}
+                type="text" value={subject} onChange={e => setSubject(e.target.value)}
                 placeholder="Asunto del correo"
                 className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
               />
             </div>
+
+            {/* Mensaje */}
             <div>
               <label className="text-xs text-gray-400 font-medium mb-1 block">Mensaje</label>
               <textarea
-                value={body}
-                onChange={e => setBody(e.target.value)}
+                value={body} onChange={e => setBody(e.target.value)}
                 rows={6}
                 placeholder="Escribe tu mensaje aquí..."
                 className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200 resize-none"
               />
             </div>
+
+            {/* Adjunto PDF */}
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={attachPdf}
+                onChange={e => setAttachPdf(e.target.checked)}
+                className="rounded border-gray-300 text-green-600 focus:ring-green-200"
+              />
+              <Paperclip className="w-3.5 h-3.5 text-gray-400" />
+              <span className="text-xs text-gray-600 font-medium">Adjuntar PDF de la cotización</span>
+              {attachPdf && <span className="text-xs text-amber-600 font-medium">(puede demorar unos segundos)</span>}
+            </label>
+
             {error && <p className="text-xs text-red-500">{error}</p>}
+
             <div className="flex justify-end">
               <Button
                 size="sm"
@@ -301,7 +594,7 @@ export default function EmailsPanel({ quotationId, quotationNumber, clientEmail 
                 disabled={sending}
               >
                 <Send className="w-3 h-3 mr-1.5" />
-                {sending ? 'Enviando...' : 'Enviar desde Gmail'}
+                {sending ? (attachPdf ? 'Generando PDF y enviando...' : 'Enviando...') : 'Enviar desde Gmail'}
               </Button>
             </div>
           </div>

@@ -2128,28 +2128,45 @@ if ($action === 'send_no_gestion_reminders') {
 
 // ── ADMIN: EMAIL TEMPLATES ────────────────────────────────────────────────────
 if ($action === 'email_templates_list') {
-    requireAuth();
-    db()->exec("CREATE TABLE IF NOT EXISTS email_templates (id VARCHAR(36) PRIMARY KEY, label VARCHAR(100), subject VARCHAR(200), body TEXT, created_by VARCHAR(36) NULL, updated_at DATETIME DEFAULT NOW())");
-    $rows = db()->query('SELECT * FROM email_templates ORDER BY label')->fetchAll();
-    ok($rows);
+    $user = requireAuth();
+    $pdo = db();
+    $pdo->exec("CREATE TABLE IF NOT EXISTS email_templates (id VARCHAR(36) PRIMARY KEY, label VARCHAR(100), subject VARCHAR(200), body TEXT, scope VARCHAR(20) NOT NULL DEFAULT 'team', created_by VARCHAR(36) NULL, updated_at DATETIME DEFAULT NOW())");
+    try { $pdo->exec("ALTER TABLE email_templates ADD COLUMN scope VARCHAR(20) NOT NULL DEFAULT 'team'"); } catch (\Throwable $e) {}
+    // Retorna plantillas de equipo + personales del usuario
+    $stmt = $pdo->prepare("SELECT *, (scope='team') AS is_team FROM email_templates WHERE scope='team' OR (scope='personal' AND created_by=?) ORDER BY is_team DESC, label");
+    $stmt->execute([$user['id']]);
+    ok($stmt->fetchAll());
 }
 
 if ($action === 'email_templates_save') {
-    requireAuth();
-    if (!isAdmin($user)) err('Forbidden', 403);
-    $b = body();
+    $user = requireAuth();
+    $b    = body();
+    $scope = $b['scope'] ?? 'team';
+    if ($scope === 'team' && !isAdmin($user)) err('Solo admins pueden gestionar plantillas de equipo', 403);
+    $pdo = db();
     if (empty($b['id'])) {
-        db()->prepare('INSERT INTO email_templates (id,label,subject,body,created_by,updated_at) VALUES (?,?,?,?,?,NOW())')->execute([uuid(), $b['label'], $b['subject'], $b['body'], $user['id']]);
+        $pdo->prepare('INSERT INTO email_templates (id,label,subject,body,scope,created_by,updated_at) VALUES (?,?,?,?,?,?,NOW())')->execute([uuid(), $b['label'], $b['subject'], $b['body'], $scope, $user['id']]);
     } else {
-        db()->prepare('UPDATE email_templates SET label=?,subject=?,body=?,updated_at=NOW() WHERE id=?')->execute([$b['label'], $b['subject'], $b['body'], $b['id']]);
+        $row = $pdo->prepare('SELECT * FROM email_templates WHERE id=?');
+        $row->execute([$b['id']]); $row = $row->fetch();
+        if (!$row) err('No encontrada', 404);
+        if ($row['scope'] === 'team'     && !isAdmin($user))                       err('Forbidden', 403);
+        if ($row['scope'] === 'personal' && $row['created_by'] !== $user['id'])    err('Forbidden', 403);
+        $pdo->prepare('UPDATE email_templates SET label=?,subject=?,body=?,updated_at=NOW() WHERE id=?')->execute([$b['label'], $b['subject'], $b['body'], $b['id']]);
     }
     ok();
 }
 
 if ($action === 'email_templates_delete') {
-    requireAuth();
-    if (!isAdmin($user)) err('Forbidden', 403);
-    db()->prepare('DELETE FROM email_templates WHERE id=?')->execute([body()['id']]);
+    $user = requireAuth();
+    $b    = body();
+    $pdo  = db();
+    $row  = $pdo->prepare('SELECT * FROM email_templates WHERE id=?');
+    $row->execute([$b['id']]); $row = $row->fetch();
+    if (!$row) err('No encontrada', 404);
+    if ($row['scope'] === 'team'     && !isAdmin($user))                    err('Solo admins pueden borrar plantillas de equipo', 403);
+    if ($row['scope'] === 'personal' && $row['created_by'] !== $user['id']) err('Forbidden', 403);
+    $pdo->prepare('DELETE FROM email_templates WHERE id=?')->execute([$b['id']]);
     ok();
 }
 
@@ -2675,12 +2692,11 @@ if ($action === 'migrate_quotation_pdfs') {
 }
 
 if ($action === 'quotation_pdfs_add') {
-    requireAuth();
+    $user = requireAuth();
     $b = body();
     $quotationId = $b['quotation_id'] ?? null;
     if (!$quotationId) err('Falta quotation_id', 400);
     $pdo = db();
-    // Calcular próxima versión
     $stmt = $pdo->prepare('SELECT COALESCE(MAX(version), 0) + 1 FROM quotation_pdfs WHERE quotation_id = ?');
     $stmt->execute([$quotationId]);
     $nextVersion = (int)$stmt->fetchColumn();
@@ -2689,8 +2705,8 @@ if ($action === 'quotation_pdfs_add') {
     $ins->execute([
         $quotationId,
         $nextVersion,
-        $b['created_by']        ?? null,
-        $b['created_by_name']   ?? null,
+        $b['created_by']        ?? $user['id'],
+        $b['created_by_name']   ?? $user['name'],
         $b['motivo']            ?? null,
         $b['pipedrive_file_id'] ?? null,
         $b['pdf_hash']          ?? null,
