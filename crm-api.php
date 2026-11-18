@@ -1914,6 +1914,46 @@ if ($action === 'quotations_set_etapa_auto') {
     ok();
 }
 
+if ($action === 'quotations_set_owner') {
+    $user = requireAuth();
+    $b    = body();
+    $qid  = $b['quotation_id'] ?? '';
+    $newOwnerId = $b['user_id'] ?? '';
+    if (!$qid || !$newOwnerId) err('quotation_id y user_id requeridos');
+
+    // Leer ejecutivo actual
+    $prev = db()->prepare('SELECT user_id FROM quotations WHERE id = ?');
+    $prev->execute([$qid]);
+    $prev = $prev->fetch();
+    if (!$prev) err('Negocio no encontrado', 404);
+
+    $oldOwnerId = $prev['user_id'];
+    if ($oldOwnerId === $newOwnerId) ok(['changed' => false]);
+
+    // Obtener nombres para el log
+    $names = db()->prepare('SELECT id, name FROM profiles WHERE id IN (?,?)');
+    $names->execute([$oldOwnerId, $newOwnerId]);
+    $nameMap = [];
+    foreach ($names->fetchAll() as $r) $nameMap[$r['id']] = $r['name'];
+
+    db()->prepare('UPDATE quotations SET user_id = ? WHERE id = ?')->execute([$newOwnerId, $qid]);
+
+    // Registrar en quotation_status_log reutilizando old/new con source = 'owner_change'
+    try {
+        db()->prepare(
+            'INSERT INTO quotation_status_log (id, quotation_id, old_status, new_status, changed_at, changed_by, source)
+             VALUES (?, ?, ?, ?, NOW(3), ?, ?)'
+        )->execute([uuid(), $qid,
+            $nameMap[$oldOwnerId] ?? $oldOwnerId,
+            $nameMap[$newOwnerId] ?? $newOwnerId,
+            $user['id'],
+            'owner_change',
+        ]);
+    } catch (\Exception $e) { /* silencioso */ }
+
+    ok(['changed' => true, 'old' => $nameMap[$oldOwnerId] ?? null, 'new' => $nameMap[$newOwnerId] ?? null]);
+}
+
 // ── BILLING ──────────────────────────────────────────────────────────────────
 if ($action === 'quotation_save_billing') {
     requireAuth();

@@ -10,6 +10,8 @@ interface Props {
   billingAddr: string
   onSuccess:   () => void
   onClose:     () => void
+  // Si ya está ganado solo se suben comprobantes / editan datos de facturación
+  alreadyWon?: boolean
 }
 
 const FORMAS_PAGO = [
@@ -20,7 +22,7 @@ const FORMAS_PAGO = [
   { key: 'credito_30',          label: 'Crédito 30 días',                   desc: 'Requiere autorización de gerencia', color: '#f97316', isCredit: true },
 ]
 
-export default function BillingModal({ quotationId, billingName, billingRut, billingAddr, onSuccess, onClose }: Props) {
+export default function BillingModal({ quotationId, billingName, billingRut, billingAddr, onSuccess, onClose, alreadyWon = false }: Props) {
   const [formaPago,   setFormaPago]   = useState('')
   const [name,        setName]        = useState(billingName)
   const [rut,         setRut]         = useState(billingRut)
@@ -69,7 +71,9 @@ export default function BillingModal({ quotationId, billingName, billingRut, bil
         <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white z-10">
           <div className="flex items-center gap-2">
             <CheckCircle className="w-5 h-5 text-green-600" />
-            <h2 className="font-bold text-gray-900">Confirmar negocio ganado</h2>
+            <h2 className="font-bold text-gray-900">
+              {alreadyWon ? 'Datos de facturación y comprobantes' : 'Confirmar negocio ganado'}
+            </h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
         </div>
@@ -137,8 +141,8 @@ export default function BillingModal({ quotationId, billingName, billingRut, bil
             </div>
           </div>
 
-          {/* Comprobantes (solo si no es crédito) */}
-          {needComprobante && (
+          {/* Comprobantes (si no es crédito, o si ya está ganado siempre se muestra) */}
+          {(needComprobante || alreadyWon) && (
             <div>
               <p className="text-sm font-semibold text-gray-700 mb-2">Comprobantes de pago</p>
               <label className="flex flex-col items-center gap-2 cursor-pointer border-2 border-dashed border-gray-200 rounded-xl p-4 hover:border-green-300 hover:bg-green-50 transition-colors">
@@ -184,7 +188,7 @@ export default function BillingModal({ quotationId, billingName, billingRut, bil
             className="px-5 py-2 text-sm font-semibold text-white rounded-xl disabled:opacity-50 flex items-center gap-2"
             style={{ background: '#1B8A4B' }}>
             <CheckCircle className="w-4 h-4" />
-            {sending ? 'Procesando...' : 'Confirmar ganado y enviar a contabilidad'}
+            {sending ? 'Procesando...' : alreadyWon ? 'Enviar a contabilidad' : 'Confirmar ganado y enviar a contabilidad'}
           </button>
         </div>
       </div>

@@ -17,6 +17,9 @@ import ResyncButton from '@/components/quotations/ResyncButton'
 import DocumentsTab from '@/components/quotations/DocumentsTab'
 import AgentButton from '@/components/quotations/AgentButton'
 import EmailsPanel from '@/components/quotations/EmailsPanel'
+import FechaServicioEditor from '@/components/quotations/FechaServicioEditor'
+import DuplicateButton from '@/components/quotations/DuplicateButton'
+import OwnerEditor from '@/components/quotations/OwnerEditor'
 
 const STAGES_ORDER = ['lead', 'contactado', 'cotizacion', 'negociacion', 'cierre']
 
@@ -258,16 +261,15 @@ export default async function CotizacionDetailPage({
             </div>
           ) : null}
 
-          {/* Fecha de cierre previsto — todos los estados */}
+          {/* Fecha del servicio — editable inline */}
           {q.fecha_salida && (() => {
-            const today   = new Date(new Date().getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
-            const cp      = q.fecha_salida.slice(0, 10)
-            const msLeft  = new Date(cp + 'T12:00:00').getTime() - new Date(today + 'T12:00:00').getTime()
+            const today    = new Date(new Date().getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
+            const cp       = q.fecha_salida.slice(0, 10)
+            const msLeft   = new Date(cp + 'T12:00:00').getTime() - new Date(today + 'T12:00:00').getTime()
             const daysLeft = Math.ceil(msLeft / 86400000)
             const overdue  = q.status === 'open' && daysLeft < 0
             const nearClose = q.status === 'open' && daysLeft >= 0 && daysLeft <= 2
             const bgClass  = overdue ? 'bg-amber-50' : nearClose ? 'bg-orange-50' : ''
-            const textClass = overdue ? 'text-amber-600' : nearClose ? 'text-orange-500' : q.status === 'won' ? 'text-green-600' : q.status === 'lost' ? 'text-red-500' : 'text-gray-900'
             return (
               <div className={`px-3 py-2.5 border-b ${bgClass}`}>
                 {overdue && (
@@ -282,10 +284,14 @@ export default async function CotizacionDetailPage({
                   </p>
                 )}
                 <p className="text-xs text-gray-400">Fecha del servicio</p>
-                <p className={`text-sm font-semibold ${textClass}`}>
-                  {q.status === 'won' ? '✅ ' : q.status === 'lost' ? '❌ ' : '📅 '}
-                  {formatDate(cp)}
-                </p>
+                <FechaServicioEditor
+                  quotationId={id}
+                  fechaSalida={cp}
+                  status={q.status}
+                  daysLeft={daysLeft}
+                  overdue={overdue}
+                  nearClose={nearClose}
+                />
               </div>
             )
           })()}
@@ -305,7 +311,14 @@ export default async function CotizacionDetailPage({
             {q.profiles?.name && (
               <div>
                 <p className="text-xs text-gray-400">Ejecutivo</p>
-                <p className="text-sm text-gray-800">{q.profiles.name}</p>
+                {!isReadOnly
+                  ? <OwnerEditor
+                      quotationId={id}
+                      currentUserId={q.user_id as string}
+                      currentUserName={q.profiles.name as string}
+                    />
+                  : <p className="text-sm text-gray-800">{q.profiles.name}</p>
+                }
               </div>
             )}
             {q.pipedrive_deal_id && (
@@ -361,6 +374,9 @@ export default async function CotizacionDetailPage({
                   Editar
                 </Button>
               </Link>
+            )}
+            {!isReadOnly && (
+              <DuplicateButton quotationId={id} />
             )}
             {!isReadOnly && (
               <DeleteButton quotationId={id} pipedriveDealId={q.pipedrive_deal_id} />

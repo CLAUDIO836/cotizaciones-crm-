@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { CheckCircle, XCircle, RotateCcw } from 'lucide-react'
+import { CheckCircle, XCircle, RotateCcw, Upload } from 'lucide-react'
 import BillingModal from './BillingModal'
 
 interface Props {
@@ -113,10 +113,29 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
   if (status === 'won' || status === 'lost') {
     return (
       <>
-        <Button variant="outline" size="sm" onClick={reopen} disabled={loading}>
-          <RotateCcw className="w-4 h-4 mr-1.5" />
-          {loading ? 'Reabriendo...' : 'Reabrir'}
-        </Button>
+        {showBilling && (
+          <BillingModal
+            quotationId={quotationId}
+            billingName={billingName}
+            billingRut={billingRut}
+            billingAddr={billingAddr}
+            alreadyWon
+            onSuccess={() => { setShowBilling(false); router.refresh() }}
+            onClose={() => setShowBilling(false)}
+          />
+        )}
+        <div className="flex gap-2">
+          {status === 'won' && (
+            <Button variant="outline" size="sm" onClick={() => setShowBilling(true)} disabled={loading}>
+              <Upload className="w-4 h-4 mr-1.5" />
+              Comprobantes
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={reopen} disabled={loading}>
+            <RotateCcw className="w-4 h-4 mr-1.5" />
+            {loading ? 'Reabriendo...' : 'Reabrir'}
+          </Button>
+        </div>
       </>
     )
   }
