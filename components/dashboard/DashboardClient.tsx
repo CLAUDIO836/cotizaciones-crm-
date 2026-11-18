@@ -13,16 +13,25 @@ type Preset = 'today' | 'week' | 'month' | 'custom'
 
 function toDateStr(d: Date) { return d.toISOString().slice(0, 10) }
 
-function getIssueDate(q: QuotationSummary): string {
+// Fecha de creación (para "abiertas" — cuándo se abrió la cotización)
+function getCreatedDate(q: QuotationSummary): string {
+  if (q.created_at) return q.created_at.slice(0, 10)
   if (q.issue_date) return q.issue_date.slice(0, 10)
-  if (q.year && q.month) return `${q.year}-${String(Number(q.month)).padStart(2, '0')}-01`
   return ''
 }
 
-function getYM(q: QuotationSummary) {
-  if (q.year && q.month) return { y: Number(q.year), m: Number(q.month) }
-  if (q.issue_date) { const d = new Date(q.issue_date); return { y: d.getFullYear(), m: d.getMonth() + 1 } }
-  return { y: 0, m: 0 }
+// Fecha de último cambio de estado (para "ganadas"/"perdidas" — cuándo cambió)
+function getStatusDate(q: QuotationSummary): string {
+  if (q.updated_at) return q.updated_at.slice(0, 10)
+  if (q.created_at) return q.created_at.slice(0, 10)
+  if (q.issue_date) return q.issue_date.slice(0, 10)
+  return ''
+}
+
+// Para el gráfico de tendencia usamos la fecha de gestión correcta por status
+function getActivityDate(q: QuotationSummary): string {
+  if (q.status === 'open') return getCreatedDate(q)
+  return getStatusDate(q)
 }
 
 function getWeekStart(d: Date): Date {
@@ -125,16 +134,18 @@ export default function DashboardClient({
     [quotations, ejecutiva, empresa],
   )
 
-  // Quotations in range (by issue_date)
+  // Cotizaciones con actividad en el rango:
+  // - abiertas: creadas en el rango (created_at)
+  // - ganadas/perdidas: estado cambiado en el rango (updated_at / crm_updated_at)
   const inRange = useMemo(() => {
     const { from, to } = range
     return filtered.filter(q => {
-      const ds = getIssueDate(q)
+      const ds = getActivityDate(q)
       return ds >= from && ds <= to
     })
   }, [filtered, range])
 
-  // Los tres KPIs filtran por issue_date dentro del rango — miden gestión del período
+  // Los tres KPIs miden gestión real: abiertas por created_at, ganadas/perdidas por updated_at
   const wonInRange  = inRange.filter(q => q.status === 'won')
   const openInRange = inRange.filter(q => q.status === 'open')
   const lostInRange = inRange.filter(q => q.status === 'lost')
@@ -159,7 +170,7 @@ export default function DashboardClient({
       const cur = new Date(fromD)
       while (cur <= toD) {
         const ds = toDateStr(cur)
-        const dq = filtered.filter(q => getIssueDate(q) === ds)
+        const dq = filtered.filter(q => getActivityDate(q) === ds)
         result.push({
           label: formatLabel(cur, 'day'),
           Ganadas:  dq.filter(q => q.status === 'won').length,
@@ -178,7 +189,7 @@ export default function DashboardClient({
       const ws = getWeekStart(new Date(fromD))
       while (ws <= toD) {
         const we = new Date(ws); we.setDate(ws.getDate() + 6)
-        const wq = filtered.filter(q => { const ds = getIssueDate(q); return ds >= toDateStr(ws) && ds <= toDateStr(we) })
+        const wq = filtered.filter(q => { const ds = getActivityDate(q); return ds >= toDateStr(ws) && ds <= toDateStr(we) })
         result.push({
           label: formatLabel(ws, 'week'),
           Ganadas:  wq.filter(q => q.status === 'won').length,
@@ -196,8 +207,10 @@ export default function DashboardClient({
     const result = []
     const cur = new Date(fromD.getFullYear(), fromD.getMonth(), 1)
     while (cur <= toD) {
-      const { y, m } = { y: cur.getFullYear(), m: cur.getMonth() + 1 }
-      const mq = filtered.filter(q => { const ym = getYM(q); return ym.y === y && ym.m === m })
+      const dStr  = toDateStr(cur)
+      const nextM = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
+      const nStr  = toDateStr(nextM)
+      const mq = filtered.filter(q => { const ds = getActivityDate(q); return ds >= dStr && ds < nStr })
       result.push({
         label: formatLabel(cur, 'month'),
         Ganadas:  mq.filter(q => q.status === 'won').length,

@@ -1410,6 +1410,24 @@ if ($action === 'admin_fix_quotation') {
                     LEFT JOIN clients c ON c.id = q.client_id");
                 ok(['view_recreated' => true]);
             }
+            if ($num === 'fix_view_v2') {
+                // Agrega crm_updated_at a la vista para medir gestión diaria correctamente
+                db()->exec("CREATE OR REPLACE VIEW quotations_summary AS
+                    SELECT q.id, q.number, q.status, q.etapa, q.company, q.company_id,
+                           q.total, q.issue_date, q.fecha_salida,
+                           YEAR(COALESCE(q.fecha_salida, q.issue_date)) AS `year`,
+                           MONTH(COALESCE(q.fecha_salida, q.issue_date)) AS `month`,
+                           q.user_id AS vendedor_id, p.name AS vendedor_name,
+                           c.name AS client_name, q.client_id, q.pipeline_id,
+                           q.pipedrive_deal_id, q.created_at,
+                           q.crm_updated_at AS updated_at
+                    FROM quotations q
+                    LEFT JOIN profiles p ON p.id = q.user_id
+                    LEFT JOIN clients c ON c.id = q.client_id
+                    WHERE q.is_deleted = 0 OR q.is_deleted IS NULL");
+                $count = (int)db()->query("SELECT COUNT(*) FROM quotations_summary")->fetchColumn();
+                ok(['view_recreated' => true, 'rows' => $count]);
+            }
             $rows = db()->prepare('SELECT id,number,status,total,issue_date,pipedrive_deal_id FROM quotations WHERE number = ? OR pipedrive_deal_id = ?');
             $rows->execute([$num, $num]);
             ok(['all_rows' => $rows->fetchAll()]);
