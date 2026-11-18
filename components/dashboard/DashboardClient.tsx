@@ -486,6 +486,84 @@ export default function DashboardClient({
 
       </div>
 
+      {/* ── Por cliente ── */}
+      {(() => {
+        // Agrupar por client_id (o client_name si no hay id)
+        const map = new Map<string, {
+          key: string; name: string
+          won: number; lost: number; open: number
+          montoGan: number; montoPerd: number; montoAb: number
+          qs: QuotationSummary[]
+        }>()
+        inRange.forEach(q => {
+          const key  = q.client_id ?? q.client_name ?? 'Sin cliente'
+          const name = q.client_name ?? 'Sin cliente'
+          if (!map.has(key)) map.set(key, { key, name, won:0, lost:0, open:0, montoGan:0, montoPerd:0, montoAb:0, qs:[] })
+          const e = map.get(key)!
+          e.qs.push(q)
+          if (q.status === 'won')  { e.won++;  e.montoGan  += Number(q.total ?? 0) }
+          if (q.status === 'lost') { e.lost++; e.montoPerd += Number(q.total ?? 0) }
+          if (q.status === 'open') { e.open++; e.montoAb   += Number(q.total ?? 0) }
+        })
+        const rows = [...map.values()].sort((a, b) => b.montoGan - a.montoGan || b.won - a.won)
+        if (!rows.length) return null
+        const best = rows[0]
+        return (
+          <>
+            {/* Mejor cliente del mes */}
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-5 flex flex-wrap items-center gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-green-600 uppercase tracking-wide font-medium mb-1">🏆 Mejor cliente — {rangeDescription}</p>
+                <p className="text-xl font-black text-gray-900 truncate">{best.name}</p>
+                <p className="text-sm text-gray-500 mt-0.5">{best.won} negocio{best.won !== 1 ? 's' : ''} ganado{best.won !== 1 ? 's' : ''}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-3xl font-black" style={{ color: '#1B8A4B' }}>{formatCLP(best.montoGan)}</p>
+                <p className="text-xs text-gray-400 mt-0.5">monto ganado</p>
+              </div>
+            </div>
+
+            {/* Tabla clientes */}
+            <div className="bg-white rounded-xl border overflow-hidden">
+              <div className="px-5 py-4 border-b">
+                <h2 className="font-semibold text-gray-900">
+                  Por cliente
+                  <span className="text-xs text-gray-400 font-normal ml-2">({rangeDescription})</span>
+                </h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="text-left px-4 py-2.5 font-medium text-gray-500">Cliente</th>
+                      <th className="text-right px-3 py-2.5 font-medium text-blue-500">Ab.</th>
+                      <th className="text-right px-3 py-2.5 font-medium" style={{ color: '#1B8A4B' }}>Gan.</th>
+                      <th className="text-right px-3 py-2.5 font-medium text-red-500">Perd.</th>
+                      <th className="text-right px-3 py-2.5 font-medium text-blue-400">$ Ab.</th>
+                      <th className="text-right px-3 py-2.5 font-medium" style={{ color: '#1B8A4B' }}>$ Gan.</th>
+                      <th className="text-right px-3 py-2.5 font-medium text-red-400">$ Perd.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(e => (
+                      <tr key={e.key} className="border-b last:border-0 hover:bg-gray-50">
+                        <td className="px-4 py-2.5 font-medium text-gray-900 max-w-[180px] truncate">{e.name}</td>
+                        <td className="px-3 py-2.5 text-right text-blue-600">{e.open || '—'}</td>
+                        <td className="px-3 py-2.5 text-right font-bold" style={{ color: '#1B8A4B' }}>{e.won || '—'}</td>
+                        <td className="px-3 py-2.5 text-right text-red-500">{e.lost || '—'}</td>
+                        <td className="px-3 py-2.5 text-right text-xs text-blue-500">{e.montoAb > 0 ? formatCLP(e.montoAb) : '—'}</td>
+                        <td className="px-3 py-2.5 text-right text-xs font-medium" style={{ color: '#1B8A4B' }}>{e.montoGan > 0 ? formatCLP(e.montoGan) : '—'}</td>
+                        <td className="px-3 py-2.5 text-right text-xs text-red-500">{e.montoPerd > 0 ? formatCLP(e.montoPerd) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )
+      })()}
+
       {/* ── Drill-down ── */}
       {drill && (
         <div className="bg-white rounded-xl border overflow-hidden">
