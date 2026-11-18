@@ -349,7 +349,7 @@ export default async function CotizacionDetailPage({
                     Propuesta
                   </Button>
                 </a>
-                <a href={`/api/cotizaciones/${id}/pdf`} download>
+                <a href={`/api/cotizaciones/${id}/html/download`} download>
                   <Button variant="outline" size="sm" className="text-xs h-7 px-2.5" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
                     ⬇ Descargar PDF
                   </Button>
