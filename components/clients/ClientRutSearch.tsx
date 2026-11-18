@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Phone, Mail, Plus, User, Building2, Check, AlertTriangle } from 'lucide-react'
 import { autoFormatRut, validateRut } from '@/lib/rut'
-import { validateChileanPhone, autoFormatPhone } from '@/lib/phone'
+import { validateChileanPhone, autoFormatPhone, PHONE_DEFAULT_MOBILE, PHONE_DEFAULT_LANDLINE } from '@/lib/phone'
 
 interface Contact {
   id: string
@@ -53,8 +53,8 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
   const [newClientName, setNewClientName] = useState('')
   const [newClientAddress, setNewClientAddress] = useState('')
   const [newClientEmail, setNewClientEmail] = useState('')
-  const [newClientMobile, setNewClientMobile] = useState('')
-  const [newClientLandline, setNewClientLandline] = useState('')
+  const [newClientMobile, setNewClientMobile] = useState(PHONE_DEFAULT_MOBILE)
+  const [newClientLandline, setNewClientLandline] = useState(PHONE_DEFAULT_LANDLINE)
   const [newClientContactName, setNewClientContactName] = useState('')
   const [newClientContactCargo, setNewClientContactCargo] = useState('')
   const [savingClient, setSavingClient] = useState(false)
@@ -108,6 +108,8 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
         setNotFound(true)
         setShowNewClient(true)
         setNewClientName('')
+        setNewClientMobile(PHONE_DEFAULT_MOBILE)
+        setNewClientLandline(PHONE_DEFAULT_LANDLINE)
       }
     } catch {
       setClient(null)
@@ -369,7 +371,7 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
               {newClientErrors.email && <p className="text-xs text-red-600 mt-0.5">{newClientErrors.email}</p>}
             </div>
             <div>
-              <Input placeholder="Teléfono fijo (+562XXXXXXXX)" value={newClientLandline}
+              <Input placeholder="+56 2 XXXX XXXX" value={newClientLandline}
                 onChange={e => { setNewClientLandline(autoFormatPhone(e.target.value)); setNewClientErrors(p => ({ ...p, landline: '' })) }}
                 className={`text-sm bg-white ${newClientErrors.landline ? 'border-red-400' : ''}`} />
               {newClientErrors.landline && <p className="text-xs text-red-600 mt-0.5">{newClientErrors.landline}</p>}
@@ -385,7 +387,7 @@ export default function ClientRutSearch({ onSelect, defaultClientId, defaultClie
               {newClientErrors.contactName && <p className="text-xs text-red-600 mt-0.5">{newClientErrors.contactName}</p>}
             </div>
             <div>
-              <Input placeholder="Celular * (+569XXXXXXXX)" value={newClientMobile}
+              <Input placeholder="+56 9 XXXX XXXX" value={newClientMobile}
                 onChange={e => { setNewClientMobile(autoFormatPhone(e.target.value)); setNewClientErrors(p => ({ ...p, mobile: '' })) }}
                 className={`text-sm bg-white ${newClientErrors.mobile ? 'border-red-400' : ''}`} />
               {newClientErrors.mobile && <p className="text-xs text-red-600 mt-0.5">{newClientErrors.mobile}</p>}

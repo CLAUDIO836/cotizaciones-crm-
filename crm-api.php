@@ -1185,6 +1185,42 @@ if ($action === 'run_migration') {
         ok(['migration' => 'uppercase_client_names', 'updated' => $updated]);
     }
 
+    if ($num === 'format_phones') {
+        // Normalize all phones to "+56 X XXXX XXXX" format
+        function fmtPhone(?string $raw): ?string {
+            if (!$raw) return null;
+            $digits = preg_replace('/\D/', '', $raw);
+            if (!$digits) return null;
+            // strip country code
+            $local = preg_replace('/^56/', '', $digits);
+            if (strlen($local) < 8 || strlen($local) > 9) return $raw; // can't normalize
+            $local = substr($local, 0, 9);
+            $area = $local[0];
+            $part1 = substr($local, 1, 4);
+            $part2 = substr($local, 5);
+            return "+56 {$area} {$part1} {$part2}";
+        }
+        $updClients = 0;
+        $rows = db()->query("SELECT id, phone FROM clients WHERE phone IS NOT NULL AND phone != ''")->fetchAll(PDO::FETCH_ASSOC);
+        $stmtC = db()->prepare("UPDATE clients SET phone = ? WHERE id = ?");
+        foreach ($rows as $r) {
+            $fmt = fmtPhone($r['phone']);
+            if ($fmt && $fmt !== $r['phone']) { $stmtC->execute([$fmt, $r['id']]); $updClients++; }
+        }
+        $updContacts = 0;
+        $rows2 = db()->query("SELECT id, phone_mobile, phone_landline FROM contacts WHERE phone_mobile IS NOT NULL OR phone_landline IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC);
+        $stmtCo = db()->prepare("UPDATE contacts SET phone_mobile = ?, phone_landline = ? WHERE id = ?");
+        foreach ($rows2 as $r) {
+            $m = fmtPhone($r['phone_mobile']);
+            $l = fmtPhone($r['phone_landline']);
+            if (($m && $m !== $r['phone_mobile']) || ($l && $l !== $r['phone_landline'])) {
+                $stmtCo->execute([$m ?? $r['phone_mobile'], $l ?? $r['phone_landline'], $r['id']]);
+                $updContacts++;
+            }
+        }
+        ok(['migration' => 'format_phones', 'clients_updated' => $updClients, 'contacts_updated' => $updContacts]);
+    }
+
     err('migration not found');
 }
 

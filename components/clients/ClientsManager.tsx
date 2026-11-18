@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { Plus, Pencil, AlertTriangle, Trash2, ChevronDown, ChevronRight, Phone, Mail, User, Search, X } from 'lucide-react'
 import { formatRut, validateRut, rutKey, autoFormatRut } from '@/lib/rut'
-import { validateChileanPhone, autoFormatPhone, phoneError } from '@/lib/phone'
+import { validateChileanPhone, autoFormatPhone, phoneError, PHONE_DEFAULT_MOBILE } from '@/lib/phone'
 
 interface Contact {
   id: string
@@ -162,7 +162,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
 
   function openNew() {
     setEditing(null)
-    setForm({ name: '', rut: '', email: '', phone: '', address: '', tipo: '' })
+    setForm({ name: '', rut: '', email: '', phone: PHONE_DEFAULT_MOBILE, address: '', tipo: '' })
     setRutError('')
     setDupClient(null)
     setOpen(true)
@@ -170,7 +170,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
 
   function openEdit(c: Client) {
     setEditing(c)
-    setForm({ name: c.name, rut: c.rut ? formatRut(c.rut) : '', email: c.email ?? '', phone: c.phone ?? '', address: c.address ?? '', tipo: c.tipo ?? '' })
+    setForm({ name: c.name, rut: c.rut ? formatRut(c.rut) : '', email: c.email ?? '', phone: c.phone || PHONE_DEFAULT_MOBILE, address: c.address ?? '', tipo: c.tipo ?? '' })
     setRutError('')
     setDupClient(null)
     setOpen(true)
@@ -614,7 +614,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
               <Input
                 value={form.phone}
                 onChange={e => setForm(f => ({ ...f, phone: autoFormatPhone(e.target.value) }))}
-                placeholder="+569XXXXXXXX o +562XXXXXXXX"
+                placeholder="+56 9 XXXX XXXX"
                 className={form.phone && !validateChileanPhone(form.phone) ? 'border-red-400 focus-visible:ring-red-300' : ''}
               />
               {form.phone && !validateChileanPhone(form.phone) && (
