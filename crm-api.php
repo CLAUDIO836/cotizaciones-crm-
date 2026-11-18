@@ -1081,6 +1081,26 @@ if ($action === 'run_migration') {
         ok(['migration' => 'create_status_log', 'table_created' => true, 'view_updated' => true, 'log_rows' => $logCount, 'view_rows' => $viewCount]);
     }
 
+    if ($num === 'backfill_status_log') {
+        // Inserta en el log todos los deals ganados/perdidos que aún no tienen entrada
+        // Usa crm_updated_at como aproximación de cuándo cambió el estado
+        // source='backfill' para distinguirlos de registros exactos
+        $inserted = db()->exec(
+            "INSERT INTO quotation_status_log (id, quotation_id, old_status, new_status, changed_at, changed_by, source)
+             SELECT UUID(), q.id, 'open', q.status,
+                    COALESCE(q.crm_updated_at, q.created_at),
+                    q.user_id, 'backfill'
+             FROM quotations q
+             WHERE q.status IN ('won','lost')
+               AND (q.is_deleted = 0 OR q.is_deleted IS NULL)
+               AND NOT EXISTS (
+                   SELECT 1 FROM quotation_status_log l WHERE l.quotation_id = q.id
+               )"
+        );
+        $total = (int)db()->query("SELECT COUNT(*) FROM quotation_status_log")->fetchColumn();
+        ok(['migration' => 'backfill_status_log', 'inserted' => $inserted, 'total_log_rows' => $total]);
+    }
+
     err('migration not found');
 }
 
