@@ -32,17 +32,13 @@ export default async function SignPage({ params }: { params: Promise<{ token: st
   const quoteNum = letter.quotation_number ?? letter.pipedrive_deal_id ?? ''
 
   return (
-    <div style={{ minHeight: '100vh', background: '#eef2f7', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    // position:fixed + overflow-y:auto resuelve el overflow:hidden global del dashboard
+    <div style={{ position: 'fixed', inset: 0, overflowY: 'auto', background: '#eef2f7', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       {/* Header branded TransCCL */}
-      <div style={{ background: '#082e62', borderBottom: '4px solid #e52832', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 14 }}>
-        <div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: 'white', letterSpacing: '-0.5px', lineHeight: 1 }}>
-            Trans<span style={{ color: '#7fc76a' }}>ccl</span>
-          </div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 3, letterSpacing: '0.03em' }}>
-            Transportes de Pasajeros
-          </div>
-        </div>
+      <div style={{ background: '#082e62', borderBottom: '4px solid #e52832', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+        {/* Logo oficial */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-transccl.png" alt="TransCCL" style={{ height: 52, width: 'auto', objectFit: 'contain' }} />
         <div style={{ flex: 1 }} />
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>Carta de Aprobación y Aceptación del Servicio</div>
