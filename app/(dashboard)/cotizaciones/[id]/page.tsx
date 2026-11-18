@@ -339,20 +339,18 @@ export default async function CotizacionDetailPage({
               <Globe className="w-3 h-3 mr-1" />
               Ver / Imprimir
             </a>
+            {isDiario && (
+              <a href={`/api/cotizaciones/${id}/propuesta`} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: 'outline', size: 'sm' }) + ' text-xs'} style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
+                <Globe className="w-3 h-3 mr-1" />
+                Propuesta
+              </a>
+            )}
             {!isTracking && (
-              <>
-                {isDiario && (
-                  <a href={`/api/cotizaciones/${id}/propuesta`} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: 'outline', size: 'sm' }) + ' text-xs'} style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
-                    <Globe className="w-3 h-3 mr-1" />
-                    Propuesta
-                  </a>
-                )}
-                <a href={`/api/cotizaciones/${id}/html/download`} download>
-                  <Button variant="outline" size="sm" className="text-xs h-7 px-2.5" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
-                    ⬇ Descargar PDF
-                  </Button>
-                </a>
-              </>
+              <a href={`/api/cotizaciones/${id}/html/download`} download>
+                <Button variant="outline" size="sm" className="text-xs h-7 px-2.5" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
+                  ⬇ Descargar PDF
+                </Button>
+              </a>
             )}
             {!isReadOnly && (
               <ResyncButton
