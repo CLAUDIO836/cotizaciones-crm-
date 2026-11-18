@@ -193,6 +193,7 @@ function autoAdvanceEtapa(string $quotationId, string $trigger): void {
 
 // ── Router ────────────────────────────────────────────────────────────────────
 $action = $_GET['action'] ?? '';
+$token  = $_GET['token']  ?? '';
 
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
