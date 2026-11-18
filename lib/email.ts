@@ -83,10 +83,10 @@ export function buildQuotationEmailHtml(opts: {
   <tr><td align="center" style="padding:0 30px 27px">
     <table role="presentation" cellpadding="0" cellspacing="0">
     <tr><td bgcolor="#1B8A4B" style="border-radius:7px">
-      <a href="${ctaUrl}" style="display:inline-block;padding:16px 30px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none">VER MI COTIZACIÓN</a>
+      <a href="${ctaUrl}" target="_blank" style="display:inline-block;padding:16px 30px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none">VER MI COTIZACIÓN</a>
     </td></tr>
     </table>
-    ${propuestaUrl ? `<div style="margin-top:14px"><a href="${cartaUrl}" style="font-size:13px;color:#082e62;font-weight:600;text-decoration:underline">Firmar y aprobar el servicio →</a></div>` : ''}
+    ${propuestaUrl ? `<div style="margin-top:14px"><a href="${cartaUrl}" target="_blank" style="font-size:13px;color:#082e62;font-weight:600;text-decoration:underline">Firmar y aprobar el servicio →</a></div>` : ''}
     <div style="font-size:12px;color:#667890;margin-top:10px">También encontrará el documento adjunto en PDF.</div>
   </td></tr>
 
@@ -112,5 +112,18 @@ export function buildQuotationEmailHtml(opts: {
 </table>
 </td></tr>
 </table>
+<script>
+/* Los clientes de correo (Gmail, Outlook) eliminan este script.
+   Solo se ejecuta en el preview del CRM para abrir links como popup. */
+document.querySelectorAll('a[href]').forEach(function(a){
+  var h = a.getAttribute('href');
+  if (!h || h.indexOf('mailto:') === 0 || h.indexOf('tel:') === 0) return;
+  a.addEventListener('click', function(e){
+    e.preventDefault();
+    var w = window.open(h, '_blank', 'popup,width=1080,height=800,scrollbars=yes,resizable=yes');
+    if (!w) window.open(h, '_blank');
+  });
+});
+</script>
 </body></html>`
 }
