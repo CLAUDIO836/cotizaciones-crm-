@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     // Fetch quotation data
-    const q = await crmGet('quotation_get', { id })
+    const q = await crmGet('quotations_get', { id })
     if (!q?.data) return NextResponse.json({ error: 'Negocio no encontrado' }, { status: 404 })
     const deal = q.data as Record<string, unknown>
 
@@ -77,15 +77,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 <div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto;color:#111">
   <div style="background:#1B8A4B;padding:20px 24px;border-radius:8px 8px 0 0">
     <h2 style="color:white;margin:0;font-size:18px">✅ Negocio ganado – Solicitud de facturación</h2>
-    <p style="color:#bbf7d0;margin:4px 0 0;font-size:13px">Negocio #${deal.number} · ${deal.clients_name ?? deal.company ?? ''}</p>
+    <p style="color:#bbf7d0;margin:4px 0 0;font-size:13px">Negocio #${deal.number} · ${deal.client_name ?? deal.company ?? ''}</p>
   </div>
   <div style="background:#f9fafb;padding:20px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:none">
 
     <h3 style="font-size:14px;color:#374151;margin:0 0 12px">📋 Datos de facturación</h3>
     <table style="font-size:13px;width:100%;border-collapse:collapse">
-      <tr><td style="color:#6b7280;width:140px;padding:3px 0">Razón social:</td><td><strong>${billingName || (deal.clients_name as string) || '—'}</strong></td></tr>
-      <tr><td style="color:#6b7280;padding:3px 0">RUT:</td><td><strong>${billingRut || (deal.clients_rut as string) || '—'}</strong></td></tr>
-      <tr><td style="color:#6b7280;padding:3px 0">Dirección:</td><td>${billingAddr || (deal.clients_address as string) || '—'}</td></tr>
+      <tr><td style="color:#6b7280;width:140px;padding:3px 0">Razón social:</td><td><strong>${billingName || (deal.client_name as string) || '—'}</strong></td></tr>
+      <tr><td style="color:#6b7280;padding:3px 0">RUT:</td><td><strong>${billingRut || (deal.client_rut as string) || '—'}</strong></td></tr>
+      <tr><td style="color:#6b7280;padding:3px 0">Dirección:</td><td>${billingAddr || (deal.client_address as string) || '—'}</td></tr>
       <tr><td style="color:#6b7280;padding:3px 0">Giro:</td><td>${billingGiro || '—'}</td></tr>
     </table>
 
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       from:        vendorEmail,
       to:          'contabilidad@transccl.cl',
       cc:          vendorEmail,
-      subject:     `Solicitud factura – Negocio #${deal.number} – ${deal.clients_name ?? deal.company ?? ''}`,
+      subject:     `Solicitud factura – Negocio #${deal.number} – ${deal.client_name ?? deal.company ?? ''}`,
       html,
       attachments: attachments.length > 0 ? attachments : undefined,
     })
