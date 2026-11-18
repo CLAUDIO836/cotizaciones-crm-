@@ -173,17 +173,19 @@ function getCreatedDate(q: QuotationSummary): string {
 }
 
 // Fecha de último cambio de estado (para "ganadas"/"perdidas" — cuándo cambió)
-// Si no hay updated_at, el estado cambió antes de que existiera la columna → sin fecha confiable
+// Fallback a issue_date/created_at para históricos importados desde Pipedrive sin log de estado
 function getStatusDate(q: QuotationSummary): string {
   if (q.updated_at) return utcToChileDate(q.updated_at)
-  return ''   // histórico sin fecha de gestión — no filtrar por día
+  if (q.issue_date) return q.issue_date.slice(0, 10)
+  if (q.created_at) return utcToChileDate(q.created_at)
+  return ''
 }
 
 // Fecha de actividad por status:
-// - abiertas  → fecha del servicio (fecha_salida > issue_date > created_at)
+// - abiertas  → cuándo se creó el negocio (created_at > issue_date)
 // - ganadas/perdidas → cuándo cambió el estado (updated_at del log)
 function getActivityDate(q: QuotationSummary): string {
-  if (q.status === 'open') return getServiceDate(q)
+  if (q.status === 'open') return getCreatedDate(q)
   return getStatusDate(q)
 }
 
