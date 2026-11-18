@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getToken, fetchQuotation } from '@/lib/api'
+import { getToken, fetchQuotation, crmPost } from '@/lib/api'
 import { htmlToPdf } from '@/lib/pdf/html-to-pdf'
 
 export const maxDuration = 60
@@ -16,6 +16,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const htmlUrl = `${appUrl}/api/cotizaciones/${id}/propuesta?token=${encodeURIComponent(token)}`
 
   const pdfBuffer = await htmlToPdf(htmlUrl)
+
+  // Auto-avance: propuesta descargada → cotizacion
+  crmPost('quotations_set_etapa_auto', { id, trigger: 'proposal' }, {}, token).catch(() => {})
 
   const number = (q as { number?: string }).number ?? id
   return new NextResponse(pdfBuffer.buffer as ArrayBuffer, {

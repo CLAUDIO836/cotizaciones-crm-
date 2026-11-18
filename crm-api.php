@@ -166,6 +166,31 @@ function validateRut(string $rut): bool {
     return $dv === $calc;
 }
 
+// ── Auto-avance de etapa ─────────────────────────────────────────────────────
+// Orden de etapas: solo avanza, nunca retrocede
+const ETAPA_ORDER = ['lead', 'contactado', 'cotizacion', 'negociacion', 'cierre'];
+function autoAdvanceEtapa(string $quotationId, string $trigger): void {
+    $row = db()->prepare('SELECT etapa FROM quotations WHERE id = ?');
+    $row->execute([$quotationId]);
+    $row = $row->fetch();
+    if (!$row) return;
+    $current = $row['etapa'] ?? 'lead';
+    // Reglas: trigger → etapa mínima a alcanzar
+    $targets = [
+        'activity'  => 'contactado',
+        'email'     => 'cotizacion',
+        'proposal'  => 'cotizacion',
+        'won'       => 'cierre',
+        'lost'      => 'cierre',
+    ];
+    $target = $targets[$trigger] ?? null;
+    if (!$target) return;
+    $currentIdx = array_search($current, ETAPA_ORDER);
+    $targetIdx  = array_search($target,  ETAPA_ORDER);
+    if ($targetIdx === false || ($currentIdx !== false && $currentIdx >= $targetIdx)) return;
+    db()->prepare('UPDATE quotations SET etapa = ? WHERE id = ?')->execute([$target, $quotationId]);
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 $action = $_GET['action'] ?? '';
 
@@ -1851,6 +1876,10 @@ if ($action === 'quotations_set_status') {
     db()->prepare('UPDATE quotations SET status = ? WHERE id = ?')->execute([$b['status'], $b['id']]);
     if ($prev && $b['status'] !== $prev['status']) {
         logStatusChange($b['id'], $prev['status'], $b['status'], $user['id'] ?? $prev['user_id'] ?? null, 'crm');
+        // Auto-avance: won/lost → cierre
+        if (in_array($b['status'], ['won', 'lost'])) {
+            autoAdvanceEtapa($b['id'], $b['status']);
+        }
     }
     ok();
 }
@@ -1859,6 +1888,13 @@ if ($action === 'quotations_set_etapa') {
     requireAuth();
     $b = body();
     db()->prepare('UPDATE quotations SET etapa = ? WHERE id = ?')->execute([$b['etapa'], $b['id']]);
+    ok();
+}
+
+if ($action === 'quotations_set_etapa_auto') {
+    requireAuth();
+    $b = body();
+    if (!empty($b['id']) && !empty($b['trigger'])) autoAdvanceEtapa($b['id'], $b['trigger']);
     ok();
 }
 
@@ -1884,6 +1920,8 @@ if ($action === 'activities_create') {
         $id, $b['quotation_id'], $b['user_id'] ?? $user['id'],
         $b['type'] ?? 'llamada', $b['subject'] ?? '', $b['note'] ?? null, $b['due_date'] ?? null,
     ]);
+    // Auto-avance: actividad creada → contactado
+    if (!empty($b['quotation_id'])) autoAdvanceEtapa($b['quotation_id'], 'activity');
     $stmt = db()->prepare('SELECT a.*, p.name AS user_name FROM quotation_activities a LEFT JOIN profiles p ON p.id = a.user_id WHERE a.id = ?');
     $stmt->execute([$id]);
     ok($stmt->fetch());
@@ -2043,6 +2081,8 @@ if ($action === 'emails_save') {
         $direction,
         $sentAt,
     ]);
+    // Auto-avance: email enviado → cotizacion
+    if (($direction === 'sent') && !empty($qid)) autoAdvanceEtapa($qid, 'email');
     $row = db()->prepare('SELECT * FROM quotation_emails WHERE id = ?');
     $row->execute([$id]);
     ok($row->fetch());
