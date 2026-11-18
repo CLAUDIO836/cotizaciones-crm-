@@ -54,6 +54,7 @@ interface Props {
   clientName?:      string
   createdAt?:       string
   userRole?:        string
+  status?:          string
 }
 
 function timeAgo(dateStr: string): string {
@@ -265,18 +266,20 @@ function TemplateManager({
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function EmailsPanel({
-  quotationId, quotationNumber, clientEmail = '', clientName = '', createdAt, userRole,
+  quotationId, quotationNumber, clientEmail = '', clientName = '', createdAt, userRole, status,
 }: Props) {
-  const [emails,       setEmails]       = useState<EmailRecord[]>([])
-  const [loading,      setLoading]      = useState(true)
-  const [composing,    setComposing]    = useState(false)
-  const [sending,      setSending]      = useState(false)
-  const [syncing,      setSyncing]      = useState(false)
-  const [syncMsg,      setSyncMsg]      = useState('')
-  const [expanded,     setExpanded]     = useState<string | null>(null)
-  const [error,        setError]        = useState('')
-  const [copied,       setCopied]       = useState(false)
-  const [showManage,   setShowManage]   = useState(false)
+  const [emails,           setEmails]           = useState<EmailRecord[]>([])
+  const [loading,          setLoading]          = useState(true)
+  const [composing,        setComposing]        = useState(false)
+  const [sending,          setSending]          = useState(false)
+  const [sendingOfficial,  setSendingOfficial]  = useState(false)
+  const [officialMsg,      setOfficialMsg]      = useState('')
+  const [syncing,          setSyncing]          = useState(false)
+  const [syncMsg,          setSyncMsg]          = useState('')
+  const [expanded,         setExpanded]         = useState<string | null>(null)
+  const [error,            setError]            = useState('')
+  const [copied,           setCopied]           = useState(false)
+  const [showManage,       setShowManage]       = useState(false)
 
   // Compose fields
   const [to,         setTo]         = useState(clientEmail)
@@ -343,6 +346,24 @@ export default function EmailsPanel({
       setTemplates(DEFAULT_TEMPLATES)
     } finally {
       setTemplatesLoaded(true)
+    }
+  }
+
+  async function sendOfficial() {
+    if (!confirm('¿Enviar la cotización oficial al cliente con la plantilla de TransCCL (incluye link de aprobación y PDF adjunto)?')) return
+    setSendingOfficial(true)
+    setOfficialMsg('')
+    try {
+      const r = await fetch(`/api/quotations/${quotationId}/send-email`, { method: 'POST' })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error ?? 'Error al enviar')
+      setOfficialMsg(`✓ Enviada a ${d.sent_to}`)
+      await load()
+    } catch (e) {
+      setOfficialMsg(`Error: ${String(e)}`)
+    } finally {
+      setSendingOfficial(false)
+      setTimeout(() => setOfficialMsg(''), 6000)
     }
   }
 
@@ -476,6 +497,31 @@ export default function EmailsPanel({
           </Button>
         </div>
       </div>
+
+      {/* Enviar cotización oficial */}
+      {status === 'open' && (
+        <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-blue-800">📧 Cotización oficial TransCCL</p>
+            <p className="text-xs text-blue-500 mt-0.5">Envía la plantilla branded con el PDF adjunto y link de aprobación</p>
+            {officialMsg && (
+              <p className={`text-xs mt-1 font-medium ${officialMsg.startsWith('Error') ? 'text-red-600' : 'text-green-700'}`}>
+                {officialMsg}
+              </p>
+            )}
+          </div>
+          <Button
+            size="sm"
+            onClick={sendOfficial}
+            disabled={sendingOfficial}
+            className="text-xs h-7 px-3 text-white flex-shrink-0"
+            style={{ background: '#082e62' }}
+          >
+            <Send className="w-3 h-3 mr-1" />
+            {sendingOfficial ? 'Enviando...' : 'Enviar'}
+          </Button>
+        </div>
+      )}
 
       {/* BCC address */}
       {bccAddress && (

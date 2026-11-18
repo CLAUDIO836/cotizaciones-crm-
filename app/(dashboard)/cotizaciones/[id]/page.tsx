@@ -518,6 +518,7 @@ export default async function CotizacionDetailPage({
                   clientName={(q as { contact_name?: string }).contact_name ?? q.clients?.name ?? ''}
                   createdAt={(q as { created_at?: string }).created_at?.slice(0, 10) ?? q.issue_date?.slice(0, 10) ?? ''}
                   userRole={user?.role ?? ''}
+                  status={q.status ?? ''}
                 />
               </div>
             )}

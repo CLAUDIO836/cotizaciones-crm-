@@ -39,8 +39,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const gtRes = await fetch(`${CRM_API}?action=quotation_vendor_gmail_token&quotation_id=${encodeURIComponent(quotationId)}&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
     const gtData = await gtRes.json()
     const vendorRefreshToken: string = gtData?.data?.refresh_token ?? ''
-    const vendorEmail: string        = gtData?.data?.email ?? 'ventas@transccl.cl'
-    const vendorName:  string        = gtData?.data?.name  ?? 'TransCCL Ventas'
+    const vendorEmail: string        = gtData?.data?.email   ?? 'ventas@transccl.cl'
+    const vendorName:  string        = gtData?.data?.name    ?? 'TransCCL Ventas'
+    const vendorPhone: string        = gtData?.data?.celular ?? '+56 2 2945 5713'
 
     // 3. Datos del cliente (cotización + carta para email)
     const qRes = await fetch(`${CRM_API}?action=quotations_get&id=${encodeURIComponent(quotationId)}&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       clientName, clientEmail, quotationNumber: quoteNumber,
       total, desde: q.desde ?? '', hasta: q.hasta ?? '',
       fechaSalida: q.fecha_salida ?? '', cartaUrl,
+      vendorName, vendorEmail, vendorPhone,
     })
 
     let sentFrom = vendorEmail
