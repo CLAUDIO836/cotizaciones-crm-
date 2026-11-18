@@ -28,6 +28,7 @@ interface Quotation {
   year?: number
   month?: number
   activity_count?: number
+  notes_count?: number
 }
 
 interface Props {
@@ -203,7 +204,13 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                   const daysLeft   = closePrev ? daysUntil(closePrev, today) : null
                   const overdue    = q.status === 'open' && daysLeft !== null && daysLeft < 0
                   const nearClose  = q.status === 'open' && daysLeft !== null && daysLeft >= 0 && daysLeft <= 2
-                  const noGestion  = q.status === 'open' && (q.activity_count ?? 0) === 0
+                  const createdHoursAgo = q.created_at
+                    ? (Date.now() - new Date(q.created_at).getTime()) / 3600000
+                    : 999
+                  const noGestion = q.status === 'open'
+                    && createdHoursAgo > 24
+                    && (q.activity_count ?? 0) === 0
+                    && (q.notes_count ?? 0) === 0
 
                   // Fondo y borde por estado
                   let cardStyle: React.CSSProperties

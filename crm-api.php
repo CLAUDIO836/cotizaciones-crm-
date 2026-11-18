@@ -1104,7 +1104,7 @@ if ($action === 'run_migration') {
     }
 
     if ($num === 'add_activity_count') {
-        // Agrega activity_count al view para detectar negocios sin gestión
+        // Agrega activity_count + notes_count al view para detectar negocios sin gestión
         db()->exec("CREATE OR REPLACE VIEW quotations_summary AS
             SELECT q.id, q.number, q.status, q.etapa, q.company, q.company_id,
                    q.total, q.issue_date, q.fecha_salida,
@@ -1118,7 +1118,9 @@ if ($action === 'run_migration') {
                     WHERE sl.quotation_id = q.id
                     ORDER BY sl.changed_at DESC LIMIT 1) AS updated_at,
                    (SELECT COUNT(*) FROM quotation_activities a
-                    WHERE a.quotation_id = q.id) AS activity_count
+                    WHERE a.quotation_id = q.id) AS activity_count,
+                   (SELECT COUNT(*) FROM quotation_notes n
+                    WHERE n.quotation_id = q.id) AS notes_count
             FROM quotations q
             LEFT JOIN profiles p ON p.id = q.user_id
             LEFT JOIN clients c ON c.id = q.client_id
