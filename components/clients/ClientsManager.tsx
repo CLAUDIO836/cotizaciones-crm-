@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import { Plus, Pencil, AlertTriangle, Trash2, ChevronDown, ChevronRight, Phone, Mail, User, Search, X } from 'lucide-react'
+import { Plus, Pencil, AlertTriangle, Trash2, ChevronDown, ChevronRight, Phone, Mail, User, Search, X, History, CheckCircle, XCircle, Clock, ExternalLink } from 'lucide-react'
 import { formatRut, validateRut, rutKey, autoFormatRut } from '@/lib/rut'
 import { validateChileanPhone, autoFormatPhone, phoneError, PHONE_DEFAULT_MOBILE } from '@/lib/phone'
 
@@ -29,6 +29,21 @@ interface Client {
   phone?: string
   address?: string
   tipo?: 'natural' | 'empresa' | 'colegio' | null
+}
+
+interface HistoryItem {
+  id: string
+  number?: string
+  pipedrive_deal_id?: string
+  status: 'open' | 'won' | 'lost'
+  pipeline_name?: string
+  total: number
+  issue_date?: string
+  fecha_salida?: string
+  desde?: string
+  hasta?: string
+  vendedor_name?: string
+  created_at?: string
 }
 
 
@@ -56,6 +71,11 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
   const [newContact, setNewContact] = useState({ name: '', cargo: '', phone_mobile: '', phone_landline: '', email: '' })
   const [savingContact, setSavingContact] = useState(false)
 
+  // History
+  const [history, setHistory] = useState<Record<string, HistoryItem[]>>({})
+  const [loadingHistory, setLoadingHistory] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<Record<string, 'contactos' | 'historia'>>({})
+
   // Edit contact
   const [editingContact, setEditingContact] = useState<Contact | null>(null)
   const [editContactClientId, setEditContactClientId] = useState<string | null>(null)
@@ -68,18 +88,52 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
       return
     }
     setExpandedId(clientId)
-    if (contacts[clientId]) return
-    setLoadingContacts(clientId)
+    const tab = activeTab[clientId] ?? 'contactos'
+    if (tab === 'contactos' && !contacts[clientId]) {
+      setLoadingContacts(clientId)
+      try {
+        const res = await fetch(`/api/clients?id=${clientId}`)
+        const json = await res.json()
+        const data = json.data ?? json
+        const list: Contact[] = data?.contacts ?? []
+        setContacts(prev => ({ ...prev, [clientId]: list }))
+      } catch {
+        setContacts(prev => ({ ...prev, [clientId]: [] }))
+      } finally {
+        setLoadingContacts(null)
+      }
+    } else if (tab === 'historia') {
+      loadHistory(clientId)
+    }
+  }
+
+  async function loadHistory(clientId: string) {
+    if (history[clientId]) return
+    setLoadingHistory(clientId)
     try {
-      const res = await fetch(`/api/clients?id=${clientId}`)
+      const res = await fetch(`/api/clients/history?client_id=${clientId}`)
       const json = await res.json()
-      const data = json.data ?? json
-      const list: Contact[] = data?.contacts ?? []
-      setContacts(prev => ({ ...prev, [clientId]: list }))
+      setHistory(prev => ({ ...prev, [clientId]: json.data ?? [] }))
     } catch {
-      setContacts(prev => ({ ...prev, [clientId]: [] }))
+      setHistory(prev => ({ ...prev, [clientId]: [] }))
     } finally {
-      setLoadingContacts(null)
+      setLoadingHistory(null)
+    }
+  }
+
+  function switchTab(clientId: string, tab: 'contactos' | 'historia') {
+    setActiveTab(prev => ({ ...prev, [clientId]: tab }))
+    if (tab === 'historia') loadHistory(clientId)
+    if (tab === 'contactos' && !contacts[clientId]) {
+      setLoadingContacts(clientId)
+      fetch(`/api/clients?id=${clientId}`)
+        .then(r => r.ok ? r.json() : { contacts: [] })
+        .then((json: { data?: { contacts?: Contact[] }; contacts?: Contact[] }) => {
+          const data = json.data ?? json
+          setContacts(prev => ({ ...prev, [clientId]: data?.contacts ?? [] }))
+        })
+        .catch(() => setContacts(prev => ({ ...prev, [clientId]: [] })))
+        .finally(() => setLoadingContacts(null))
     }
   }
 
@@ -452,16 +506,37 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                       </td>
                     </tr>
 
-                    {/* Expanded contacts row */}
+                    {/* Expanded row with tabs */}
                     {isExpanded && (
                       <tr key={`${c.id}-contacts`} className="bg-gray-50 border-b">
                         <td></td>
                         <td colSpan={5} className="px-6 py-4">
-                          {loadingContacts === c.id ? (
+                          {/* Tab switcher */}
+                          <div className="flex gap-1 mb-4 border-b border-gray-200">
+                            {(['contactos', 'historia'] as const).map(tab => (
+                              <button
+                                key={tab}
+                                onClick={e => { e.stopPropagation(); switchTab(c.id, tab) }}
+                                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold transition-all border-b-2 -mb-px"
+                                style={
+                                  (activeTab[c.id] ?? 'contactos') === tab
+                                    ? { borderColor: '#1B8A4B', color: '#1B8A4B' }
+                                    : { borderColor: 'transparent', color: '#9CA3AF' }
+                                }
+                              >
+                                {tab === 'contactos' ? <User className="w-3.5 h-3.5" /> : <History className="w-3.5 h-3.5" />}
+                                {tab === 'contactos' ? 'Contactos' : 'Historia Comercial'}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* CONTACTOS TAB */}
+                          {(activeTab[c.id] ?? 'contactos') === 'contactos' && (
+                          loadingContacts === c.id ? (
                             <p className="text-sm text-gray-400">Cargando contactos...</p>
                           ) : (
                             <div className="space-y-3">
-                              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Contactos</p>
+                              {/* hidden label since tabs already show the section */}
                               {clientContacts.length === 0 && showNewContact !== c.id && (
                                 <p className="text-sm text-gray-400 italic">Sin contactos registrados</p>
                               )}
@@ -536,6 +611,79 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                                   <Plus className="w-4 h-4" />
                                   Agregar contacto
                                 </button>
+                              )}
+                            </div>
+                          ))}
+
+                          {/* HISTORIA COMERCIAL TAB */}
+                          {(activeTab[c.id] ?? 'contactos') === 'historia' && (
+                            <div className="space-y-2">
+                              {loadingHistory === c.id ? (
+                                <p className="text-sm text-gray-400">Cargando historia...</p>
+                              ) : (history[c.id] ?? []).length === 0 ? (
+                                <p className="text-sm text-gray-400 italic">Sin negocios registrados para este cliente</p>
+                              ) : (
+                                <>
+                                  <p className="text-xs text-gray-400 mb-3">
+                                    {(history[c.id] ?? []).length} negocio{(history[c.id] ?? []).length !== 1 ? 's' : ''} en total
+                                    {' · '}{(history[c.id] ?? []).filter(h => h.status === 'won').length} ganado{(history[c.id] ?? []).filter(h => h.status === 'won').length !== 1 ? 's' : ''}
+                                  </p>
+                                  <div className="space-y-2">
+                                    {(history[c.id] ?? []).map(h => {
+                                      const num = h.number ?? h.pipedrive_deal_id ?? h.id.slice(0, 8)
+                                      const date = h.created_at ?? h.issue_date ?? ''
+                                      const dateStr = date ? new Date(date).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—'
+                                      const amount = h.total ? `$${Number(h.total).toLocaleString('es-CL')}` : '—'
+                                      return (
+                                        <div key={h.id} className="flex items-center gap-3 bg-white rounded-lg border px-4 py-2.5 hover:border-gray-300 transition-colors">
+                                          <div className="flex-shrink-0">
+                                            {h.status === 'won'
+                                              ? <CheckCircle className="w-4 h-4 text-green-500" />
+                                              : h.status === 'lost'
+                                              ? <XCircle className="w-4 h-4 text-red-400" />
+                                              : <Clock className="w-4 h-4 text-amber-400" />
+                                            }
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <span className="text-sm font-semibold text-gray-800">#{num}</span>
+                                              {h.pipeline_name && (
+                                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full truncate max-w-[160px]">{h.pipeline_name}</span>
+                                              )}
+                                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                                                h.status === 'won' ? 'bg-green-50 text-green-700' :
+                                                h.status === 'lost' ? 'bg-red-50 text-red-600' :
+                                                'bg-amber-50 text-amber-700'
+                                              }`}>
+                                                {h.status === 'won' ? 'Ganado' : h.status === 'lost' ? 'Perdido' : 'En proceso'}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                                              <span className="text-xs text-gray-400">{dateStr}</span>
+                                              {h.desde && h.hasta && (
+                                                <span className="text-xs text-gray-500 truncate max-w-[200px]">{h.desde} → {h.hasta}</span>
+                                              )}
+                                              {h.vendedor_name && (
+                                                <span className="text-xs text-gray-400">{h.vendedor_name}</span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center gap-3 flex-shrink-0">
+                                            <span className="text-sm font-semibold text-gray-700">{amount}</span>
+                                            <a
+                                              href={`/cotizaciones/${h.id}`}
+                                              onClick={e => e.stopPropagation()}
+                                              className="text-gray-300 hover:text-blue-500 transition-colors"
+                                              title="Abrir negocio"
+                                            >
+                                              <ExternalLink className="w-3.5 h-3.5" />
+                                            </a>
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </>
                               )}
                             </div>
                           )}
