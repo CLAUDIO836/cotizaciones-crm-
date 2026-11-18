@@ -1,6 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
+import { formatCLP, getStatusLabel } from '@/lib/utils'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, AlertTriangle } from 'lucide-react'
 
 function getBrandBadge(company: string | undefined) {
   const c = (company ?? '').toUpperCase()
@@ -8,9 +11,6 @@ function getBrandBadge(company: string | undefined) {
   if (c.includes('TRACKING')) return { label: 'TRACKING',  bg: '#eff6ff', color: '#1d4ed8' }
   return                               { label: 'CCL',      bg: '#f0fdf4', color: '#1B8A4B' }
 }
-import Link from 'next/link'
-import { formatCLP, getStatusLabel } from '@/lib/utils'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 
 interface Quotation {
   id: string
@@ -18,6 +18,7 @@ interface Quotation {
   status: string
   issue_date: string
   expiry_date?: string
+  fecha_salida?: string
   total: number
   client_name?: string
   vendedor_name?: string
@@ -53,6 +54,26 @@ function getVendedorColor(name: string) {
   return vendedorColorMap[name]
 }
 
+// Fecha de cierre previsto = fecha_salida - 1 día
+function getClosePrev(q: Quotation): string | null {
+  if (!q.fecha_salida) return null
+  const d = new Date(q.fecha_salida + 'T12:00:00')
+  d.setDate(d.getDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
+function todayStr(): string {
+  const now = new Date()
+  // hora Chile (UTC-3)
+  const chile = new Date(now.getTime() - 3 * 60 * 60 * 1000)
+  return chile.toISOString().slice(0, 10)
+}
+
+function formatDateShort(s: string): string {
+  const [y, m, d] = s.split('-')
+  return `${d}/${m}/${y.slice(2)}`
+}
+
 export default function TimelineView({ quotations, isAdmin }: Props) {
   const now = new Date()
   const [startMonth, setStartMonth] = useState(now.getMonth() - 1)
@@ -62,7 +83,7 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
     let m = startMonth + i
     let y = startYear
     while (m > 11) { m -= 12; y++ }
-    while (m < 0) { m += 12; y-- }
+    while (m < 0)  { m += 12; y-- }
     return { month: m + 1, year: y, label: MONTH_NAMES[m] }
   })
 
@@ -70,10 +91,12 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
     let m = startMonth + delta
     let y = startYear
     while (m > 11) { m -= 12; y++ }
-    while (m < 0) { m += 12; y-- }
+    while (m < 0)  { m += 12; y-- }
     setStartMonth(m)
     setStartYear(y)
   }
+
+  const today = todayStr()
 
   return (
     <div className="space-y-3">
@@ -103,12 +126,19 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
       {/* Columnas */}
       <div className="flex gap-3 overflow-x-auto pb-4" style={{ minHeight: '70vh' }}>
         {months.map(({ month, year, label }) => {
-          const cards = quotations.filter(q => Number(q.month) === month && Number(q.year) === year)
-          const totalMonto = cards.reduce((s, q) => s + Number(q.total ?? 0), 0)
-          const ganado = cards.filter(q => q.status === 'won').reduce((s, q) => s + Number(q.total ?? 0), 0)
-          const perdido = cards.filter(q => q.status === 'lost').reduce((s, q) => s + Number(q.total ?? 0), 0)
-          const pendiente = cards.filter(q => q.status === 'open').reduce((s, q) => s + Number(q.total ?? 0), 0)
-          const isCurrent = month === now.getMonth() + 1 && year === now.getFullYear()
+          const all    = quotations.filter(q => Number(q.month) === month && Number(q.year) === year)
+
+          // Ordenar: ganadas → abiertas → perdidas
+          const won    = all.filter(q => q.status === 'won')
+          const open   = all.filter(q => q.status === 'open')
+          const lost   = all.filter(q => q.status === 'lost')
+          const cards  = [...won, ...open, ...lost]
+
+          const totalMonto  = all.reduce((s, q) => s + Number(q.total ?? 0), 0)
+          const totalGanado = won.reduce( (s, q) => s + Number(q.total ?? 0), 0)
+          const totalOpen   = open.reduce((s, q) => s + Number(q.total ?? 0), 0)
+          const totalLost   = lost.reduce((s, q) => s + Number(q.total ?? 0), 0)
+          const isCurrent   = month === now.getMonth() + 1 && year === now.getFullYear()
 
           return (
             <div key={`${year}-${month}`} className="flex-shrink-0 flex flex-col" style={{ width: 300 }}>
@@ -120,36 +150,39 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                   border: isCurrent ? '2px solid var(--pipe-orange)' : '1px solid #e5e7eb',
                 }}
               >
-                <div className="flex items-baseline justify-between mb-1.5">
+                <div className="flex items-baseline justify-between mb-2">
                   <span className="font-bold text-base" style={{ color: isCurrent ? 'var(--pipe-orange)' : '#111827' }}>
                     {label} {year}
                   </span>
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
                     style={{ background: isCurrent ? '#FF6C37' : '#f3f4f6', color: isCurrent ? 'white' : '#6b7280' }}>
-                    {cards.length}
+                    {all.length}
                   </span>
                 </div>
-                <p className="text-lg font-bold text-gray-900">{formatCLP(totalMonto)}</p>
-                <div className="flex gap-3 mt-1 flex-wrap">
-                  {ganado > 0 && (
-                    <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                      {formatCLP(ganado)}
-                    </span>
-                  )}
-                  {pendiente > 0 && (
-                    <span className="text-xs text-gray-500 font-medium flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
-                      {formatCLP(pendiente)}
-                    </span>
-                  )}
-                  {perdido > 0 && (
-                    <span className="text-xs text-red-500 font-medium flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
-                      {formatCLP(perdido)}
-                    </span>
-                  )}
-                </div>
+
+                {/* Número grande = ganado */}
+                <p className="text-xl font-bold" style={{ color: '#16a34a' }}>
+                  {formatCLP(totalGanado)}
+                </p>
+
+                {/* Abierto */}
+                {totalOpen > 0 && (
+                  <p className="text-sm font-semibold mt-0.5" style={{ color: '#2563eb' }}>
+                    {formatCLP(totalOpen)}
+                  </p>
+                )}
+
+                {/* Perdido */}
+                {totalLost > 0 && (
+                  <p className="text-sm font-semibold mt-0.5" style={{ color: '#dc2626' }}>
+                    {formatCLP(totalLost)}
+                  </p>
+                )}
+
+                {/* Total cotizado */}
+                <p className="text-xs text-gray-400 mt-1 font-medium border-t border-gray-100 pt-1">
+                  = {formatCLP(totalMonto)} cotizado
+                </p>
               </div>
 
               {/* Cards */}
@@ -161,14 +194,34 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                 )}
                 {cards.map(q => {
                   const { label: statusLabel, color } = getStatusLabel(q.status)
-                  const vColor = q.vendedor_name ? getVendedorColor(q.vendedor_name) : 'var(--pipe-orange)'
+                  const vColor     = q.vendedor_name ? getVendedorColor(q.vendedor_name) : 'var(--pipe-orange)'
+                  const brand      = getBrandBadge(q.company)
+                  const closePrev  = getClosePrev(q)
+                  const overdue    = q.status === 'open' && closePrev !== null && closePrev < today
+
+                  // Fondo y borde por estado
+                  let cardStyle: React.CSSProperties
+                  if (q.status === 'won')       cardStyle = { background: '#f0fdf4', borderColor: '#86efac' }
+                  else if (q.status === 'lost') cardStyle = { background: '#fff5f5', borderColor: '#fca5a5' }
+                  else                          cardStyle = { background: '#eff6ff', borderColor: '#bfdbfe' }
+
                   const progressPct = q.status === 'won' ? 100 : q.status === 'lost' ? 0 : 50
 
-                  const brand = getBrandBadge(q.company)
                   return (
                     <Link key={q.id} href={`/cotizaciones/${q.id}`}>
                       <div className="rounded-xl border hover:shadow-md transition-all cursor-pointer overflow-hidden group"
-                        style={q.status === 'won' ? { background: '#f0fdf4', borderColor: '#86efac' } : { background: '#fff', borderColor: '#e5e7eb' }}>
+                        style={cardStyle}>
+
+                        {/* Alerta: cierre vencido */}
+                        {overdue && (
+                          <div className="flex items-center gap-1.5 px-3 pt-2 pb-0">
+                            <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                            <span className="text-xs font-semibold text-amber-600">
+                              Requiere tu intervención
+                            </span>
+                          </div>
+                        )}
+
                         <div className="px-3 py-2">
                           {/* Top row */}
                           <div className="flex items-center justify-between gap-1 mb-1">
@@ -199,7 +252,7 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                             {q.client_name ?? 'Sin cliente'}
                           </p>
 
-                          {/* Amount + Vendedor en la misma fila */}
+                          {/* Amount + Vendedor */}
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-base font-bold" style={{ color: 'var(--pipe-orange)' }}>
                               {formatCLP(q.total)}
@@ -214,9 +267,16 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                               </div>
                             )}
                           </div>
+
+                          {/* Fecha de cierre previsto */}
+                          {closePrev && q.status === 'open' && (
+                            <p className={`text-xs mt-1 font-medium ${overdue ? 'text-amber-600' : 'text-gray-400'}`}>
+                              Cierre previsto: {formatDateShort(closePrev)}
+                            </p>
+                          )}
                         </div>
 
-                        {/* Progress bar — like PipeDrive */}
+                        {/* Progress bar */}
                         <div className="h-1 w-full bg-gray-100">
                           <div
                             className="h-1 transition-all"
