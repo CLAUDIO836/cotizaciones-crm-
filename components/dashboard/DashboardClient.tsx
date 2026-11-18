@@ -11,16 +11,22 @@ import type { QuotationSummary } from '@/lib/api'
 interface Profile { id: string; name: string }
 type Preset = 'today' | 'week' | 'month' | 'custom'
 
-// Fecha en zona horaria Chile (UTC-3) para evitar desfase de día
-function toChileDate(d: Date) {
-  const chile = new Date(d.getTime() - 3 * 60 * 60 * 1000)
-  return chile.toISOString().slice(0, 10)
-}
-function toDateStr(d: Date) { return toChileDate(d) }
-
-// Convierte un timestamp UTC del servidor a fecha Chile
+// Convierte un timestamp UTC del servidor a fecha Chile (UTC-3)
 function utcToChileDate(isoUtc: string): string {
-  return toChileDate(new Date(isoUtc))
+  const d = new Date(new Date(isoUtc).getTime() - 3 * 60 * 60 * 1000)
+  return d.toISOString().slice(0, 10)
+}
+
+// Fecha local del browser en formato YYYY-MM-DD (no toISOString — ese da UTC)
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function toDateStr(d: Date) { return localDateStr(d) }
+
+// Parsea "YYYY-MM-DD" como fecha local (new Date("YYYY-MM-DD") la trata como UTC)
+function parseDateLocal(s: string): Date {
+  const [y, m, d] = s.split('-').map(Number)
+  return new Date(y, m - 1, d)
 }
 
 // Fecha de creación (para "abiertas" — cuándo se abrió la cotización)
@@ -159,9 +165,9 @@ export default function DashboardClient({
   const openInRange = inRange.filter(q => q.status === 'open')
   const lostInRange = inRange.filter(q => q.status === 'lost')
 
-  // Eficiencia (all filtered)
-  const totalCotizado = sum(filtered)
-  const totalGanado   = sum(filtered.filter(q => q.status === 'won'))
+  // Eficiencia del período seleccionado (no histórico global)
+  const totalCotizado = sum(inRange)
+  const totalGanado   = sum(wonInRange)
   const eficiencia    = totalCotizado > 0 ? Math.round((totalGanado / totalCotizado) * 100) : 0
 
   // Chart granularity (auto based on range)
@@ -171,8 +177,8 @@ export default function DashboardClient({
   // Build chart series
   const chartData = useMemo(() => {
     const { from, to } = range
-    const fromD = new Date(from)
-    const toD   = new Date(to)
+    const fromD = parseDateLocal(from)   // parse como fecha local, no UTC
+    const toD   = parseDateLocal(to)
 
     if (gran === 'day') {
       const result = []
@@ -198,7 +204,7 @@ export default function DashboardClient({
       const ws = getWeekStart(new Date(fromD))
       while (ws <= toD) {
         const we = new Date(ws); we.setDate(ws.getDate() + 6)
-        const wq = filtered.filter(q => { const ds = getActivityDate(q); return ds >= toDateStr(ws) && ds <= toDateStr(we) })
+        const wq = filtered.filter(q => { const ds = getActivityDate(q); return ds >= localDateStr(ws) && ds <= localDateStr(we) })
         result.push({
           label: formatLabel(ws, 'week'),
           Ganadas:  wq.filter(q => q.status === 'won').length,
@@ -216,9 +222,9 @@ export default function DashboardClient({
     const result = []
     const cur = new Date(fromD.getFullYear(), fromD.getMonth(), 1)
     while (cur <= toD) {
-      const dStr  = toDateStr(cur)
+      const dStr  = localDateStr(cur)
       const nextM = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
-      const nStr  = toDateStr(nextM)
+      const nStr  = localDateStr(nextM)
       const mq = filtered.filter(q => { const ds = getActivityDate(q); return ds >= dStr && ds < nStr })
       result.push({
         label: formatLabel(cur, 'month'),
@@ -357,7 +363,7 @@ export default function DashboardClient({
       {/* ── Eficiencia ── */}
       <div className="bg-white rounded-xl border p-4 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Eficiencia global</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Eficiencia del período</p>
           <p className="text-3xl font-black mt-1" style={{ color: eficiencia >= 50 ? '#1B8A4B' : '#f59e0b' }}>{eficiencia}%</p>
         </div>
         <div className="flex gap-8">
