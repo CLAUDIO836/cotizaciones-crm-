@@ -649,7 +649,6 @@ export default function EmailsPanel({
                   </div>
                   <iframe
                     srcDoc={htmlPreview}
-                    sandbox="allow-same-origin"
                     className="w-full h-full"
                     style={{ height: 383 }}
                     title="Preview correo"
