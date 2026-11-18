@@ -1967,6 +1967,68 @@ if ($action === 'notes_delete') {
     ok();
 }
 
+// ── QUOTATION EMAILS ──────────────────────────────────────────────────────────
+
+if ($action === 'emails_list') {
+    requireAuth();
+    $qid = $_GET['quotation_id'] ?? '';
+    if (!$qid) err('quotation_id requerido');
+    // Crear tabla si no existe (idempotente)
+    db()->exec("CREATE TABLE IF NOT EXISTS quotation_emails (
+        id              VARCHAR(36)  NOT NULL PRIMARY KEY,
+        quotation_id    VARCHAR(36)  NOT NULL,
+        gmail_message_id VARCHAR(100) NULL,
+        gmail_thread_id  VARCHAR(100) NULL,
+        from_email      VARCHAR(200) NOT NULL,
+        to_email        VARCHAR(200) NOT NULL,
+        subject         VARCHAR(500) NOT NULL,
+        body_html       MEDIUMTEXT   NULL,
+        sent_at         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_qid (quotation_id),
+        INDEX idx_thread (gmail_thread_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $stmt = db()->prepare('SELECT * FROM quotation_emails WHERE quotation_id = ? ORDER BY sent_at DESC');
+    $stmt->execute([$qid]);
+    ok($stmt->fetchAll());
+}
+
+if ($action === 'emails_save') {
+    requireAuth();
+    $b = body();
+    $qid = $b['quotation_id'] ?? '';
+    if (!$qid) err('quotation_id requerido');
+    // Crear tabla si no existe (idempotente)
+    db()->exec("CREATE TABLE IF NOT EXISTS quotation_emails (
+        id              VARCHAR(36)  NOT NULL PRIMARY KEY,
+        quotation_id    VARCHAR(36)  NOT NULL,
+        gmail_message_id VARCHAR(100) NULL,
+        gmail_thread_id  VARCHAR(100) NULL,
+        from_email      VARCHAR(200) NOT NULL,
+        to_email        VARCHAR(200) NOT NULL,
+        subject         VARCHAR(500) NOT NULL,
+        body_html       MEDIUMTEXT   NULL,
+        sent_at         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_qid (quotation_id),
+        INDEX idx_thread (gmail_thread_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $id = uuid();
+    db()->prepare(
+        'INSERT INTO quotation_emails (id,quotation_id,gmail_message_id,gmail_thread_id,from_email,to_email,subject,body_html)
+         VALUES (?,?,?,?,?,?,?,?)'
+    )->execute([
+        $id, $qid,
+        $b['gmail_message_id'] ?? null,
+        $b['gmail_thread_id']  ?? null,
+        $b['from_email']  ?? '',
+        $b['to_email']    ?? '',
+        $b['subject']     ?? '',
+        $b['body_html']   ?? null,
+    ]);
+    $row = db()->prepare('SELECT * FROM quotation_emails WHERE id = ?');
+    $row->execute([$id]);
+    ok($row->fetch());
+}
+
 // ── QUOTATION APPROVALS ───────────────────────────────────────────────────────
 if ($action === 'approvals_by_quotation') {
     requireAuth();

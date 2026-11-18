@@ -1,5 +1,5 @@
 export const dynamic = 'force-dynamic'
-import { getSession, fetchQuotation, fetchActivities, fetchNotes, fetchPipelines } from '@/lib/api'
+import { getSession, fetchQuotation, fetchActivities, fetchNotes, fetchPipelines, crmGet } from '@/lib/api'
 import AutoRefresh from '@/components/AutoRefresh'
 import { notFound } from 'next/navigation'
 import { formatCLP, formatDate, getStatusLabel } from '@/lib/utils'
@@ -16,6 +16,7 @@ import QuotationApprovalButton from '@/components/quotations/QuotationApprovalBu
 import ResyncButton from '@/components/quotations/ResyncButton'
 import DocumentsTab from '@/components/quotations/DocumentsTab'
 import AgentButton from '@/components/quotations/AgentButton'
+import EmailsPanel from '@/components/quotations/EmailsPanel'
 
 const STAGES_ORDER = ['lead', 'contactado', 'cotizacion', 'negociacion', 'cierre']
 
@@ -39,12 +40,14 @@ export default async function CotizacionDetailPage({
   const user = await getSession()
   const isReadOnly = user?.role === 'coordinador'
 
-  const [q, activities, notes, pipelines] = await Promise.all([
+  const [q, activities, notes, pipelines, emailsData] = await Promise.all([
     fetchQuotation(id),
     fetchActivities(id),
     fetchNotes(id),
     fetchPipelines(),
+    crmGet('emails_list', { quotation_id: id }).catch(() => ({ data: [] })),
   ])
+  const emails = (emailsData?.data as { id: string }[]) ?? []
 
   if (!q) notFound()
 
@@ -372,6 +375,7 @@ export default async function CotizacionDetailPage({
             currentTab={tab}
             activitiesCount={activities.length}
             notesCount={notes.length}
+            emailsCount={emails.length}
           />
 
           {/* Tab content */}
@@ -481,6 +485,16 @@ export default async function CotizacionDetailPage({
                   quotationId={id}
                   initialNotes={notes}
                   userId={user?.id ?? ''}
+                />
+              </div>
+            )}
+
+            {tab === 'correos' && (
+              <div className="max-w-2xl">
+                <EmailsPanel
+                  quotationId={id}
+                  clientEmail={(q as { contact_email?: string }).contact_email ?? ''}
+                  clientName={(q as { contact_name?: string }).contact_name ?? q.clients?.name ?? ''}
                 />
               </div>
             )}
