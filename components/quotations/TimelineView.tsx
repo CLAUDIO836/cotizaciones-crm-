@@ -29,6 +29,7 @@ interface Quotation {
   month?: number
   activity_count?: number
   notes_count?: number
+  created_at?: string
 }
 
 interface Props {
