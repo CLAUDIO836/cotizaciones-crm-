@@ -2028,6 +2028,64 @@ if ($action === 'send_pending_reminders') {
     ok(['total_users' => count($byUser), 'wa_sent' => $sent, 'pending_tasks' => count($rows)]);
 }
 
+// ── WA: NEGOCIOS SIN GESTIÓN ─────────────────────────────────────────────────
+if ($action === 'send_no_gestion_reminders') {
+    $secret = $_GET['secret'] ?? '';
+    if ($secret !== 'transccl-cron-2024') requireAuth();
+    if (isset($user) && !isAdmin($user)) err('Forbidden', 403);
+
+    $waToken = defined('META_WA_TOKEN') ? META_WA_TOKEN : (getenv('WHATSAPP_TOKEN') ?: '');
+    $phoneId = defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : (getenv('WHATSAPP_PHONE_NUMBER_ID') ?: '');
+
+    // Negocios abiertos sin ninguna gestión, agrupados por ejecutivo
+    $stmt = db()->query("
+        SELECT q.id, q.number, q.user_id, p.name AS user_name, p.celular,
+               COALESCE(cl.name, q.company, '') AS client_name,
+               q.issue_date
+        FROM quotations q
+        LEFT JOIN profiles p ON p.id = q.user_id
+        LEFT JOIN clients cl ON cl.id = q.client_id
+        WHERE q.status = 'open'
+          AND (q.is_deleted = 0 OR q.is_deleted IS NULL)
+          AND p.active = 1
+          AND p.celular IS NOT NULL AND p.celular != ''
+          AND NOT EXISTS (SELECT 1 FROM quotation_activities a WHERE a.quotation_id = q.id LIMIT 1)
+        ORDER BY q.user_id, q.issue_date DESC
+    ");
+    $rows = $stmt->fetchAll();
+
+    $byUser = [];
+    foreach ($rows as $r) {
+        $uid = $r['user_id'];
+        if (!isset($byUser[$uid])) $byUser[$uid] = ['name'=>$r['user_name'],'celular'=>$r['celular'],'deals'=>[]];
+        $byUser[$uid]['deals'][] = $r;
+    }
+
+    $sent = 0;
+    foreach ($byUser as $data) {
+        $celular = preg_replace('/[^0-9+]/', '', $data['celular']);
+        if (!str_starts_with($celular, '+')) $celular = '+56' . ltrim($celular, '0');
+
+        $total = count($data['deals']);
+        $lines = ["📋 *Negocios sin gestión – TransCCL CRM*\n\nHola {$data['name']}, tienes *{$total} negocio(s)* abierto(s) sin ninguna gestión registrada:\n"];
+        foreach (array_slice($data['deals'], 0, 10) as $d) {
+            $lines[] = "• *#{$d['number']}* – {$d['client_name']}";
+        }
+        if ($total > 10) $lines[] = "_(y " . ($total - 10) . " más...)_";
+        $lines[] = "\nIngresa al CRM y programa al menos una actividad por cada uno:\nhttps://crm.transccl.cl/cotizaciones";
+        $text = implode("\n", $lines);
+
+        $payload = ['messaging_product'=>'whatsapp','to'=>$celular,'type'=>'text','text'=>['body'=>$text]];
+        $ch = curl_init("https://graph.facebook.com/v21.0/{$phoneId}/messages");
+        curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>10,
+            CURLOPT_HTTPHEADER=>["Authorization: Bearer {$waToken}",'Content-Type: application/json'],
+            CURLOPT_POSTFIELDS=>json_encode($payload)]);
+        $r2 = curl_exec($ch); $code = curl_getinfo($ch,CURLINFO_HTTP_CODE); curl_close($ch);
+        if ($code < 400) $sent++;
+    }
+    ok(['total_users'=>count($byUser),'wa_sent'=>$sent,'deals_sin_gestion'=>count($rows)]);
+}
+
 // ── ADMIN: EMAIL TEMPLATES ────────────────────────────────────────────────────
 if ($action === 'email_templates_list') {
     requireAuth();

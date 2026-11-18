@@ -209,36 +209,56 @@ function BillingAuthSection() {
 
 /* ── Cron WA ── */
 function CronSection() {
-  const [result,  setResult]  = useState('')
-  const [loading, setLoading] = useState(false)
+  const [result,       setResult]       = useState('')
+  const [loading,      setLoading]      = useState(false)
+  const [loadingNG,    setLoadingNG]    = useState(false)
+  const [resultNG,     setResultNG]     = useState('')
 
   async function runNow() {
-    setLoading(true)
-    setResult('')
+    setLoading(true); setResult('')
     const r = await fetch('/api/reminders/run-now', { method: 'POST' })
-    const d = await r.json()
-    setResult(JSON.stringify(d, null, 2))
+    setResult(JSON.stringify(await r.json(), null, 2))
     setLoading(false)
   }
 
+  async function runNoGestion() {
+    if (!confirm('¿Enviar WA a todos los ejecutivos con negocios sin gestión? Esto enviará mensajes reales.')) return
+    setLoadingNG(true); setResultNG('')
+    const r = await fetch('/api/reminders/no-gestion', { method: 'POST' })
+    setResultNG(JSON.stringify(await r.json(), null, 2))
+    setLoadingNG(false)
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+
+      {/* Cron diario */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <p className="text-sm font-semibold text-blue-800 mb-1">Recordatorio diario por WhatsApp</p>
-        <p className="text-sm text-blue-700">
-          Cada día a las 18:00 hrs (hora Chile) el sistema envía un WhatsApp a cada ejecutivo con sus gestiones pendientes vencidas.
-        </p>
-        <p className="text-xs text-blue-500 mt-2">Cron configurado en el servidor: <code className="bg-blue-100 px-1 rounded">0 21 * * * curl .../crm-api.php?action=send_pending_reminders&secret=transccl-cron-2024</code></p>
+        <p className="text-sm font-semibold text-blue-800 mb-1">Recordatorio diario — gestiones vencidas</p>
+        <p className="text-sm text-blue-700">Cada lunes a viernes a las 18:00 hrs el sistema envía un WhatsApp a cada ejecutivo con sus gestiones pendientes vencidas.</p>
       </div>
       <div>
         <button onClick={runNow} disabled={loading}
           className="text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50">
-          {loading ? 'Enviando...' : '▶ Ejecutar ahora (prueba)'}
+          {loading ? 'Enviando...' : '▶ Probar ahora (gestiones vencidas)'}
         </button>
-        {result && (
-          <pre className="mt-3 bg-gray-900 text-green-400 text-xs p-3 rounded-xl overflow-x-auto">{result}</pre>
-        )}
+        {result && <pre className="mt-3 bg-gray-900 text-green-400 text-xs p-3 rounded-xl overflow-x-auto">{result}</pre>}
       </div>
+
+      {/* Blast negocios sin gestión */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+        <p className="text-sm font-semibold text-amber-800 mb-1">🚨 Alerta masiva — negocios sin gestión</p>
+        <p className="text-sm text-amber-700">Envía un WA a cada ejecutivo listando todos sus negocios abiertos que nunca tuvieron ninguna gestión registrada. Úsalo cuando quieras activar al equipo de una vez.</p>
+      </div>
+      <div>
+        <button onClick={runNoGestion} disabled={loadingNG}
+          className="text-sm font-semibold px-4 py-2 rounded-lg text-white disabled:opacity-50"
+          style={{ background: '#f97316' }}>
+          {loadingNG ? 'Enviando...' : '📲 Enviar alerta a ejecutivos ahora'}
+        </button>
+        {resultNG && <pre className="mt-3 bg-gray-900 text-green-400 text-xs p-3 rounded-xl overflow-x-auto">{resultNG}</pre>}
+      </div>
+
     </div>
   )
 }
