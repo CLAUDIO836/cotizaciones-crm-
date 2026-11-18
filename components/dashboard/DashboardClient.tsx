@@ -179,9 +179,11 @@ function getStatusDate(q: QuotationSummary): string {
   return ''   // histórico sin fecha de gestión — no filtrar por día
 }
 
-// Para el gráfico de tendencia usamos la fecha de gestión correcta por status
+// Fecha de actividad por status:
+// - abiertas  → fecha del servicio (fecha_salida > issue_date > created_at)
+// - ganadas/perdidas → cuándo cambió el estado (updated_at del log)
 function getActivityDate(q: QuotationSummary): string {
-  if (q.status === 'open') return getCreatedDate(q)
+  if (q.status === 'open') return getServiceDate(q)
   return getStatusDate(q)
 }
 
@@ -296,10 +298,10 @@ export default function DashboardClient({
     [quotations, ejecutiva, empresa],
   )
 
-  // Filtrar siempre por fecha de servicio (fecha_salida > issue_date > created_at)
+  // inRange usa getActivityDate: abiertas por fecha servicio, ganadas/perdidas por fecha estado
   const inRange = useMemo(() => {
     const { from, to } = range
-    return filtered.filter(q => { const ds = getServiceDate(q); return ds >= from && ds <= to })
+    return filtered.filter(q => { const ds = getActivityDate(q); return ds >= from && ds <= to })
   }, [filtered, range])
 
   // Los tres KPIs miden gestión real: abiertas por created_at, ganadas/perdidas por updated_at
@@ -327,7 +329,7 @@ export default function DashboardClient({
       const cur = new Date(fromD)
       while (cur <= toD) {
         const ds = toDateStr(cur)
-        const dq = filtered.filter(q => getServiceDate(q) === ds)
+        const dq = filtered.filter(q => getActivityDate(q) === ds)
         result.push({
           label: formatLabel(cur, 'day'),
           Ganadas:  dq.filter(q => q.status === 'won').length,
@@ -346,7 +348,7 @@ export default function DashboardClient({
       const ws = getWeekStart(new Date(fromD))
       while (ws <= toD) {
         const we = new Date(ws); we.setDate(ws.getDate() + 6)
-        const wq = filtered.filter(q => { const ds = getServiceDate(q); return ds >= localDateStr(ws) && ds <= localDateStr(we) })
+        const wq = filtered.filter(q => { const ds = getActivityDate(q); return ds >= localDateStr(ws) && ds <= localDateStr(we) })
         result.push({
           label: formatLabel(ws, 'week'),
           Ganadas:  wq.filter(q => q.status === 'won').length,
@@ -367,7 +369,7 @@ export default function DashboardClient({
       const dStr  = localDateStr(cur)
       const nextM = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
       const nStr  = localDateStr(nextM)
-      const mq = filtered.filter(q => { const ds = getServiceDate(q); return ds >= dStr && ds < nStr })
+      const mq = filtered.filter(q => { const ds = getActivityDate(q); return ds >= dStr && ds < nStr })
       result.push({
         label: formatLabel(cur, 'month'),
         Ganadas:  mq.filter(q => q.status === 'won').length,
