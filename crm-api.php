@@ -842,7 +842,7 @@ if ($action === 'quotations_get') {
             $qc['clients']   = ['name' => $qc['client_name'], 'rut' => $qc['client_rut'], 'email' => $qc['client_email'], 'phone' => $qc['client_phone'], 'address' => $qc['client_address']];
             $qc['profiles']  = ['name' => $qc['profile_name'], 'email' => $qc['profile_email']];
             $qc['pipelines'] = ['name' => $qc['pipeline_name']];
-            ok(['data' => $qc]); exit;
+            ok($qc); exit;
         }
     }
     requireAuth();
