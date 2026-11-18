@@ -54,12 +54,9 @@ function getVendedorColor(name: string) {
   return vendedorColorMap[name]
 }
 
-// Fecha de cierre previsto = fecha_salida - 1 día
+// Fecha de cierre previsto = fecha del servicio exacta
 function getClosePrev(q: Quotation): string | null {
-  if (!q.fecha_salida) return null
-  const d = new Date(q.fecha_salida + 'T12:00:00')
-  d.setDate(d.getDate() - 1)
-  return d.toISOString().slice(0, 10)
+  return q.fecha_salida?.slice(0, 10) ?? null
 }
 
 function todayStr(): string {

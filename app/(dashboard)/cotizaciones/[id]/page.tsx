@@ -8,7 +8,7 @@ import ActivitiesPanel from '@/components/quotations/ActivitiesPanel'
 import NotesPanel from '@/components/quotations/NotesPanel'
 import QuotationTabs from '@/components/quotations/QuotationTabs'
 import Link from 'next/link'
-import { ArrowLeft, Edit, Globe } from 'lucide-react'
+import { ArrowLeft, Edit, Globe, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import DeleteButton from '@/components/quotations/DeleteButton'
 import ApprovalLetterButton from '@/components/quotations/ApprovalLetterButton'
@@ -251,6 +251,26 @@ export default async function CotizacionDetailPage({
               )}
             </div>
           ) : null}
+
+          {/* Fecha de cierre previsto */}
+          {q.fecha_salida && q.status === 'open' && (() => {
+            const today = new Date(new Date().getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
+            const overdue = q.fecha_salida.slice(0, 10) < today
+            return (
+              <div className={`px-3 py-2.5 border-b ${overdue ? 'bg-amber-50' : ''}`}>
+                {overdue && (
+                  <div className="flex items-center gap-1 mb-1">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="text-xs font-semibold text-amber-600">Requiere tu intervención</span>
+                  </div>
+                )}
+                <p className="text-xs text-gray-400">Fecha de cierre previsto</p>
+                <p className={`text-sm font-semibold ${overdue ? 'text-amber-600' : 'text-gray-900'}`}>
+                  {formatDate(q.fecha_salida.slice(0, 10))}
+                </p>
+              </div>
+            )
+          })()}
 
           {/* Negocio fields */}
           <div className="px-3 py-2.5 space-y-2">
