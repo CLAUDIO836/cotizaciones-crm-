@@ -57,7 +57,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // 4. Construir HTML (sin enviar)
     const cartaToken = letters.length > 0 ? (letters[0] as Record<string, string>).token : cartaUrl.split('/firmar/')[1] ?? ''
-    const propuestaUrl = cartaToken ? `${baseUrl}/api/cotizaciones/${quotationId}/html?token=${cartaToken}` : undefined
+    const pipelineName = ((q.pipeline_name ?? '') as string).toLowerCase()
+    const isDiario = pipelineName.includes('diario')
+
+    // Para Traslado Diario: CTA apunta a propuesta, sin link "Firmar y aprobar"
+    // Para otros: CTA apunta a /html con token, con link "Firmar y aprobar"
+    let propuestaUrl: string | undefined
+    if (isDiario) {
+      cartaUrl = cartaToken
+        ? `${baseUrl}/api/cotizaciones/${quotationId}/propuesta?token=${cartaToken}`
+        : `${baseUrl}/api/cotizaciones/${quotationId}/propuesta`
+      propuestaUrl = undefined
+    } else {
+      propuestaUrl = cartaToken ? `${baseUrl}/api/cotizaciones/${quotationId}/html?token=${cartaToken}` : undefined
+    }
 
     const html = buildQuotationEmailHtml({
       clientName, clientEmail, quotationNumber: quoteNumber,
