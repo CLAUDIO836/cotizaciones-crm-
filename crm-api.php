@@ -1081,6 +1081,63 @@ if ($action === 'run_migration') {
         ok(['migration' => 'create_status_log', 'table_created' => true, 'view_updated' => true, 'log_rows' => $logCount, 'view_rows' => $viewCount]);
     }
 
+    if ($num === 'backfill_from_sync_log') {
+        // Reconstruir historial de cambios de estado desde sync_log (webhooks Pipedrive)
+        // after_data contiene {"status":"won"|"lost"|"open",...} cuando cambió el status
+        // processed_at es la fecha exacta en que llegó el webhook
+        $rows = db()->query(
+            "SELECT sl.quotation_id, sl.processed_at, sl.before_data, sl.after_data
+             FROM sync_log sl
+             WHERE sl.quotation_id IS NOT NULL
+               AND sl.after_data IS NOT NULL
+               AND sl.after_data LIKE '%\"status\"%'
+             ORDER BY sl.processed_at ASC"
+        )->fetchAll();
+
+        $inserted = 0; $skipped = 0;
+        $stmt = db()->prepare(
+            'INSERT IGNORE INTO quotation_status_log (id, quotation_id, old_status, new_status, changed_at, changed_by, source)
+             VALUES (?, ?, ?, ?, ?, NULL, ?)'
+        );
+
+        foreach ($rows as $row) {
+            $after  = json_decode($row['after_data'],  true);
+            $before = json_decode($row['before_data'], true);
+            $newStatus = $after['status']  ?? null;
+            $oldStatus = $before['status'] ?? null;
+            if (!$newStatus || !in_array($newStatus, ['won','lost','open'])) { $skipped++; continue; }
+            if ($oldStatus === $newStatus) { $skipped++; continue; }
+
+            // Usar un ID determinístico para evitar duplicados si se corre 2 veces
+            $deterministicId = md5('synclog_' . $row['quotation_id'] . '_' . $row['processed_at']);
+            try {
+                $stmt->execute([$deterministicId, $row['quotation_id'], $oldStatus, $newStatus, $row['processed_at'], 'pipedrive_webhook']);
+                $inserted += $stmt->rowCount();
+            } catch (\Exception $e) { $skipped++; }
+        }
+
+        // Para los que aún no tienen entrada en el log, hacer backfill con crm_updated_at
+        $backfilled = db()->exec(
+            "INSERT INTO quotation_status_log (id, quotation_id, old_status, new_status, changed_at, changed_by, source)
+             SELECT MD5(CONCAT('backfill_',q.id)), q.id, 'open', q.status,
+                    COALESCE(q.crm_updated_at, q.created_at),
+                    q.user_id, 'backfill'
+             FROM quotations q
+             WHERE q.status IN ('won','lost')
+               AND (q.is_deleted = 0 OR q.is_deleted IS NULL)
+               AND NOT EXISTS (SELECT 1 FROM quotation_status_log l WHERE l.quotation_id = q.id)"
+        );
+
+        $total = (int)db()->query("SELECT COUNT(*) FROM quotation_status_log")->fetchColumn();
+        ok([
+            'migration'          => 'backfill_from_sync_log',
+            'from_webhook'       => $inserted,
+            'from_crm_updated'   => $backfilled,
+            'skipped'            => $skipped,
+            'total_log_rows'     => $total,
+        ]);
+    }
+
     if ($num === 'backfill_status_log') {
         // Inserta en el log todos los deals ganados/perdidos que aún no tienen entrada
         // Usa crm_updated_at como aproximación de cuándo cambió el estado
