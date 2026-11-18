@@ -1973,7 +1973,6 @@ if ($action === 'emails_list') {
     requireAuth();
     $qid = $_GET['quotation_id'] ?? '';
     if (!$qid) err('quotation_id requerido');
-    // Crear tabla si no existe (idempotente)
     db()->exec("CREATE TABLE IF NOT EXISTS quotation_emails (
         id              VARCHAR(36)  NOT NULL PRIMARY KEY,
         quotation_id    VARCHAR(36)  NOT NULL,
@@ -1983,11 +1982,14 @@ if ($action === 'emails_list') {
         to_email        VARCHAR(200) NOT NULL,
         subject         VARCHAR(500) NOT NULL,
         body_html       MEDIUMTEXT   NULL,
+        direction       VARCHAR(20)  NOT NULL DEFAULT 'sent',
         sent_at         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_qid (quotation_id),
         INDEX idx_thread (gmail_thread_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    $stmt = db()->prepare('SELECT * FROM quotation_emails WHERE quotation_id = ? ORDER BY sent_at DESC');
+    // Agregar columna direction si aún no existe (tabla creada antes)
+    try { db()->exec("ALTER TABLE quotation_emails ADD COLUMN direction VARCHAR(20) NOT NULL DEFAULT 'sent'"); } catch (\Throwable $e) {}
+    $stmt = db()->prepare('SELECT * FROM quotation_emails WHERE quotation_id = ? ORDER BY sent_at ASC');
     $stmt->execute([$qid]);
     ok($stmt->fetchAll());
 }
@@ -1997,7 +1999,6 @@ if ($action === 'emails_save') {
     $b = body();
     $qid = $b['quotation_id'] ?? '';
     if (!$qid) err('quotation_id requerido');
-    // Crear tabla si no existe (idempotente)
     db()->exec("CREATE TABLE IF NOT EXISTS quotation_emails (
         id              VARCHAR(36)  NOT NULL PRIMARY KEY,
         quotation_id    VARCHAR(36)  NOT NULL,
@@ -2007,22 +2008,40 @@ if ($action === 'emails_save') {
         to_email        VARCHAR(200) NOT NULL,
         subject         VARCHAR(500) NOT NULL,
         body_html       MEDIUMTEXT   NULL,
+        direction       VARCHAR(20)  NOT NULL DEFAULT 'sent',
         sent_at         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_qid (quotation_id),
         INDEX idx_thread (gmail_thread_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    $id = uuid();
+    try { db()->exec("ALTER TABLE quotation_emails ADD COLUMN direction VARCHAR(20) NOT NULL DEFAULT 'sent'"); } catch (\Throwable $e) {}
+    // Evitar duplicados por gmail_message_id
+    $msgId = $b['gmail_message_id'] ?? null;
+    if ($msgId) {
+        $dup = db()->prepare('SELECT id FROM quotation_emails WHERE gmail_message_id = ?');
+        $dup->execute([$msgId]);
+        if ($dup->fetch()) { ok(['duplicate' => true]); }
+    }
+    $id        = uuid();
+    $direction = $b['direction'] ?? 'sent';
+    $sentAt    = $b['sent_at'] ?? null;
+    // Si sent_at viene como string RFC2822 (Gmail header), convertirlo
+    if ($sentAt) {
+        $ts = strtotime($sentAt);
+        $sentAt = $ts ? date('Y-m-d H:i:s', $ts) : null;
+    }
     db()->prepare(
-        'INSERT INTO quotation_emails (id,quotation_id,gmail_message_id,gmail_thread_id,from_email,to_email,subject,body_html)
-         VALUES (?,?,?,?,?,?,?,?)'
+        'INSERT INTO quotation_emails (id,quotation_id,gmail_message_id,gmail_thread_id,from_email,to_email,subject,body_html,direction,sent_at)
+         VALUES (?,?,?,?,?,?,?,?,?,COALESCE(?,NOW()))'
     )->execute([
         $id, $qid,
-        $b['gmail_message_id'] ?? null,
+        $msgId,
         $b['gmail_thread_id']  ?? null,
         $b['from_email']  ?? '',
         $b['to_email']    ?? '',
         $b['subject']     ?? '',
         $b['body_html']   ?? null,
+        $direction,
+        $sentAt,
     ]);
     $row = db()->prepare('SELECT * FROM quotation_emails WHERE id = ?');
     $row->execute([$id]);

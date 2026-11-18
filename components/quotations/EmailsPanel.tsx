@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Mail, Plus, Send, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { Mail, Plus, Send, X, ChevronDown, ChevronUp, RefreshCw, ArrowDownLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface EmailRecord {
@@ -12,6 +12,7 @@ interface EmailRecord {
   body_html?: string
   sent_at: string
   gmail_thread_id?: string
+  direction?: 'sent' | 'received'
 }
 
 interface Props {
@@ -37,6 +38,7 @@ export default function EmailsPanel({ quotationId, clientEmail = '', clientName 
   const [loading, setLoading]     = useState(true)
   const [composing, setComposing] = useState(false)
   const [sending, setSending]     = useState(false)
+  const [syncing, setSyncing]     = useState(false)
   const [expanded, setExpanded]   = useState<string | null>(null)
   const [error, setError]         = useState('')
 
@@ -44,7 +46,7 @@ export default function EmailsPanel({ quotationId, clientEmail = '', clientName 
   const [subject, setSubject] = useState('')
   const [body, setBody]       = useState('')
 
-  useEffect(() => { load() }, [quotationId])
+  useEffect(() => { load().then(() => sync()) }, [quotationId])
 
   async function load() {
     setLoading(true)
@@ -54,6 +56,17 @@ export default function EmailsPanel({ quotationId, clientEmail = '', clientName 
       setEmails(Array.isArray(d) ? d : (d.data ?? []))
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function sync() {
+    setSyncing(true)
+    try {
+      const r = await fetch(`/api/quotations/${quotationId}/sync-emails`, { method: 'POST' })
+      const d = await r.json()
+      if (d.synced > 0) await load()
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -108,25 +121,35 @@ export default function EmailsPanel({ quotationId, clientEmail = '', clientName 
     <div className="space-y-3">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h3 className="font-semibold text-gray-700 flex items-center gap-2">
           <Mail className="w-4 h-4" />
-          Correos enviados
+          Correos
           {emails.length > 0 && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">
               {emails.length}
             </span>
           )}
         </h3>
-        <Button
-          size="sm"
-          className="text-xs h-7 px-3 text-white"
-          style={{ background: '#1B8A4B' }}
-          onClick={() => composing ? setComposing(false) : openCompose()}
-        >
-          {composing ? <X className="w-3 h-3 mr-1" /> : <Plus className="w-3 h-3 mr-1" />}
-          {composing ? 'Cancelar' : 'Nuevo correo'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={sync}
+            disabled={syncing}
+            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded-lg border hover:bg-gray-50 transition-colors"
+          >
+            <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar'}
+          </button>
+          <Button
+            size="sm"
+            className="text-xs h-7 px-3 text-white"
+            style={{ background: '#1B8A4B' }}
+            onClick={() => composing ? setComposing(false) : openCompose()}
+          >
+            {composing ? <X className="w-3 h-3 mr-1" /> : <Plus className="w-3 h-3 mr-1" />}
+            {composing ? 'Cancelar' : 'Nuevo correo'}
+          </Button>
+        </div>
       </div>
 
       {/* Redactor */}
@@ -195,50 +218,59 @@ export default function EmailsPanel({ quotationId, clientEmail = '', clientName 
         </div>
       ) : (
         <div className="space-y-2">
-          {emails.map(e => (
-            <div key={e.id} className="bg-white rounded-xl border overflow-hidden">
-              <button
-                className="w-full text-left px-4 py-3 flex items-start justify-between gap-3 hover:bg-gray-50 transition-colors"
-                onClick={() => setExpanded(expanded === e.id ? null : e.id)}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-xs font-semibold text-gray-900 truncate">{e.subject}</span>
+          {emails.map(e => {
+            const isReceived = e.direction === 'received'
+            return (
+              <div key={e.id} className={`rounded-xl border overflow-hidden ${isReceived ? 'bg-blue-50 border-blue-100' : 'bg-white'}`}>
+                <button
+                  className="w-full text-left px-4 py-3 flex items-start justify-between gap-3 hover:bg-black/5 transition-colors"
+                  onClick={() => setExpanded(expanded === e.id ? null : e.id)}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      {isReceived && <ArrowDownLeft className="w-3 h-3 text-blue-500 flex-shrink-0" />}
+                      <span className="text-xs font-semibold text-gray-900 truncate">{e.subject}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 truncate">
+                      {isReceived ? `De: ${e.from_email}` : `Para: ${e.to_email}`} · {timeAgo(e.sent_at)}
+                    </p>
                   </div>
-                  <p className="text-xs text-gray-400 truncate">
-                    Para: {e.to_email} · {timeAgo(e.sent_at)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">Enviado</span>
-                  {expanded === e.id
-                    ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
-                    : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-                  }
-                </div>
-              </button>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {isReceived
+                      ? <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 font-medium">Recibido</span>
+                      : <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">Enviado</span>
+                    }
+                    {expanded === e.id
+                      ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+                      : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                    }
+                  </div>
+                </button>
 
-              {expanded === e.id && e.body_html && (
-                <div className="border-t px-4 py-3">
-                  <div
-                    className="text-sm text-gray-700 leading-relaxed"
-                    dangerouslySetInnerHTML={{ __html: e.body_html }}
-                  />
-                  <div className="mt-3 pt-3 border-t flex items-center justify-between">
-                    <span className="text-xs text-gray-400">
-                      De: {e.from_email} · {new Date(e.sent_at).toLocaleString('es-CL')}
-                    </span>
-                    <button
-                      className="text-xs text-blue-600 hover:underline font-medium"
-                      onClick={() => openCompose(e)}
-                    >
-                      Responder
-                    </button>
+                {expanded === e.id && e.body_html && (
+                  <div className="border-t px-4 py-3">
+                    <div
+                      className="text-sm text-gray-700 leading-relaxed"
+                      dangerouslySetInnerHTML={{ __html: e.body_html }}
+                    />
+                    <div className="mt-3 pt-3 border-t flex items-center justify-between">
+                      <span className="text-xs text-gray-400">
+                        De: {e.from_email} · {new Date(e.sent_at).toLocaleString('es-CL')}
+                      </span>
+                      {!isReceived && (
+                        <button
+                          className="text-xs text-blue-600 hover:underline font-medium"
+                          onClick={() => openCompose(e)}
+                        >
+                          Responder
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
