@@ -204,7 +204,7 @@ export function generateQuotationHtml(q: Quotation, baseUrl: string, stagingMode
       style="background:${ACCENT};color:white;border:none;padding:9px 20px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer">
       🖨 Imprimir / Guardar PDF
     </button>
-    <button onclick="window.close()"
+    <button onclick="history.length > 1 ? history.back() : window.close()"
       style="background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;padding:9px 20px;border-radius:7px;font-size:13px;cursor:pointer">
       Cerrar
     </button>

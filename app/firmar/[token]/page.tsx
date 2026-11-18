@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import SigningForm from './SigningForm'
+import PrintCloseButtons from './PrintCloseButtons'
 
 const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 
@@ -34,15 +35,17 @@ export default async function SignPage({ params }: { params: Promise<{ token: st
   return (
     // position:fixed + overflow-y:auto resuelve el overflow:hidden global del dashboard
     <div style={{ position: 'fixed', inset: 0, overflowY: 'auto', background: '#eef2f7', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <style>{`@media print { .no-print { display: none !important; } body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }`}</style>
       {/* Header branded TransCCL */}
       <div style={{ background: '#ffffff', borderBottom: '4px solid #e52832', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-transccl.png" alt="TransCCL" style={{ height: 52, width: 'auto', objectFit: 'contain' }} />
         <div style={{ flex: 1 }} />
-        <div style={{ textAlign: 'right' }}>
+        <div style={{ textAlign: 'right', marginRight: 16 }}>
           <div style={{ fontSize: 12, color: '#52637c', fontWeight: 500 }}>Carta de Aprobación y Aceptación del Servicio</div>
           {quoteNum ? <div style={{ fontSize: 15, color: '#082e62', fontWeight: 800, marginTop: 3 }}>N° {quoteNum}</div> : null}
         </div>
+        <PrintCloseButtons />
       </div>
 
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '28px 16px 48px' }}>
