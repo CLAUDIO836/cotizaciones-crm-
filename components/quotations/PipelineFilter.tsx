@@ -1,8 +1,8 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { ChevronDown, Users, Filter } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import { ChevronDown, Users, Filter, Search, X } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
 interface Pipeline { id: string; name: string; color: string }
 interface Vendedor { id: string; name: string }
@@ -15,20 +15,23 @@ interface Props {
   currentPipeline?: string
   currentVendedor?: string
   currentCompany?: string
+  currentQ?: string
   currentParams: Record<string, string | undefined>
   isAdmin: boolean
 }
 
 export default function PipelineFilter({
-  pipelines, vendedores, companies, currentPipeline, currentVendedor, currentCompany, currentParams, isAdmin
+  pipelines, vendedores, companies, currentPipeline, currentVendedor, currentCompany, currentQ, currentParams, isAdmin
 }: Props) {
   const router = useRouter()
   const [openPipeline, setOpenPipeline] = useState(false)
   const [openVendedor, setOpenVendedor] = useState(false)
   const [openCompany, setOpenCompany] = useState(false)
+  const [searchInput, setSearchInput] = useState(currentQ ?? '')
   const pipelineRef = useRef<HTMLDivElement>(null)
   const vendedorRef = useRef<HTMLDivElement>(null)
   const companyRef = useRef<HTMLDivElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -39,6 +42,21 @@ export default function PipelineFilter({
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
+
+  const navigateSearch = useCallback((value: string) => {
+    const next = { ...currentParams, q: value || undefined }
+    if (!value) delete next.q
+    const params = new URLSearchParams(
+      Object.entries(next).filter(([, v]) => Boolean(v)) as [string, string][]
+    )
+    router.push(`/cotizaciones?${params.toString()}`)
+  }, [currentParams, router])
+
+  function handleSearchChange(value: string) {
+    setSearchInput(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => navigateSearch(value), 400)
+  }
 
   function navigate(key: string, value: string | undefined) {
     const next = { ...currentParams, [key]: value }
@@ -55,6 +73,27 @@ export default function PipelineFilter({
 
   return (
     <div className="bg-white border-b px-6 py-2 flex items-center gap-3 flex-wrap">
+
+      {/* Buscador */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+        <input
+          type="text"
+          value={searchInput}
+          onChange={e => handleSearchChange(e.target.value)}
+          placeholder="Buscar por N°, cliente o RUT..."
+          className="pl-8 pr-7 py-1.5 text-sm border rounded-lg w-56 focus:outline-none focus:ring-2 focus:ring-green-200 focus:border-green-400"
+          style={searchInput ? { borderColor: '#1B8A4B' } : { borderColor: '#e5e7eb' }}
+        />
+        {searchInput && (
+          <button
+            onClick={() => { setSearchInput(''); navigateSearch('') }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
 
       {/* Empresa dropdown */}
       <div className="relative" ref={companyRef}>
@@ -185,11 +224,19 @@ export default function PipelineFilter({
       )}
 
       {/* Indicador de filtros activos */}
-      {(currentPipeline || currentVendedor || currentCompany) && (
+      {(currentPipeline || currentVendedor || currentCompany || currentQ) && (
         <button
           onClick={() => {
-            navigate('pipeline', undefined)
-            navigate('vendedor', undefined)
+            setSearchInput('')
+            const next = { ...currentParams }
+            delete next.pipeline
+            delete next.vendedor
+            delete next.company
+            delete next.q
+            const params = new URLSearchParams(
+              Object.entries(next).filter(([, v]) => Boolean(v)) as [string, string][]
+            )
+            router.push(`/cotizaciones?${params.toString()}`)
           }}
           className="text-xs text-gray-400 hover:text-red-500 underline ml-1"
         >

@@ -118,6 +118,7 @@ export default async function CotizacionesPage({
         currentPipeline={params.pipeline}
         currentVendedor={params.vendedor}
         currentCompany={params.company}
+        currentQ={params.q}
         currentParams={params}
         isAdmin={isAdmin}
       />
