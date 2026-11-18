@@ -16,9 +16,11 @@ interface EmailRecord {
 }
 
 interface Props {
-  quotationId: string
-  clientEmail?: string
-  clientName?: string
+  quotationId:     string
+  quotationNumber?: string
+  clientEmail?:    string
+  clientName?:     string
+  createdAt?:      string
 }
 
 function timeAgo(dateStr: string): string {
@@ -33,7 +35,7 @@ function timeAgo(dateStr: string): string {
   return `hace ${days}d`
 }
 
-export default function EmailsPanel({ quotationId, clientEmail = '', clientName = '' }: Props) {
+export default function EmailsPanel({ quotationId, quotationNumber, clientEmail = '', clientName = '', createdAt }: Props) {
   const [emails, setEmails]       = useState<EmailRecord[]>([])
   const [loading, setLoading]     = useState(true)
   const [composing, setComposing] = useState(false)
@@ -42,7 +44,11 @@ export default function EmailsPanel({ quotationId, clientEmail = '', clientName 
   const [expanded, setExpanded]   = useState<string | null>(null)
   const [error, setError]         = useState('')
 
+  const [copied, setCopied]   = useState(false)
   const [to, setTo]           = useState(clientEmail)
+  const bccAddress = quotationNumber
+    ? `crm+negocio${quotationNumber.replace(/\D/g, '')}@transccl.cl`
+    : null
   const [subject, setSubject] = useState('')
   const [body, setBody]       = useState('')
 
@@ -62,12 +68,23 @@ export default function EmailsPanel({ quotationId, clientEmail = '', clientName 
   async function sync() {
     setSyncing(true)
     try {
-      const r = await fetch(`/api/quotations/${quotationId}/sync-emails`, { method: 'POST' })
+      const r = await fetch(`/api/quotations/${quotationId}/sync-emails`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientEmail, createdAt }),
+      })
       const d = await r.json()
       if (d.synced > 0) await load()
     } finally {
       setSyncing(false)
     }
+  }
+
+  async function copyBcc() {
+    if (!bccAddress) return
+    try { await navigator.clipboard.writeText(bccAddress) } catch { /* fallback silencioso */ }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   function openCompose(replyTo?: EmailRecord) {
@@ -151,6 +168,22 @@ export default function EmailsPanel({ quotationId, clientEmail = '', clientName 
           </Button>
         </div>
       </div>
+
+      {/* BCC address */}
+      {bccAddress && (
+        <div className="flex items-center gap-2 bg-gray-50 border rounded-xl px-3 py-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-400 font-medium mb-0.5">📋 BCC en tus correos de Gmail</p>
+            <p className="text-xs font-mono text-gray-600 truncate">{bccAddress}</p>
+          </div>
+          <button
+            onClick={copyBcc}
+            className="flex-shrink-0 text-xs px-2.5 py-1.5 rounded-lg border bg-white hover:bg-gray-50 font-medium text-gray-600 transition-colors"
+          >
+            {copied ? '✓ Copiado' : 'Copiar'}
+          </button>
+        </div>
+      )}
 
       {/* Redactor */}
       {composing && (

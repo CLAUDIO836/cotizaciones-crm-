@@ -493,8 +493,10 @@ export default async function CotizacionDetailPage({
               <div className="max-w-2xl">
                 <EmailsPanel
                   quotationId={id}
+                  quotationNumber={String(q.number ?? '')}
                   clientEmail={(q as { contact_email?: string }).contact_email ?? ''}
                   clientName={(q as { contact_name?: string }).contact_name ?? q.clients?.name ?? ''}
+                  createdAt={(q as { created_at?: string }).created_at?.slice(0, 10) ?? q.issue_date?.slice(0, 10) ?? ''}
                 />
               </div>
             )}

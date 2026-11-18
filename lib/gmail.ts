@@ -83,6 +83,38 @@ export interface GmailMessage {
   bodyHtml:  string
 }
 
+export async function searchGmailMessages(refreshToken: string, query: string, maxResults = 50): Promise<GmailMessage[]> {
+  const accessToken = await getAccessToken(refreshToken)
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${maxResults}`
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+  if (!r.ok) return []
+  const j = await r.json()
+  const msgList: { id: string }[] = j.messages ?? []
+  if (msgList.length === 0) return []
+  const results: GmailMessage[] = []
+  for (const { id } of msgList) {
+    const mr = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!mr.ok) continue
+    const msg = await mr.json()
+    const headers: Record<string, string> = {}
+    for (const h of (msg.payload?.headers ?? [])) {
+      headers[(h.name as string).toLowerCase()] = h.value as string
+    }
+    results.push({
+      messageId: msg.id as string,
+      threadId:  msg.threadId as string,
+      from:      headers['from']    ?? '',
+      to:        headers['to']      ?? '',
+      subject:   headers['subject'] ?? '',
+      date:      headers['date']    ?? '',
+      bodyHtml:  extractHtml(msg.payload ?? {}),
+    })
+  }
+  return results
+}
+
 export async function fetchGmailThread(refreshToken: string, threadId: string): Promise<GmailMessage[]> {
   const accessToken = await getAccessToken(refreshToken)
   const r = await fetch(`${GMAIL_THREAD_URL}/${threadId}?format=full`, {
