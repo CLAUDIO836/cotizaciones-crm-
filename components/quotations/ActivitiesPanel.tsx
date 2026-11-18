@@ -87,6 +87,9 @@ export default function ActivitiesPanel({ quotationId, initialActivities, userId
 
   const showBanner = quotationStatus === 'open' && activities.length === 0
 
+  const now = new Date()
+  const overdue = activities.filter(a => !a.done && a.due_date && new Date(a.due_date) < now)
+
   return (
     <div className="space-y-4">
       {showBanner && (
@@ -95,6 +98,38 @@ export default function ActivitiesPanel({ quotationId, initialActivities, userId
           userId={userId}
           onCreated={() => window.location.reload()}
         />
+      )}
+
+      {/* Banner gestiones vencidas */}
+      {quotationStatus === 'open' && overdue.length > 0 && (
+        <div className="rounded-xl border-2 border-red-200 bg-red-50 px-4 py-3">
+          <div className="flex items-start gap-2">
+            <span className="text-red-500 text-base flex-shrink-0 mt-0.5">⏰</span>
+            <div>
+              <p className="text-sm font-semibold text-red-700">
+                {overdue.length === 1
+                  ? '1 gestión vencida sin completar'
+                  : `${overdue.length} gestiones vencidas sin completar`}
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {overdue.map(a => {
+                  const cfg = TYPE_CONFIG[a.type] ?? TYPE_CONFIG.llamada
+                  return (
+                    <li key={a.id} className="text-xs text-red-600 flex items-center gap-1.5">
+                      <span style={{ color: cfg.color }}>●</span>
+                      <span className="font-medium">{a.subject}</span>
+                      <span className="text-red-400">·</span>
+                      <span className="text-red-400">
+                        {new Date(a.due_date!).toLocaleString('es-CL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+              <p className="text-xs text-red-400 mt-1.5">Márcalas como completadas o reprograma su fecha.</p>
+            </div>
+          </div>
+        </div>
       )}
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-gray-700">Gestiones</h3>
