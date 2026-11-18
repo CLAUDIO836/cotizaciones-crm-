@@ -1180,6 +1180,11 @@ if ($action === 'run_migration') {
         ok(['migration' => 'backfill_status_log', 'inserted' => $inserted, 'total_log_rows' => $total]);
     }
 
+    if ($num === 'uppercase_client_names') {
+        $updated = db()->exec("UPDATE clients SET name = UPPER(name) WHERE name != UPPER(name) AND name IS NOT NULL");
+        ok(['migration' => 'uppercase_client_names', 'updated' => $updated]);
+    }
+
     err('migration not found');
 }
 

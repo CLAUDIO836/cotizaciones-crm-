@@ -320,7 +320,7 @@ export default function Cotizador({ companies, sellers, userId }: { companies: C
 
         <section className="bg-white rounded-xl border p-5 space-y-4">
           <h2 className="font-semibold text-sm uppercase tracking-wide text-gray-500">Cliente</h2>
-          <ClientRutSearch onSelect={(id, contactId, info) => setCliente({ id, contactId, name: info?.name ?? '', rut: info?.rut })} />
+          <ClientRutSearch onSelect={(id, contactId, info) => setCliente({ id, contactId, name: (info?.name ?? '').toUpperCase(), rut: info?.rut })} />
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="tipo-cliente">Tipo de cliente</Label>
