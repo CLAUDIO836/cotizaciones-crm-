@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getToken } from '@/lib/api'
+import { getToken, fetchPipelines } from '@/lib/api'
 import { buildQuotationEmailHtml } from '@/lib/email'
 import { sendViaGmail } from '@/lib/gmail'
 
@@ -62,7 +62,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!clientEmail) return NextResponse.json({ error: 'La cotización no tiene email de contacto' }, { status: 400 })
 
     const cartaToken = letters.length > 0 ? (letters[0] as Record<string, string>).token : cartaUrl.split('/firmar/')[1] ?? ''
-    const pipelineName = ((q.pipeline_name ?? '') as string).toLowerCase()
+    const pipelines = await fetchPipelines()
+    const pipeline = pipelines.find(p => p.id === String(q.pipeline_id ?? '')) ?? null
+    const pipelineName = ((pipeline?.name ?? q.pipeline_name ?? '') as string).toLowerCase()
     const isDiario = pipelineName.includes('diario')
 
     let propuestaUrl: string | undefined

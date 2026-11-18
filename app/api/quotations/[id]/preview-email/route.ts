@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getToken } from '@/lib/api'
+import { getToken, fetchPipelines } from '@/lib/api'
 import { buildQuotationEmailHtml } from '@/lib/email'
 
 const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
@@ -57,7 +57,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // 4. Construir HTML (sin enviar)
     const cartaToken = letters.length > 0 ? (letters[0] as Record<string, string>).token : cartaUrl.split('/firmar/')[1] ?? ''
-    const pipelineName = ((q.pipeline_name ?? '') as string).toLowerCase()
+    const pipelines = await fetchPipelines()
+    const pipeline = pipelines.find(p => p.id === String(q.pipeline_id ?? '')) ?? null
+    const pipelineName = ((pipeline?.name ?? q.pipeline_name ?? '') as string).toLowerCase()
     const isDiario = pipelineName.includes('diario')
 
     // Para Traslado Diario: CTA apunta a propuesta, sin link "Firmar y aprobar"
