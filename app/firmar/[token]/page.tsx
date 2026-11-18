@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
+import type { Metadata } from 'next'
 import SigningForm from './SigningForm'
 
 const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
@@ -16,31 +17,40 @@ async function getLetter(token: string): Promise<Record<string, string> | null> 
   }
 }
 
-function formatCLP(n: number) {
-  return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(n)
+export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
+  const { token } = await params
+  const letter = await getLetter(token)
+  const num = letter?.quotation_number ?? letter?.pipedrive_deal_id ?? ''
+  return { title: num ? `Carta de Aprobación N° ${num} — TransCCL` : 'Carta de Aprobación — TransCCL' }
 }
 
 export default async function SignPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
-
   const letter = await getLetter(token)
-
   if (!letter) notFound()
 
+  const quoteNum = letter.quotation_number ?? letter.pipedrive_deal_id ?? ''
+
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
-      {/* Header */}
-      <div style={{ background: '#16192A', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: '#1B8A4B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ color: 'white', fontWeight: 900, fontSize: 14 }}>T</span>
-        </div>
+    <div style={{ minHeight: '100vh', background: '#eef2f7', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      {/* Header branded TransCCL */}
+      <div style={{ background: '#082e62', borderBottom: '4px solid #e52832', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 14 }}>
         <div>
-          <p style={{ color: 'white', fontWeight: 700, margin: 0, fontSize: 14 }}>{letter.company_name}</p>
-          <p style={{ color: 'rgba(255,255,255,0.45)', margin: 0, fontSize: 11 }}>Carta de Aprobación de Servicio</p>
+          <div style={{ fontSize: 26, fontWeight: 800, color: 'white', letterSpacing: '-0.5px', lineHeight: 1 }}>
+            Trans<span style={{ color: '#7fc76a' }}>ccl</span>
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 3, letterSpacing: '0.03em' }}>
+            Transportes de Pasajeros
+          </div>
+        </div>
+        <div style={{ flex: 1 }} />
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>Carta de Aprobación y Aceptación del Servicio</div>
+          {quoteNum ? <div style={{ fontSize: 14, color: 'white', fontWeight: 700, marginTop: 3 }}>N° {quoteNum}</div> : null}
         </div>
       </div>
 
-      <div style={{ maxWidth: 680, margin: '0 auto', padding: '32px 16px' }}>
+      <div style={{ maxWidth: 700, margin: '0 auto', padding: '28px 16px 48px' }}>
         {letter.signed_at ? (
           <AlreadySigned letter={letter} />
         ) : (

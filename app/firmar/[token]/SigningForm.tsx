@@ -25,6 +25,18 @@ function formatCLP(n: number) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(n)
 }
 
+function formatFecha(fecha: string, hora?: string): string {
+  if (!fecha) return ''
+  // fecha: "2026-11-19", hora: "08:30:00"
+  const [y, m, d] = fecha.split('-').map(Number)
+  const dateObj = new Date(y, m - 1, d)
+  const str = dateObj.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const capitalized = str.charAt(0).toUpperCase() + str.slice(1)
+  if (!hora) return capitalized
+  const horaFmt = hora.slice(0, 5)
+  return `${capitalized} a las ${horaFmt} hrs.`
+}
+
 type Letter = Record<string, string | number | null>
 
 export default function SigningForm({ letter }: { letter: Letter }) {
@@ -81,40 +93,56 @@ export default function SigningForm({ letter }: { letter: Letter }) {
     )
   }
 
+  const clientLabel = (letter.client_rut as string)?.length > 5 ? 'EMPRESA / CLIENTE' : 'CLIENTE'
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Intro */}
+      <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: '20px 24px' }}>
+        <p style={{ margin: 0, fontSize: 15, color: '#1c3050', lineHeight: 1.7 }}>
+          Estimado/a <strong>{letter.client_name as string || 'cliente'}</strong>, a continuación encontrará los detalles
+          del servicio de transporte cotizado. Por favor revise la información, lea los términos y condiciones,
+          e ingrese sus datos para firmar y aprobar el servicio.
+        </p>
+      </div>
+
       {/* Datos del servicio */}
       <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 24 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: '0 0 16px' }}>Detalle del Servicio</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px 24px' }}>
-          <Row label="Empresa" value={letter.client_name as string} />
+        <h2 style={{ fontSize: 17, fontWeight: 700, color: '#082e62', margin: '0 0 18px', borderBottom: '2px solid #e52832', paddingBottom: 10 }}>
+          Detalle del Servicio
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px 24px' }}>
+          <Row label={clientLabel} value={letter.client_name as string} />
           {letter.client_rut && <Row label="RUT" value={letter.client_rut as string} />}
           {letter.desde && <Row label="Origen" value={letter.desde as string} />}
           {letter.hasta && <Row label="Destino" value={letter.hasta as string} />}
           {letter.fecha_salida && (
-            <Row label="Fecha salida" value={`${letter.fecha_salida}${letter.hora_salida ? ` a las ${letter.hora_salida}` : ''}`} />
+            <Row label="Fecha de salida" value={formatFecha(letter.fecha_salida as string, letter.hora_salida as string)} wide />
           )}
           {letter.fecha_retorno && (
-            <Row label="Fecha retorno" value={`${letter.fecha_retorno}${letter.hora_retorno ? ` a las ${letter.hora_retorno}` : ''}`} />
+            <Row label="Fecha de retorno" value={formatFecha(letter.fecha_retorno as string, letter.hora_retorno as string)} wide />
           )}
-          {letter.seller_name && <Row label="Ejecutivo" value={letter.seller_name as string} />}
+          {letter.seller_name && <Row label="Ejecutivo/a a cargo" value={letter.seller_name as string} />}
         </div>
         {letter.total && (
-          <div style={{ marginTop: 16, padding: '12px 16px', background: '#f0fdf4', borderRadius: 10, border: '1px solid #86efac', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ marginTop: 20, padding: '14px 18px', background: '#f0fdf4', borderRadius: 10, border: '1px solid #86efac', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: '#166534' }}>Valor total del servicio</span>
-            <span style={{ fontSize: 20, fontWeight: 800, color: '#166534' }}>{formatCLP(Number(letter.total))}</span>
+            <span style={{ fontSize: 22, fontWeight: 800, color: '#166534' }}>{formatCLP(Number(letter.total))}</span>
           </div>
         )}
       </div>
 
-      {/* Términos */}
+      {/* Términos — SIN maxHeight, expansión natural para que el cliente pueda leer todo */}
       <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 16px' }}>Términos y Condiciones</h2>
-        <div style={{ maxHeight: 320, overflowY: 'auto', WebkitOverflowScrolling: 'touch' as const, paddingRight: 4 }}>
+        <h2 style={{ fontSize: 17, fontWeight: 700, color: '#082e62', margin: '0 0 16px', borderBottom: '2px solid #e52832', paddingBottom: 10 }}>
+          Términos y Condiciones
+        </h2>
+        <div>
           {CLAUSES.map(c => (
-            <div key={c.title} style={{ marginBottom: 14 }}>
-              <p style={{ margin: '0 0 3px', fontSize: 12, fontWeight: 700, color: '#374151' }}>{c.title}</p>
-              <p style={{ margin: 0, fontSize: 12, color: '#6b7280', lineHeight: 1.6 }}>{c.text}</p>
+            <div key={c.title} style={{ marginBottom: 16 }}>
+              <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700, color: '#1c3050' }}>{c.title}</p>
+              <p style={{ margin: 0, fontSize: 13, color: '#52637c', lineHeight: 1.65 }}>{c.text}</p>
             </div>
           ))}
         </div>
@@ -122,13 +150,15 @@ export default function SigningForm({ letter }: { letter: Letter }) {
 
       {/* Facturación */}
       <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>Datos de Facturación</h2>
-        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
+        <h2 style={{ fontSize: 17, fontWeight: 700, color: '#082e62', margin: '0 0 6px', borderBottom: '2px solid #e52832', paddingBottom: 10 }}>
+          Datos de Facturación
+        </h2>
+        <p style={{ margin: '12px 0 16px', fontSize: 13, color: '#6b7280' }}>
           Ingrese los datos para emitir la factura del servicio.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Field label="Razón social / Nombre *" value={billing.billing_name} onChange={v => setBilling(b => ({ ...b, billing_name: v }))} placeholder={letter.client_name as string} />
-          <Field label="RUT de facturación *" value={billing.billing_rut} onChange={v => setBilling(b => ({ ...b, billing_rut: v }))} placeholder={letter.client_rut as string ?? '12.345.678-9'} />
+          <Field label="RUT de facturación *" value={billing.billing_rut} onChange={v => setBilling(b => ({ ...b, billing_rut: v }))} placeholder={(letter.client_rut as string) ?? '12.345.678-9'} />
           <Field label="Dirección" value={billing.billing_address} onChange={v => setBilling(b => ({ ...b, billing_address: v }))} />
           <Field label="Glosa / detalle factura" value={billing.billing_glosa} onChange={v => setBilling(b => ({ ...b, billing_glosa: v }))} />
         </div>
@@ -136,8 +166,10 @@ export default function SigningForm({ letter }: { letter: Letter }) {
 
       {/* Firma */}
       <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>Firma Digital</h2>
-        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
+        <h2 style={{ fontSize: 17, fontWeight: 700, color: '#082e62', margin: '0 0 6px', borderBottom: '2px solid #e52832', paddingBottom: 10 }}>
+          Firma Digital
+        </h2>
+        <p style={{ margin: '12px 0 16px', fontSize: 13, color: '#6b7280' }}>
           Al firmar, declara haber leído y aceptado todos los términos y condiciones. Válido según Ley 19.799.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -153,24 +185,28 @@ export default function SigningForm({ letter }: { letter: Letter }) {
           onClick={handleSign}
           disabled={loading}
           style={{
-            marginTop: 16, width: '100%', padding: '14px 24px', borderRadius: 10,
-            background: loading ? '#9ca3af' : '#1B8A4B', color: 'white', border: 'none',
-            fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+            marginTop: 20, width: '100%', padding: '16px 24px', borderRadius: 10,
+            background: loading ? '#9ca3af' : '#082e62', color: 'white', border: 'none',
+            fontSize: 16, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
             transition: 'background 0.15s',
           }}
         >
           {loading ? 'Firmando...' : 'Firmar y aceptar servicio'}
         </button>
+        <p style={{ margin: '12px 0 0', fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>
+          Firma electrónica simple con validez legal — Ley N° 19.799
+        </p>
       </div>
     </div>
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
+  if (!value) return null
   return (
-    <div>
-      <p style={{ margin: 0, fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</p>
-      <p style={{ margin: '2px 0 0', fontSize: 13, fontWeight: 600, color: '#111827' }}>{value}</p>
+    <div style={wide ? { gridColumn: '1 / -1' } : {}}>
+      <p style={{ margin: 0, fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</p>
+      <p style={{ margin: '3px 0 0', fontSize: 14, fontWeight: 600, color: '#1c3050', lineHeight: 1.4 }}>{value}</p>
     </div>
   )
 }
@@ -178,16 +214,16 @@ function Row({ label, value }: { label: string; value: string }) {
 function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <div>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 4 }}>{label}</label>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>{label}</label>
       <input
         type="text"
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         style={{
-          width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8,
+          width: '100%', boxSizing: 'border-box', padding: '10px 13px', borderRadius: 8,
           border: '1px solid #d1d5db', fontSize: 16, color: '#111827', outline: 'none',
-          fontFamily: 'inherit',
+          fontFamily: 'inherit', background: 'white',
         }}
       />
     </div>
