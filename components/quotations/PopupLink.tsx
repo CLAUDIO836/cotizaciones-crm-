@@ -3,21 +3,24 @@
 export default function PopupLink({
   href,
   children,
-  className,
-  style,
 }: {
   href: string
   children: React.ReactNode
-  className?: string
-  style?: React.CSSProperties
 }) {
+  function open(e: React.MouseEvent) {
+    e.preventDefault()
+    const w = window.open(
+      href,
+      '_blank',
+      'toolbar=no,location=no,menubar=no,scrollbars=yes,resizable=yes,width=1080,height=800'
+    )
+    // Si el popup fue bloqueado por el navegador, abrir en pestaña normal
+    if (!w) window.open(href, '_blank')
+  }
+
   return (
-    <span
-      className={className}
-      style={{ cursor: 'pointer', ...style }}
-      onClick={() => window.open(href, '_blank', 'width=1050,height=780,scrollbars=yes,resizable=yes')}
-    >
+    <a href={href} onClick={open} style={{ textDecoration: 'none' }}>
       {children}
-    </span>
+    </a>
   )
 }
