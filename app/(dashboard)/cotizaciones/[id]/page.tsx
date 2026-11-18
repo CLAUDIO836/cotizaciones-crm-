@@ -335,16 +335,10 @@ export default async function CotizacionDetailPage({
 
           {/* Action buttons topbar */}
           <div className="border-b px-4 py-2 flex items-center gap-1.5 flex-wrap flex-shrink-0" style={{ background: '#f9fafb' }}>
-            <a href={`/api/cotizaciones/${id}/html`} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: 'outline', size: 'sm' }) + ' text-xs'}>
+            <a href={isDiario ? `/api/cotizaciones/${id}/propuesta` : `/api/cotizaciones/${id}/html`} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: 'outline', size: 'sm' }) + ' text-xs'}>
               <Globe className="w-3 h-3 mr-1" />
               Ver / Imprimir
             </a>
-            {isDiario && (
-              <a href={`/api/cotizaciones/${id}/propuesta`} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: 'outline', size: 'sm' }) + ' text-xs'} style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
-                <Globe className="w-3 h-3 mr-1" />
-                Propuesta
-              </a>
-            )}
             {!isTracking && (
               <a href={`/api/cotizaciones/${id}/html/download`} download>
                 <Button variant="outline" size="sm" className="text-xs h-7 px-2.5" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
