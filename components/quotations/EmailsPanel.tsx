@@ -296,7 +296,18 @@ export default function EmailsPanel({
   const [templates,       setTemplates]       = useState<EmailTemplate[]>([])
   const [templatesLoaded, setTemplatesLoaded] = useState(false)
 
-  const tplRef = useRef<HTMLDivElement>(null)
+  const tplRef    = useRef<HTMLDivElement>(null)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+
+  useEffect(() => {
+    const el = iframeRef.current
+    if (!el || !htmlPreview) return
+    const doc = el.contentDocument ?? el.contentWindow?.document
+    if (!doc) return
+    doc.open()
+    doc.write(htmlPreview)
+    doc.close()
+  }, [htmlPreview])
   const bccAddress = quotationNumber
     ? `crm+negocio${quotationNumber.replace(/\D/g, '')}@transccl.cl`
     : null
@@ -648,9 +659,9 @@ export default function EmailsPanel({
                     <span className="ml-2 font-medium">Vista previa del correo — revisa que los datos y links sean correctos</span>
                   </div>
                   <iframe
-                    srcDoc={htmlPreview}
-                    className="w-full h-full"
-                    style={{ height: 383 }}
+                    ref={iframeRef}
+                    className="w-full"
+                    style={{ height: 383, border: 'none', display: 'block' }}
                     title="Preview correo"
                   />
                 </div>
