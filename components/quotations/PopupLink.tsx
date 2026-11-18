@@ -9,12 +9,8 @@ export default function PopupLink({
 }) {
   function open(e: React.MouseEvent) {
     e.preventDefault()
-    const w = window.open(
-      href,
-      '_blank',
-      'toolbar=no,location=no,menubar=no,scrollbars=yes,resizable=yes,width=1080,height=800'
-    )
-    // Si el popup fue bloqueado por el navegador, abrir en pestaña normal
+    // Intenta abrir como popup flotante; si Chrome lo bloquea, abre en pestaña nueva
+    const w = window.open(href, 'crm_popup', 'popup,width=1080,height=800,scrollbars=yes,resizable=yes')
     if (!w) window.open(href, '_blank')
   }
 

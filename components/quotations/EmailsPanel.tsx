@@ -645,6 +645,10 @@ export default function EmailsPanel({
                     <span>{subject}</span>
                   </div>
                   <div className="flex gap-2">
+                    <span className="font-semibold text-gray-400 w-12 flex-shrink-0">CC:</span>
+                    <span className="text-blue-600">crm+negocio{quotationNumber}@transccl.cl</span>
+                  </div>
+                  <div className="flex gap-2">
                     <span className="font-semibold text-gray-400 w-12 flex-shrink-0">Adjunto:</span>
                     <span>PDF de cotización (incluido automáticamente)</span>
                   </div>
