@@ -73,11 +73,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     let sentFrom = vendorEmail
 
+    const crmCc = `crm+negocio${quoteNumber}@transccl.cl`
+
     if (vendorRefreshToken) {
       await sendViaGmail({
         refreshToken: vendorRefreshToken,
         from:    `${vendorName} <${vendorEmail}>`,
         to:      clientEmail,
+        cc:      crmCc,
         subject: `Tu cotización de TransCCL está lista — ${quoteNumber}`,
         html,
       })
@@ -90,6 +93,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         body: JSON.stringify({
           from:    'TransCCL Ventas <ventas@transccl.cl>',
           to:      [clientEmail],
+          cc:      [crmCc],
           subject: `Tu cotización de TransCCL está lista — ${quoteNumber}`,
           html,
         }),

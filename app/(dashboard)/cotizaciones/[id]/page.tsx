@@ -17,6 +17,7 @@ import ResyncButton from '@/components/quotations/ResyncButton'
 import DocumentsTab from '@/components/quotations/DocumentsTab'
 import AgentButton from '@/components/quotations/AgentButton'
 import EmailsPanel from '@/components/quotations/EmailsPanel'
+import PopupLink from '@/components/quotations/PopupLink'
 import FechaServicioEditor from '@/components/quotations/FechaServicioEditor'
 import DuplicateButton from '@/components/quotations/DuplicateButton'
 import OwnerEditor from '@/components/quotations/OwnerEditor'
@@ -335,20 +336,20 @@ export default async function CotizacionDetailPage({
 
           {/* Action buttons topbar */}
           <div className="border-b px-4 py-2 flex items-center gap-1.5 flex-wrap flex-shrink-0" style={{ background: '#f9fafb' }}>
-            <a href={`/api/cotizaciones/${id}/html`} target="_blank">
+            <PopupLink href={`/api/cotizaciones/${id}/html`}>
               <Button variant="outline" size="sm" className="text-xs h-7 px-2.5">
                 <Globe className="w-3 h-3 mr-1" />
                 Ver / Imprimir
               </Button>
-            </a>
+            </PopupLink>
             {!isTracking && (
               <>
-                <a href={`/api/cotizaciones/${id}/propuesta`} target="_blank">
+                <PopupLink href={`/api/cotizaciones/${id}/propuesta`}>
                   <Button variant="outline" size="sm" className="text-xs h-7 px-2.5" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
                     <Globe className="w-3 h-3 mr-1" />
                     Propuesta
                   </Button>
-                </a>
+                </PopupLink>
                 <a href={`/api/cotizaciones/${id}/html/download`} download>
                   <Button variant="outline" size="sm" className="text-xs h-7 px-2.5" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
                     ⬇ Descargar PDF
