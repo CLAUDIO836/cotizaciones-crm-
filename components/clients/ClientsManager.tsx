@@ -226,13 +226,26 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
   }
 
   async function handleSave() {
-    if (!form.name.trim()) { toast.error('El nombre es requerido'); return }
-    if (form.rut.trim() && !validateRut(form.rut)) { toast.error('El RUT ingresado no es válido — revisa el dígito verificador'); return }
+    const nameTrimmed = form.name.trim()
+    if (!nameTrimmed) { toast.error('El nombre es requerido'); return }
+
+    // RUT obligatorio
+    if (!form.rut.trim()) { toast.error('El RUT es obligatorio'); return }
+    if (!validateRut(form.rut)) { toast.error('El RUT ingresado no es válido — revisa el dígito verificador'); return }
     if (rutError) { toast.error(rutError); return }
+
+    // Tipo obligatorio
+    if (!form.tipo) { toast.error('Selecciona el tipo de cliente (Natural, Empresa o Colegio)'); return }
+
+    // Persona natural: al menos nombre y apellido
+    if (form.tipo === 'natural' && nameTrimmed.split(/\s+/).filter(Boolean).length < 2) {
+      toast.error('Para persona natural ingresa al menos nombre y apellido'); return
+    }
+
     setLoading(true)
     try {
       const payload = {
-        name: form.name.trim(),
+        name: nameTrimmed,
         rut: form.rut.trim() || null,
         email: form.email.trim() || null,
         phone: form.phone.trim() || null,
@@ -540,11 +553,21 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label>Nombre *</Label>
-              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              <Label>
+                {form.tipo === 'natural' ? 'Nombre y apellido *' : 'Razón social *'}
+              </Label>
+              <Input
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value.toUpperCase() }))}
+                placeholder={form.tipo === 'natural' ? 'JUAN PÉREZ González' : 'EMPRESA S.A.'}
+                style={{ textTransform: 'uppercase' }}
+              />
+              {form.tipo === 'natural' && form.name.trim() && form.name.trim().split(/\s+/).filter(Boolean).length < 2 && (
+                <p className="text-xs text-amber-600">Ingresa al menos nombre y apellido</p>
+              )}
             </div>
             <div className="space-y-1.5">
-              <Label>RUT</Label>
+              <Label>RUT *</Label>
               <Input
                 value={form.rut}
                 onChange={e => handleRutChange(e.target.value)}
@@ -590,9 +613,9 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
               <Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
-              <Label>Tipo de cliente</Label>
+              <Label>Tipo de cliente *</Label>
               <div className="flex gap-2 flex-wrap">
-                {([['', 'Sin clasificar'], ['natural', 'Persona Natural'], ['empresa', 'Empresa'], ['colegio', 'Colegio / Institución']] as const).map(([v, label]) => (
+                {([['natural', 'Persona Natural'], ['empresa', 'Empresa'], ['colegio', 'Colegio / Institución']] as const).map(([v, label]) => (
                   <button key={v} type="button" onClick={() => setForm(f => ({ ...f, tipo: v }))}
                     className="px-3 py-1 rounded-full text-xs font-semibold border transition-all"
                     style={form.tipo === v
