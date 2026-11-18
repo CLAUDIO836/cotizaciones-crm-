@@ -49,6 +49,13 @@ function getActivityDate(q: QuotationSummary): string {
   return getStatusDate(q)
 }
 
+// Fecha del servicio: fecha_salida si existe, si no issue_date, si no created_at
+function getServiceDate(q: QuotationSummary): string {
+  if (q.fecha_salida) return q.fecha_salida.slice(0, 10)
+  if (q.issue_date)   return q.issue_date.slice(0, 10)
+  return getCreatedDate(q)
+}
+
 function getWeekStart(d: Date): Date {
   const day = d.getDay()
   const diff = day === 0 ? -6 : 1 - day
@@ -156,16 +163,18 @@ export default function DashboardClient({
     [quotations, ejecutiva, empresa],
   )
 
-  // Cotizaciones con actividad en el rango:
-  // - abiertas: creadas en el rango (created_at)
-  // - ganadas/perdidas: estado cambiado en el rango (updated_at / crm_updated_at)
+  // Para preset "mes": filtramos por año/mes del servicio (COALESCE(fecha_salida, issue_date))
+  // Para otros presets: filtramos por fecha de actividad (created_at para abiertas, updated_at para won/lost)
   const inRange = useMemo(() => {
+    if (preset === 'month') {
+      return filtered.filter(q => q.year === selYear && q.month === selMonth)
+    }
     const { from, to } = range
     return filtered.filter(q => {
       const ds = getActivityDate(q)
       return ds >= from && ds <= to
     })
-  }, [filtered, range])
+  }, [filtered, range, preset, selYear, selMonth])
 
   // Los tres KPIs miden gestión real: abiertas por created_at, ganadas/perdidas por updated_at
   const wonInRange  = inRange.filter(q => q.status === 'won')
@@ -188,11 +197,18 @@ export default function DashboardClient({
     const toD   = parseDateLocal(to)
 
     if (gran === 'day') {
+      // En modo mes: agrupamos por fecha de servicio (fecha_salida/issue_date)
+      const dateFn = preset === 'month' ? getServiceDate : getActivityDate
+      const monthDeals = preset === 'month'
+        ? filtered.filter(q => q.year === selYear && q.month === selMonth)
+        : null
       const result = []
       const cur = new Date(fromD)
       while (cur <= toD) {
         const ds = toDateStr(cur)
-        const dq = filtered.filter(q => getActivityDate(q) === ds)
+        const dq = monthDeals
+          ? monthDeals.filter(q => dateFn(q) === ds)
+          : filtered.filter(q => dateFn(q) === ds)
         result.push({
           label: formatLabel(cur, 'day'),
           Ganadas:  dq.filter(q => q.status === 'won').length,
@@ -261,14 +277,11 @@ export default function DashboardClient({
     : preset === 'month' ? `${getMonthName(selMonth)} ${selYear}`
     : `${range.from} → ${range.to}`
 
-  // Available years from data (always include current year)
+  // Años disponibles: derivados del campo year del view (COALESCE(fecha_salida, issue_date))
   const availableYears = useMemo(() => {
     const years = new Set<number>([now.getFullYear()])
-    quotations.forEach(q => {
-      const d = q.created_at ? utcToChileDate(q.created_at) : null
-      if (d) years.add(Number(d.slice(0, 4)))
-    })
-    return [...years].sort((a, b) => b - a) // desc: more recent first
+    quotations.forEach(q => { if (q.year) years.add(q.year) })
+    return [...years].sort((a, b) => b - a) // desc: más reciente primero
   }, [quotations, now])
 
   const presets = [

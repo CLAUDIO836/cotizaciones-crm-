@@ -238,8 +238,9 @@ export interface QuotationSummary {
   pipeline_id?: string
   pipeline_name?: string
   client_rut?: string
+  fecha_salida?: string  // fecha del servicio (departure date)
   created_at?: string
-  updated_at?: string   // crm_updated_at: última vez que cambió el estado en el CRM
+  updated_at?: string   // última vez que cambió el estado (quotation_status_log)
 }
 
 export interface Quotation {
