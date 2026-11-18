@@ -178,6 +178,8 @@ export default async function CotizacionDetailPage({
                 billingName={q.clients?.name ?? ''}
                 billingRut={(q.clients as { rut?: string })?.rut ?? ''}
                 billingAddr={(q.clients as { address?: string })?.address ?? ''}
+                wonLabel={isDiario ? 'Apruebo Cotización' : undefined}
+                lostLabel={isDiario ? 'Rechazo Cotización' : undefined}
                 inline
               />
             </div>
