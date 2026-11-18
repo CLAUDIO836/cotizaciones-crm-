@@ -155,12 +155,15 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
       {/* ── Nav ────────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-0.5 px-2 flex-1 overflow-y-auto">
 
+        {/* DASHBOARD — fuera de sección */}
+        <NavItem href="/dashboard"      icon={LayoutDashboard} label="Dashboard"   active={isActive('/dashboard')} />
+
         {/* COMERCIAL */}
         <SectionLabel label="Comercial" />
-        <NavItem href="/dashboard"      icon={LayoutDashboard} label="Dashboard"   active={isActive('/dashboard')} />
-        <NavItem href="/prospectos"     icon={PhoneCall}       label="Prospectos"  active={isActive('/prospectos')} />
+        <NavItem href="/clientes"       icon={Users}           label="Clientes"    active={isActive('/clientes')} />
         <NavItem href="/cotizaciones"   icon={Briefcase}       label="Negocios"    active={isActive('/cotizaciones')} />
-        <NavItem href="/cotizador"      icon={Calculator}      label="Consulta Precios"   active={isActive('/cotizador')} />
+        <NavItem href="/prospectos"     icon={PhoneCall}       label="Prospectos"  active={isActive('/prospectos')} />
+        <NavItem href="/cotizador"      icon={Calculator}      label="Consulta Precios" active={isActive('/cotizador')} />
         <NavItem href="/autorizaciones" icon={ShieldCheck}     label="Por aprobar" active={isActive('/autorizaciones')}
           badgeCount={profile?.autz_pending} />
 
@@ -215,7 +218,6 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
         <NavItem href="/solicitudes" icon={Inbox}     label="Solicitudes" active={isActive('/solicitudes')}
           badgeCount={profile?.pending_leads} />
         <NavItem href="/contratos"   icon={FileCheck} label="Contratos"   active={isActive('/contratos')} />
-        <NavItem href="/clientes"    icon={Users}     label="Clientes"    active={isActive('/clientes')} />
 
         {/* ADMIN */}
         {isAdmin && (
