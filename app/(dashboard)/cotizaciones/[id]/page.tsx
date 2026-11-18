@@ -9,7 +9,7 @@ import NotesPanel from '@/components/quotations/NotesPanel'
 import QuotationTabs from '@/components/quotations/QuotationTabs'
 import Link from 'next/link'
 import { ArrowLeft, Edit, Globe, AlertTriangle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import DeleteButton from '@/components/quotations/DeleteButton'
 import ApprovalLetterButton from '@/components/quotations/ApprovalLetterButton'
 import QuotationApprovalButton from '@/components/quotations/QuotationApprovalButton'
@@ -335,20 +335,16 @@ export default async function CotizacionDetailPage({
 
           {/* Action buttons topbar */}
           <div className="border-b px-4 py-2 flex items-center gap-1.5 flex-wrap flex-shrink-0" style={{ background: '#f9fafb' }}>
-            <Button asChild variant="outline" size="sm" className="text-xs h-7 px-2.5">
-              <a href={`/api/cotizaciones/${id}/html`} target="_blank" rel="noopener noreferrer">
-                <Globe className="w-3 h-3 mr-1" />
-                Ver / Imprimir
-              </a>
-            </Button>
+            <a href={`/api/cotizaciones/${id}/html`} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: 'outline', size: 'sm' }) + ' text-xs'}>
+              <Globe className="w-3 h-3 mr-1" />
+              Ver / Imprimir
+            </a>
             {!isTracking && (
               <>
-                <Button asChild variant="outline" size="sm" className="text-xs h-7 px-2.5" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
-                  <a href={`/api/cotizaciones/${id}/propuesta`} target="_blank" rel="noopener noreferrer">
-                    <Globe className="w-3 h-3 mr-1" />
-                    Propuesta
-                  </a>
-                </Button>
+                <a href={`/api/cotizaciones/${id}/propuesta`} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: 'outline', size: 'sm' }) + ' text-xs'} style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
+                  <Globe className="w-3 h-3 mr-1" />
+                  Propuesta
+                </a>
                 <a href={`/api/cotizaciones/${id}/html/download`} download>
                   <Button variant="outline" size="sm" className="text-xs h-7 px-2.5" style={{ borderColor: '#1B8A4B', color: '#1B8A4B' }}>
                     ⬇ Descargar PDF
