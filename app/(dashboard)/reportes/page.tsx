@@ -27,12 +27,18 @@ export default async function ReportesPage() {
   const totalPerdido = qs.filter(q => q.status === 'lost').reduce((s, q) => s + (q.total ?? 0), 0)
   const conversion = qs.length > 0 ? Math.round((qs.filter(q => q.status === 'won').length / qs.length) * 100) : 0
 
+  function qYM(q: Record<string, unknown>) {
+    if (q.year && q.month) return { y: Number(q.year), m: Number(q.month) }
+    if (q.issue_date) { const d = new Date(q.issue_date as string); return { y: d.getFullYear(), m: d.getMonth() + 1 } }
+    return { y: 0, m: 0 }
+  }
+
   // Por mes (últimos 12)
   const monthlyData = Array.from({ length: 12 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1)
     const y = d.getFullYear()
     const m = d.getMonth() + 1
-    const mq = qs.filter(q => q.year === y && q.month === m)
+    const mq = qs.filter(q => { const ym = qYM(q); return ym.y === y && ym.m === m })
     return {
       label: getMonthName(m).slice(0, 3),
       ganado: mq.filter(q => q.status === 'won').reduce((s, q) => s + (q.total ?? 0), 0),

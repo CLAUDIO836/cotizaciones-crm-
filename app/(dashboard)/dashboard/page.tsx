@@ -17,7 +17,13 @@ export default async function DashboardPage() {
     isAdmin ? fetchProfiles() : Promise.resolve([]),
   ])
 
-  const thisMonth = quotations.filter(q => q.year === currentYear && q.month === currentMonth)
+  function qYM(q: { year?: number; month?: number; issue_date?: string }) {
+    if (q.year && q.month) return { y: Number(q.year), m: Number(q.month) }
+    if (q.issue_date) { const d = new Date(q.issue_date); return { y: d.getFullYear(), m: d.getMonth() + 1 } }
+    return { y: 0, m: 0 }
+  }
+
+  const thisMonth = quotations.filter(q => { const { y, m } = qYM(q); return y === currentYear && m === currentMonth })
   const openCount = quotations.filter(q => q.status === 'open').length
   const wonThisMonth = thisMonth.filter(q => q.status === 'won').reduce((s, q) => s + Number(q.total ?? 0), 0)
   const total = thisMonth.length
@@ -28,7 +34,7 @@ export default async function DashboardPage() {
     const d = new Date(currentYear, now.getMonth() - (5 - i), 1)
     const y = d.getFullYear()
     const m = d.getMonth() + 1
-    const mq = quotations.filter(q => q.year === y && q.month === m)
+    const mq = quotations.filter(q => { const ym = qYM(q); return ym.y === y && ym.m === m })
     return {
       month: getMonthName(m).slice(0, 3),
       ganadas: mq.filter(q => q.status === 'won').length,
