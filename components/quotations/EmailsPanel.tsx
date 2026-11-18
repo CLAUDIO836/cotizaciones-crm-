@@ -22,13 +22,15 @@ interface EmailTemplate {
   body:       string
   scope?:     'team' | 'personal'
   created_by?: string
+  isOfficial?: boolean
 }
 
 const DEFAULT_TEMPLATES: EmailTemplate[] = [
   {
-    label:   '📄 Envío de cotización',
-    subject: 'Cotización de servicio de traslado – TransCCL',
-    body:    'Estimado/a {{nombre}},\n\nAdjunto nuestra propuesta para el servicio solicitado. Hemos preparado una solución a medida para sus necesidades de traslado.\n\nQuedamos atentos a cualquier consulta o ajuste que requiera.\n\nSaludos cordiales,',
+    label:      '📄 Envío de cotización',
+    subject:    'Tu cotización de TransCCL está lista',
+    body:       '',
+    isOfficial: true,
   },
   {
     label:   '🔁 Seguimiento de propuesta',
@@ -274,6 +276,8 @@ export default function EmailsPanel({
   const [sending,          setSending]          = useState(false)
   const [sendingOfficial,  setSendingOfficial]  = useState(false)
   const [officialMsg,      setOfficialMsg]      = useState('')
+  const [htmlPreview,      setHtmlPreview]      = useState<string | null>(null)
+  const [previewLoading,   setPreviewLoading]   = useState(false)
   const [syncing,          setSyncing]          = useState(false)
   const [syncMsg,          setSyncMsg]          = useState('')
   const [expanded,         setExpanded]         = useState<string | null>(null)
@@ -394,11 +398,32 @@ export default function EmailsPanel({
     setTimeout(() => setCopied(false), 2000)
   }
 
-  function applyTemplate(tpl: EmailTemplate) {
+  async function applyTemplate(tpl: EmailTemplate) {
+    setTplOpen(false)
+    if (tpl.isOfficial) {
+      setHtmlPreview(null)
+      setSubject('')
+      setBody('')
+      setComposing(true)
+      setPreviewLoading(true)
+      try {
+        const r = await fetch(`/api/quotations/${quotationId}/preview-email`)
+        const d = await r.json()
+        if (!r.ok) throw new Error(d.error ?? 'Error al cargar preview')
+        setTo(d.to || clientEmail)
+        setSubject(d.subject || tpl.subject)
+        setHtmlPreview(d.html)
+      } catch (e) {
+        setError(`No se pudo cargar el preview: ${String(e)}`)
+      } finally {
+        setPreviewLoading(false)
+      }
+      return
+    }
     const nombre = clientName || 'cliente'
     setSubject(tpl.subject)
     setBody(tpl.body.replace(/\{\{nombre\}\}/g, nombre))
-    setTplOpen(false)
+    setHtmlPreview(null)
     setComposing(true)
   }
 
@@ -411,6 +436,7 @@ export default function EmailsPanel({
       setSubject('')
     }
     setBody('')
+    setHtmlPreview(null)
     setAttachPdf(false)
     setError('')
     setComposing(true)
@@ -418,6 +444,27 @@ export default function EmailsPanel({
   }
 
   async function handleSend() {
+    // Modo plantilla oficial: llama a send-email (mismo flujo que el botón azul)
+    if (htmlPreview) {
+      setSending(true)
+      setError('')
+      try {
+        const r = await fetch(`/api/quotations/${quotationId}/send-email`, { method: 'POST' })
+        const d = await r.json()
+        if (!r.ok) throw new Error(d.error ?? 'Error al enviar')
+        setComposing(false)
+        setHtmlPreview(null)
+        setTo(clientEmail)
+        setSubject('')
+        await load()
+      } catch (e) {
+        setError(String(e))
+      } finally {
+        setSending(false)
+      }
+      return
+    }
+
     if (!to.trim() || !subject.trim() || !body.trim()) {
       setError('Completa Para, Asunto y Mensaje')
       return
@@ -490,7 +537,7 @@ export default function EmailsPanel({
             size="sm"
             className="text-xs h-7 px-3 text-white"
             style={{ background: '#1B8A4B' }}
-            onClick={() => composing ? setComposing(false) : openCompose()}
+            onClick={() => { if (composing) { setComposing(false); setHtmlPreview(null) } else openCompose() }}
           >
             {composing ? <X className="w-3 h-3 mr-1" /> : <Plus className="w-3 h-3 mr-1" />}
             {composing ? 'Cancelar' : 'Nuevo correo'}
@@ -574,75 +621,145 @@ export default function EmailsPanel({
                       className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 border-b last:border-b-0 transition-colors">
                       <div className="flex items-center gap-2">
                         <p className="font-medium text-gray-800 flex-1">{tpl.label}</p>
+                        {tpl.isOfficial && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-semibold">oficial</span>
+                        )}
                         {tpl.scope === 'personal' && (
                           <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-500">mía</span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-400 truncate mt-0.5">{tpl.subject}</p>
+                      <p className="text-xs text-gray-400 truncate mt-0.5">
+                        {tpl.isOfficial ? 'Plantilla branded TransCCL con link de aprobación y PDF' : tpl.subject}
+                      </p>
                     </button>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Para */}
-            <div>
-              <label className="text-xs text-gray-400 font-medium mb-1 block">Para</label>
-              <input
-                type="email" value={to} onChange={e => setTo(e.target.value)}
-                placeholder="correo@cliente.cl"
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
-              />
-            </div>
+            {/* Vista de preview HTML (plantilla oficial) */}
+            {previewLoading && (
+              <div className="flex items-center justify-center py-10 text-sm text-gray-400 gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Generando preview del correo...
+              </div>
+            )}
 
-            {/* Asunto */}
-            <div>
-              <label className="text-xs text-gray-400 font-medium mb-1 block">Asunto</label>
-              <input
-                type="text" value={subject} onChange={e => setSubject(e.target.value)}
-                placeholder="Asunto del correo"
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
-              />
-            </div>
+            {htmlPreview && !previewLoading && (
+              <>
+                {/* Para y Asunto en modo lectura */}
+                <div className="flex flex-col gap-1.5 bg-gray-50 rounded-lg border px-3 py-2.5 text-xs text-gray-600">
+                  <div className="flex gap-2">
+                    <span className="font-semibold text-gray-400 w-12 flex-shrink-0">Para:</span>
+                    <span className="font-medium">{to || <em className="text-gray-300">sin email</em>}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="font-semibold text-gray-400 w-12 flex-shrink-0">Asunto:</span>
+                    <span>{subject}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="font-semibold text-gray-400 w-12 flex-shrink-0">Adjunto:</span>
+                    <span>PDF de cotización (incluido automáticamente)</span>
+                  </div>
+                </div>
 
-            {/* Mensaje */}
-            <div>
-              <label className="text-xs text-gray-400 font-medium mb-1 block">Mensaje</label>
-              <textarea
-                value={body} onChange={e => setBody(e.target.value)}
-                rows={6}
-                placeholder="Escribe tu mensaje aquí..."
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200 resize-none"
-              />
-            </div>
+                {/* Iframe con el HTML renderizado */}
+                <div className="rounded-lg border overflow-hidden" style={{ height: 420 }}>
+                  <div className="bg-gray-100 px-3 py-1.5 text-xs text-gray-500 border-b flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-red-400 inline-block" />
+                    <span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />
+                    <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
+                    <span className="ml-2 font-medium">Vista previa del correo — revisa que los datos y links sean correctos</span>
+                  </div>
+                  <iframe
+                    srcDoc={htmlPreview}
+                    sandbox="allow-same-origin"
+                    className="w-full h-full"
+                    style={{ height: 383 }}
+                    title="Preview correo"
+                  />
+                </div>
 
-            {/* Adjunto PDF */}
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={attachPdf}
-                onChange={e => setAttachPdf(e.target.checked)}
-                className="rounded border-gray-300 text-green-600 focus:ring-green-200"
-              />
-              <Paperclip className="w-3.5 h-3.5 text-gray-400" />
-              <span className="text-xs text-gray-600 font-medium">Adjuntar PDF de la cotización</span>
-              {attachPdf && <span className="text-xs text-amber-600 font-medium">(puede demorar unos segundos)</span>}
-            </label>
+                <button
+                  type="button"
+                  onClick={() => setHtmlPreview(null)}
+                  className="text-xs text-gray-400 hover:text-gray-600 underline"
+                >
+                  ✏️ Editar como texto libre en cambio
+                </button>
+              </>
+            )}
+
+            {/* Campos normales (sin preview) */}
+            {!htmlPreview && !previewLoading && (
+              <>
+                {/* Para */}
+                <div>
+                  <label className="text-xs text-gray-400 font-medium mb-1 block">Para</label>
+                  <input
+                    type="email" value={to} onChange={e => setTo(e.target.value)}
+                    placeholder="correo@cliente.cl"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+                  />
+                </div>
+
+                {/* Asunto */}
+                <div>
+                  <label className="text-xs text-gray-400 font-medium mb-1 block">Asunto</label>
+                  <input
+                    type="text" value={subject} onChange={e => setSubject(e.target.value)}
+                    placeholder="Asunto del correo"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+                  />
+                </div>
+
+                {/* Mensaje */}
+                <div>
+                  <label className="text-xs text-gray-400 font-medium mb-1 block">Mensaje</label>
+                  <textarea
+                    value={body} onChange={e => setBody(e.target.value)}
+                    rows={6}
+                    placeholder="Escribe tu mensaje aquí..."
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200 resize-none"
+                  />
+                </div>
+
+                {/* Adjunto PDF */}
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={attachPdf}
+                    onChange={e => setAttachPdf(e.target.checked)}
+                    className="rounded border-gray-300 text-green-600 focus:ring-green-200"
+                  />
+                  <Paperclip className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="text-xs text-gray-600 font-medium">Adjuntar PDF de la cotización</span>
+                  {attachPdf && <span className="text-xs text-amber-600 font-medium">(puede demorar unos segundos)</span>}
+                </label>
+              </>
+            )}
 
             {error && <p className="text-xs text-red-500">{error}</p>}
 
-            <div className="flex justify-end">
-              <Button
-                size="sm"
-                className="text-white text-xs h-8 px-4"
-                style={{ background: '#1B8A4B' }}
-                onClick={handleSend}
-                disabled={sending}
-              >
-                <Send className="w-3 h-3 mr-1.5" />
-                {sending ? (attachPdf ? 'Generando PDF y enviando...' : 'Enviando...') : 'Enviar desde Gmail'}
-              </Button>
-            </div>
+            {!previewLoading && (
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  className="text-white text-xs h-8 px-4"
+                  style={{ background: htmlPreview ? '#082e62' : '#1B8A4B' }}
+                  onClick={handleSend}
+                  disabled={sending}
+                >
+                  <Send className="w-3 h-3 mr-1.5" />
+                  {sending
+                    ? 'Enviando...'
+                    : htmlPreview
+                      ? 'Confirmar y enviar'
+                      : (attachPdf ? 'Enviar con PDF' : 'Enviar desde Gmail')
+                  }
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}
