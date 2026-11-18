@@ -111,11 +111,12 @@ export default function ApprovalLetterButton({ quotationId }: { quotationId: str
             {isCopied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
             <span className="ml-1">{isCopied ? 'Copiado' : 'Copiar link'}</span>
           </Button>
-          <Button variant="outline" size="sm" className="h-7 px-2 text-xs" title="Abrir página firma"
-            onClick={() => window.open(url, '_blank', 'width=800,height=720,scrollbars=yes,resizable=yes')}>
-            <ExternalLink className="w-3.5 h-3.5" />
-            <span className="ml-1">Abrir</span>
-          </Button>
+          <a href={url} target="_blank" rel="noopener noreferrer">
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" title="Abrir página firma">
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span className="ml-1">Abrir</span>
+            </Button>
+          </a>
           <a href={`/api/approval-letters/${letter.token}/pdf`} target="_blank" rel="noopener noreferrer">
             <Button variant="outline" size="sm" className="h-7 px-2 text-xs" title="Ver PDF">
               <FileDown className="w-3.5 h-3.5" />

@@ -1,5 +1,3 @@
-'use client'
-
 export default function PopupLink({
   href,
   children,
@@ -7,15 +5,8 @@ export default function PopupLink({
   href: string
   children: React.ReactNode
 }) {
-  function open(e: React.MouseEvent) {
-    e.preventDefault()
-    // Intenta abrir como popup flotante; si Chrome lo bloquea, abre en pestaña nueva
-    const w = window.open(href, 'crm_popup', 'popup,width=1080,height=800,scrollbars=yes,resizable=yes')
-    if (!w) window.open(href, '_blank')
-  }
-
   return (
-    <a href={href} onClick={open} style={{ textDecoration: 'none' }}>
+    <a href={href} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
       {children}
     </a>
   )
