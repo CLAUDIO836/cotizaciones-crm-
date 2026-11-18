@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { Plus, Pencil, AlertTriangle, Trash2, ChevronDown, ChevronRight, Phone, Mail, User, Search, X } from 'lucide-react'
 import { formatRut, validateRut, rutKey, autoFormatRut } from '@/lib/rut'
+import { validateChileanPhone, autoFormatPhone, phoneError } from '@/lib/phone'
 
 interface Contact {
   id: string
@@ -241,6 +242,10 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
     if (form.tipo === 'natural' && nameTrimmed.split(/\s+/).filter(Boolean).length < 2) {
       toast.error('Para persona natural ingresa al menos nombre y apellido'); return
     }
+
+    // Teléfono obligatorio y formato chileno
+    const phoneErr = phoneError(form.phone)
+    if (phoneErr) { toast.error(phoneErr); return }
 
     setLoading(true)
     try {
@@ -605,8 +610,19 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
               <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
-              <Label>Teléfono</Label>
-              <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+              <Label>Teléfono *</Label>
+              <Input
+                value={form.phone}
+                onChange={e => setForm(f => ({ ...f, phone: autoFormatPhone(e.target.value) }))}
+                placeholder="+569XXXXXXXX o +562XXXXXXXX"
+                className={form.phone && !validateChileanPhone(form.phone) ? 'border-red-400 focus-visible:ring-red-300' : ''}
+              />
+              {form.phone && !validateChileanPhone(form.phone) && (
+                <p className="text-xs text-red-600 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                  Usa +569XXXXXXXX (celular) o +562XXXXXXXX (fijo)
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Dirección</Label>
