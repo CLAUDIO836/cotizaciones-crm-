@@ -10,142 +10,12 @@ import type { QuotationSummary } from '@/lib/api'
 
 interface Profile { id: string; name: string }
 
-// ── Calendario inline ──────────────────────────────────────────────────────────
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
                      'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-const DOW = ['L','M','M','J','V','S','D']
+const MONTH_SHORT = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC']
 
 function fmt2(n: number) { return String(n).padStart(2, '0') }
 function dateStr(y: number, m: number, d: number) { return `${y}-${fmt2(m)}-${fmt2(d)}` }
-
-function CalendarPicker({
-  start, end, todayStr, availableYears,
-  onChange,
-}: {
-  start: string; end: string; todayStr: string; availableYears: number[]
-  onChange: (s: string, e: string) => void
-}) {
-  const initD = new Date(start + 'T12:00:00')
-  const [vy, setVy] = useState(initD.getFullYear())
-  const [vm, setVm] = useState(initD.getMonth() + 1)
-  const [picking, setPicking] = useState(false)   // true = esperando segundo clic
-  const [hover, setHover] = useState<string | null>(null)
-
-  function prevM() { vm === 1 ? (setVy(y=>y-1), setVm(12)) : setVm(m=>m-1) }
-  function nextM() { vm === 12 ? (setVy(y=>y+1), setVm(1))  : setVm(m=>m+1) }
-
-  function clickDay(day: string) {
-    if (!picking) {
-      onChange(day, day)
-      setPicking(true)
-    } else {
-      const [s, e] = day >= start ? [start, day] : [day, start]
-      onChange(s, e)
-      setPicking(false)
-      setHover(null)
-    }
-  }
-
-  // effective end while hovering
-  const effEnd = picking && hover
-    ? (hover >= start ? hover : start)
-    : end
-  const effStart = picking && hover && hover < start ? hover : start
-
-  function inRange(day: string) { return day >= effStart && day <= effEnd }
-
-  // Build grid
-  const firstDow = new Date(vy, vm - 1, 1).getDay()   // 0=Sun
-  const offset = firstDow === 0 ? 6 : firstDow - 1    // Mon-first
-  const totalDays = new Date(vy, vm, 0).getDate()
-  const cells: (string | null)[] = Array(offset).fill(null)
-  for (let d = 1; d <= totalDays; d++) cells.push(dateStr(vy, vm, d))
-
-  // Quick selects
-  const now = new Date(todayStr + 'T12:00:00')
-  function qToday() { onChange(todayStr, todayStr); setPicking(false) }
-  function qWeek() {
-    const dow = now.getDay(); const diff = dow === 0 ? -6 : 1 - dow
-    const mon = new Date(now); mon.setDate(now.getDate() + diff)
-    const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
-    const s = dateStr(mon.getFullYear(), mon.getMonth()+1, mon.getDate())
-    const e = dateStr(sun.getFullYear(), sun.getMonth()+1, sun.getDate())
-    onChange(s, e > todayStr ? todayStr : e); setPicking(false)
-  }
-  function qMonth() {
-    const s = dateStr(vy, vm, 1)
-    const last = new Date(vy, vm, 0)
-    const e = dateStr(last.getFullYear(), last.getMonth()+1, last.getDate())
-    onChange(s, e > todayStr ? todayStr : e); setPicking(false)
-  }
-
-  return (
-    <div className="bg-white rounded-xl border shadow-lg p-3 select-none" style={{ width: 272 }}>
-      {/* Nav */}
-      <div className="flex items-center justify-between mb-2">
-        <button onClick={prevM} className="p-1.5 rounded-lg hover:bg-gray-100 text-lg leading-none text-gray-500">‹</button>
-        <div className="flex gap-1">
-          <select value={vm} onChange={e => setVm(Number(e.target.value))}
-            className="text-sm font-semibold text-gray-800 bg-transparent border-none outline-none cursor-pointer pr-1">
-            {MONTH_NAMES.map((n, i) => <option key={i+1} value={i+1}>{n}</option>)}
-          </select>
-          <select value={vy} onChange={e => setVy(Number(e.target.value))}
-            className="text-sm font-semibold text-gray-800 bg-transparent border-none outline-none cursor-pointer">
-            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-        <button onClick={nextM} className="p-1.5 rounded-lg hover:bg-gray-100 text-lg leading-none text-gray-500">›</button>
-      </div>
-
-      {/* Day headers */}
-      <div className="grid grid-cols-7 mb-0.5">
-        {DOW.map((d, i) => <div key={i} className="text-center text-xs font-medium text-gray-400 py-1">{d}</div>)}
-      </div>
-
-      {/* Grid */}
-      <div className="grid grid-cols-7">
-        {cells.map((day, i) => {
-          if (!day) return <div key={i} />
-          const inR  = inRange(day)
-          const isS  = day === effStart
-          const isE  = day === effEnd
-          const isTd = day === todayStr
-          return (
-            <button key={day}
-              onClick={() => clickDay(day)}
-              onMouseEnter={() => picking && setHover(day)}
-              onMouseLeave={() => picking && setHover(null)}
-              className="relative text-sm py-1.5 transition-colors"
-              style={{
-                background: (isS || isE) ? '#1B8A4B' : inR ? '#d1fae5' : 'transparent',
-                color: (isS || isE) ? '#fff' : '#111827',
-                borderRadius: isS && isE ? 8 : isS ? '8px 0 0 8px' : isE ? '0 8px 8px 0' : 0,
-                fontWeight: isTd ? 700 : 400,
-              }}>
-              {day.slice(8)}
-              {isTd && !inR && (
-                <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-green-500" />
-              )}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Quick shortcuts */}
-      <div className="flex gap-1 mt-2.5 pt-2 border-t border-gray-100">
-        {([['Hoy', qToday], ['Esta semana', qWeek], ['Este mes', qMonth]] as [string, ()=>void][]).map(([l, fn]) => (
-          <button key={l} onClick={fn}
-            className="flex-1 text-xs py-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50">
-            {l}
-          </button>
-        ))}
-      </div>
-      {picking && (
-        <p className="text-xs text-center text-green-600 mt-1.5">Haz clic en el día final del rango</p>
-      )}
-    </div>
-  )
-}
 
 // Convierte un timestamp UTC del servidor a fecha Chile (UTC-3)
 function utcToChileDate(isoUtc: string): string {
@@ -257,6 +127,233 @@ function KpiCard({ label, count, monto, color, bg }: {
 
 interface DrillItem { label: string; qs: QuotationSummary[]; status: 'won' | 'lost' | 'open' }
 
+// ── Date Range Picker estilo Google Ads ────────────────────────────────────────
+function DateRangePicker({
+  calStart, calEnd, todayStr, quotations, onChange,
+}: {
+  calStart: string; calEnd: string; todayStr: string
+  quotations: QuotationSummary[]
+  onChange: (s: string, e: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [inputStart, setInputStart] = useState(calStart)
+  const [inputEnd,   setInputEnd]   = useState(calEnd)
+  const ref = useRef<HTMLDivElement>(null)
+  const now = new Date(todayStr + 'T12:00:00')
+  const curY = now.getFullYear()
+  const curM = now.getMonth() + 1
+
+  useEffect(() => { setInputStart(calStart); setInputEnd(calEnd) }, [calStart, calEnd])
+
+  useEffect(() => {
+    function onOut(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    if (open) document.addEventListener('mousedown', onOut)
+    return () => document.removeEventListener('mousedown', onOut)
+  }, [open])
+
+  // Años con datos + año actual, descendente
+  const years = useMemo(() => {
+    const ys = new Set<number>([curY])
+    quotations.forEach(q => { if (q.year) ys.add(q.year) })
+    return [...ys].sort((a, b) => b - a)
+  }, [quotations, curY])
+
+  // Meses con datos { "YYYY-MM": true }
+  const monthsWithData = useMemo(() => {
+    const s = new Set<string>()
+    quotations.forEach(q => {
+      const raw = q.created_at || q.issue_date
+      if (raw) s.add(raw.slice(0, 7))
+    })
+    return s
+  }, [quotations])
+
+  // Etiqueta del botón disparador
+  const label = useMemo(() => {
+    if (calStart === calEnd) {
+      if (calStart === todayStr) return 'Hoy'
+      const y = new Date(now); y.setDate(now.getDate() - 1)
+      if (calStart === dateStr(y.getFullYear(), y.getMonth()+1, y.getDate())) return 'Ayer'
+      return calStart
+    }
+    const f30 = new Date(now); f30.setDate(now.getDate() - 29)
+    if (calStart === dateStr(f30.getFullYear(), f30.getMonth()+1, f30.getDate()) && calEnd === todayStr)
+      return 'Últimos 30 días'
+    const sd = parseDateLocal(calStart)
+    const y2 = sd.getFullYear(), m2 = sd.getMonth() + 1
+    const first = `${y2}-${fmt2(m2)}-01`
+    const lastD = new Date(y2, m2, 0)
+    const last  = dateStr(lastD.getFullYear(), lastD.getMonth()+1, lastD.getDate())
+    if (calStart === first && (calEnd === last || calEnd === todayStr))
+      return MONTH_SHORT[m2 - 1] + ' ' + y2
+    return `${calStart.slice(5)} → ${calEnd.slice(5)}`
+  }, [calStart, calEnd, todayStr, now])
+
+  function selectMonth(y: number, m: number) {
+    const first = `${y}-${fmt2(m)}-01`
+    const lastD = new Date(y, m, 0)
+    const last  = dateStr(lastD.getFullYear(), lastD.getMonth()+1, lastD.getDate())
+    onChange(first, last > todayStr ? todayStr : last)
+    setOpen(false)
+  }
+
+  function quickSelect(type: string) {
+    if (type === 'today') { onChange(todayStr, todayStr) }
+    else if (type === 'yesterday') {
+      const y = new Date(now); y.setDate(now.getDate() - 1)
+      const s = dateStr(y.getFullYear(), y.getMonth()+1, y.getDate())
+      onChange(s, s)
+    } else if (type === 'week') {
+      const dow = now.getDay(); const diff = dow === 0 ? -6 : 1 - dow
+      const mon = new Date(now); mon.setDate(now.getDate() + diff)
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+      const s = dateStr(mon.getFullYear(), mon.getMonth()+1, mon.getDate())
+      const e = dateStr(sun.getFullYear(), sun.getMonth()+1, sun.getDate())
+      onChange(s, e > todayStr ? todayStr : e)
+    } else if (type === 'last30') {
+      const f = new Date(now); f.setDate(now.getDate() - 29)
+      onChange(dateStr(f.getFullYear(), f.getMonth()+1, f.getDate()), todayStr)
+    }
+    setOpen(false)
+  }
+
+  function isMonthActive(y: number, m: number) {
+    const first = `${y}-${fmt2(m)}-01`
+    const lastD = new Date(y, m, 0)
+    const last  = dateStr(lastD.getFullYear(), lastD.getMonth()+1, lastD.getDate())
+    return calStart === first && (calEnd === last || calEnd === todayStr)
+  }
+
+  function isQuickActive(type: string) {
+    if (type === 'today') return calStart === todayStr && calEnd === todayStr
+    if (type === 'yesterday') {
+      const y = new Date(now); y.setDate(now.getDate() - 1)
+      const s = dateStr(y.getFullYear(), y.getMonth()+1, y.getDate())
+      return calStart === s && calEnd === s
+    }
+    if (type === 'week') {
+      const dow = now.getDay(); const diff = dow === 0 ? -6 : 1 - dow
+      const mon = new Date(now); mon.setDate(now.getDate() + diff)
+      return calStart === dateStr(mon.getFullYear(), mon.getMonth()+1, mon.getDate())
+    }
+    if (type === 'last30') {
+      const f = new Date(now); f.setDate(now.getDate() - 29)
+      return calStart === dateStr(f.getFullYear(), f.getMonth()+1, f.getDate()) && calEnd === todayStr
+    }
+    return false
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      {/* Botón disparador */}
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors"
+        style={open
+          ? { background: '#f0fdf4', borderColor: '#1B8A4B', color: '#1B8A4B' }
+          : { background: '#fff', borderColor: '#e5e7eb', color: '#374151' }
+        }>
+        <span>📅</span>
+        <span>{label}</span>
+        <span className="text-gray-400" style={{ fontSize: 9 }}>▼</span>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 bg-white rounded-xl shadow-xl select-none"
+          style={{ width: 540, border: '1px solid #e5e7eb' }}>
+
+          {/* Fila inputs de fecha + Aplicar */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center gap-1.5 flex-1">
+              <span className="text-xs text-gray-400 whitespace-nowrap">Inicio</span>
+              <input type="date" value={inputStart} max={todayStr}
+                onChange={e => setInputStart(e.target.value)}
+                className="flex-1 text-sm border rounded-md px-2 py-1 text-gray-700 outline-none focus:border-green-500"
+                style={{ borderColor: '#d1d5db' }} />
+            </div>
+            <span className="text-gray-400 text-sm">—</span>
+            <div className="flex items-center gap-1.5 flex-1">
+              <span className="text-xs text-gray-400 whitespace-nowrap">Fin</span>
+              <input type="date" value={inputEnd} max={todayStr}
+                onChange={e => setInputEnd(e.target.value)}
+                className="flex-1 text-sm border rounded-md px-2 py-1 text-gray-700 outline-none focus:border-green-500"
+                style={{ borderColor: '#d1d5db' }} />
+            </div>
+            <button
+              onClick={() => { if (inputStart && inputEnd) { onChange(inputStart > inputEnd ? inputEnd : inputStart, inputStart > inputEnd ? inputStart : inputEnd); setOpen(false) } }}
+              className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white whitespace-nowrap"
+              style={{ background: '#1B8A4B' }}>
+              Aplicar
+            </button>
+            <button onClick={() => setOpen(false)}
+              className="text-xs px-2 py-1.5 rounded-lg border text-gray-500"
+              style={{ borderColor: '#e5e7eb' }}>
+              ✕
+            </button>
+          </div>
+
+          {/* Body: accesos rápidos | grilla meses */}
+          <div className="flex">
+            {/* Accesos rápidos */}
+            <div className="border-r border-gray-100 py-2 flex-shrink-0" style={{ width: 158 }}>
+              {([
+                ['Hoy',             'today'],
+                ['Ayer',            'yesterday'],
+                ['Esta semana',     'week'],
+                ['Últimos 30 días', 'last30'],
+              ] as [string, string][]).map(([lbl, key]) => (
+                <button key={key} onClick={() => quickSelect(key)}
+                  className="w-full text-left px-4 py-2.5 text-sm transition-colors"
+                  style={isQuickActive(key)
+                    ? { background: '#f0fdf4', color: '#1B8A4B', fontWeight: 600 }
+                    : { color: '#374151' }
+                  }>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+
+            {/* Grilla año / meses */}
+            <div className="flex-1 p-4 overflow-y-auto" style={{ maxHeight: 300 }}>
+              {years.map(y => (
+                <div key={y} className="mb-5 last:mb-0">
+                  <p className="text-xs font-bold text-gray-500 mb-2 tracking-wide">{y}</p>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {MONTH_SHORT.map((mn, mi) => {
+                      const m      = mi + 1
+                      const ym     = `${y}-${fmt2(m)}`
+                      const active = isMonthActive(y, m)
+                      const hasData = monthsWithData.has(ym)
+                      const isFuture = y > curY || (y === curY && m > curM + 1)
+                      return (
+                        <button key={m}
+                          onClick={() => !isFuture && selectMonth(y, m)}
+                          className="py-2 rounded-lg text-xs font-semibold transition-colors"
+                          style={active
+                            ? { background: '#1B8A4B', color: '#fff' }
+                            : isFuture
+                              ? { color: '#d1d5db', cursor: 'default', background: 'transparent' }
+                              : hasData
+                                ? { background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }
+                                : { background: '#f9fafb', color: '#6b7280' }
+                          }>
+                          {mn}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function DashboardClient({
   quotations,
   profiles,
@@ -271,20 +368,9 @@ export default function DashboardClient({
 
   const [calStart,  setCalStart]  = useState(todayStr)
   const [calEnd,    setCalEnd]    = useState(todayStr)
-  const [showCal,   setShowCal]   = useState(false)
   const [ejecutiva, setEjecutiva] = useState('all')
   const [empresa,   setEmpresa]   = useState('all')
   const [drill,     setDrill]     = useState<DrillItem | null>(null)
-  const calRef = useRef<HTMLDivElement>(null)
-
-  // Cerrar calendario al hacer clic fuera
-  useEffect(() => {
-    function onOutside(e: MouseEvent) {
-      if (calRef.current && !calRef.current.contains(e.target as Node)) setShowCal(false)
-    }
-    document.addEventListener('mousedown', onOutside)
-    return () => document.removeEventListener('mousedown', onOutside)
-  }, [])
 
   const range = useMemo((): { from: string; to: string } => (
     { from: calStart, to: calEnd }
@@ -407,12 +493,6 @@ export default function DashboardClient({
     ? (calStart === todayStr ? 'hoy' : calStart)
     : `${calStart} → ${calEnd}`
 
-  const availableYears = useMemo(() => {
-    const years = new Set<number>([now.getFullYear()])
-    quotations.forEach(q => { if (q.year) years.add(q.year) })
-    return [...years].sort((a, b) => b - a)
-  }, [quotations, now])
-
   return (
     <div className="p-6 space-y-6">
 
@@ -427,59 +507,13 @@ export default function DashboardClient({
 
         <div className="flex flex-wrap gap-2 items-center">
 
-          {/* ── Selector de período: Hoy + meses del año ── */}
-          <div className="flex flex-wrap gap-1 items-center">
-            {/* Hoy */}
-            <button
-              onClick={() => { setCalStart(todayStr); setCalEnd(todayStr); setDrill(null) }}
-              className="text-xs px-2.5 py-1.5 rounded-lg border font-semibold transition-colors"
-              style={calStart === todayStr && calEnd === todayStr
-                ? { background: '#082e62', color: '#fff', borderColor: '#082e62' }
-                : { background: '#fff', color: '#374151', borderColor: '#e5e7eb' }
-              }>
-              Hoy
-            </button>
-            {/* Meses del año actual — todos los 12 */}
-            {MONTH_NAMES.map((name, idx) => {
-              const m = idx + 1
-              const y = now.getFullYear()
-              const firstDay = `${y}-${String(m).padStart(2, '0')}-01`
-              const lastDate = new Date(y, m, 0)
-              const lastDay  = `${y}-${String(m).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`
-              const isActive = calStart === firstDay && calEnd === lastDay
-              return (
-                <button key={m}
-                  onClick={() => { setCalStart(firstDay); setCalEnd(lastDay); setDrill(null) }}
-                  className="text-xs px-2.5 py-1.5 rounded-lg border transition-colors"
-                  style={isActive
-                    ? { background: '#1B8A4B', color: '#fff', borderColor: '#1B8A4B', fontWeight: 700 }
-                    : { background: '#fff', color: '#374151', borderColor: '#e5e7eb' }
-                  }>
-                  {name.slice(0, 3)}
-                </button>
-              )
-            })}
-            {/* Rango personalizado */}
-            <div ref={calRef} className="relative">
-              <button
-                onClick={() => setShowCal(v => !v)}
-                title="Rango personalizado"
-                className="text-xs px-2 py-1.5 rounded-lg border transition-colors"
-                style={showCal ? { background: '#f3f4f6', borderColor: '#1B8A4B' } : { background: '#fff', borderColor: '#e5e7eb', color: '#6b7280' }}>
-                📅
-              </button>
-              {showCal && (
-                <div className="absolute right-0 top-full mt-1 z-50">
-                  <CalendarPicker
-                    start={calStart} end={calEnd}
-                    todayStr={todayStr}
-                    availableYears={availableYears}
-                    onChange={(s, e) => { setCalStart(s); setCalEnd(e); setDrill(null); setShowCal(false) }}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
+          {/* ── Selector de período ── */}
+          <DateRangePicker
+            calStart={calStart} calEnd={calEnd}
+            todayStr={todayStr}
+            quotations={quotations}
+            onChange={(s, e) => { setCalStart(s); setCalEnd(e); setDrill(null) }}
+          />
 
           {/* Ejecutiva */}
           <select value={ejecutiva}
