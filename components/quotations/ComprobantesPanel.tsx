@@ -46,6 +46,13 @@ export default function ComprobantesPanel({ quotationId, userRole }: { quotation
   const [rejectId, setRejectId] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState('')
 
+  // Upload form state
+  const [showUpload, setShowUpload] = useState(false)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadTipo, setUploadTipo] = useState('abono1')
+  const [uploadAmount, setUploadAmount] = useState('')
+  const [uploading, setUploading] = useState(false)
+
   const isSuperAdmin = userRole === 'superadmin' || userRole === 'gerencia' || userRole === 'admin'
 
   const load = useCallback(async () => {
@@ -78,6 +85,42 @@ export default function ComprobantesPanel({ quotationId, userRole }: { quotation
       alert(e instanceof Error ? e.message : 'Error al validar')
     } finally {
       setWorking(null)
+    }
+  }
+
+  async function uploadComprobante() {
+    if (!uploadFile) { alert('Selecciona un archivo'); return }
+    setUploading(true)
+    try {
+      const b64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = e => resolve((e.target?.result as string).split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(uploadFile)
+      })
+      const r = await fetch('/api/comprobantes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          _action: 'upload',
+          quotation_id: quotationId,
+          tipo: uploadTipo,
+          filename: uploadFile.name,
+          content_type: uploadFile.type || 'application/octet-stream',
+          file_data: b64,
+          amount: uploadAmount ? parseInt(uploadAmount.replace(/\D/g, ''), 10) : null,
+        }),
+      })
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? 'Error') }
+      setShowUpload(false)
+      setUploadFile(null)
+      setUploadAmount('')
+      setUploadTipo('abono1')
+      await load()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error al subir')
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -132,6 +175,62 @@ export default function ComprobantesPanel({ quotationId, userRole }: { quotation
       {items.length > 0 && (
         <div className="flex justify-end">
           <button onClick={load} className="text-xs text-gray-400 hover:text-gray-600 underline">Actualizar</button>
+        </div>
+      )}
+
+      {/* Upload button */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowUpload(v => !v)}
+          className="px-3 py-1.5 text-xs rounded-lg border font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+          style={{ borderColor: '#d1d5db' }}>
+          {showUpload ? '✕ Cancelar subida' : '⬆ Subir comprobante (desde CRM)'}
+        </button>
+      </div>
+
+      {/* Upload form */}
+      {showUpload && (
+        <div className="rounded-xl border bg-white p-4 space-y-3" style={{ borderColor: '#d1d5db' }}>
+          <p className="text-xs font-semibold text-gray-700">Subir comprobante en nombre del cliente</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Tipo de pago</label>
+              <select
+                value={uploadTipo}
+                onChange={e => setUploadTipo(e.target.value)}
+                className="w-full text-xs p-2 border rounded-lg focus:outline-none focus:ring-1 focus:ring-green-500"
+                style={{ borderColor: '#d1d5db' }}>
+                <option value="abono1">1er abono (50%)</option>
+                <option value="abono2">2do abono (50%)</option>
+                <option value="total">Pago total</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Monto $</label>
+              <input
+                type="text"
+                value={uploadAmount}
+                onChange={e => setUploadAmount(e.target.value)}
+                placeholder="Ej: 71200"
+                className="w-full text-xs p-2 border rounded-lg focus:outline-none focus:ring-1 focus:ring-green-500"
+                style={{ borderColor: '#d1d5db' }} />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Archivo (PDF o imagen)</label>
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              onChange={e => setUploadFile(e.target.files?.[0] ?? null)}
+              className="w-full text-xs text-gray-600 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" />
+          </div>
+          <button
+            onClick={uploadComprobante}
+            disabled={uploading || !uploadFile}
+            className="w-full py-2 text-xs rounded-lg font-semibold text-white disabled:opacity-50 transition-colors"
+            style={{ background: '#1B8A4B' }}>
+            {uploading ? 'Subiendo...' : '⬆ Subir comprobante'}
+          </button>
         </div>
       )}
 

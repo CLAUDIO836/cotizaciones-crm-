@@ -2937,6 +2937,55 @@ if ($action === 'quotation_comprobantes_list') {
     }
 }
 
+if ($action === 'comprobante_upload_crm') {
+    requireAuth();
+    $b        = body();
+    $qid      = $b['quotation_id'] ?? '';
+    $tipo     = in_array($b['tipo'] ?? '', ['abono1','abono2','total']) ? $b['tipo'] : 'abono1';
+    $filename = $b['filename']     ?? 'comprobante';
+    $ctype    = $b['content_type'] ?? 'application/octet-stream';
+    $b64      = $b['file_data']    ?? '';
+    $amount   = isset($b['amount']) && $b['amount'] !== '' ? intval($b['amount']) : null;
+
+    if (!$qid) err('quotation_id requerido');
+    if (!$b64) err('file_data requerido');
+
+    // Find the most recent approval letter for this quotation
+    $ls = db()->prepare('SELECT token FROM approval_letters WHERE CONVERT(quotation_id USING latin1) = ? ORDER BY created_at DESC LIMIT 1');
+    $ls->execute([$qid]);
+    $letter = $ls->fetch();
+    if (!$letter) err('No existe carta de aprobación para esta cotización', 404);
+    $ltoken = $letter['token'];
+
+    // Ensure table exists (without specifying charset to match existing table)
+    try { db()->exec("CREATE TABLE IF NOT EXISTS letter_comprobantes (
+        id           VARCHAR(36)   NOT NULL PRIMARY KEY,
+        letter_token VARCHAR(100)  NOT NULL,
+        tipo         VARCHAR(20)   NOT NULL DEFAULT 'abono1',
+        filename     VARCHAR(255)  NOT NULL,
+        file_data    MEDIUMBLOB    NOT NULL,
+        content_type VARCHAR(100)  NOT NULL DEFAULT 'application/octet-stream',
+        uploaded_at  DATETIME      NOT NULL DEFAULT NOW(),
+        INDEX idx_lc_token (letter_token)
+    )"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN amount BIGINT NULL DEFAULT NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN validation_status ENUM('pending','vendedor_ok','approved','rejected') NOT NULL DEFAULT 'pending'"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN vendedor_ok_by VARCHAR(36) NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN vendedor_ok_at DATETIME NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN superadmin_ok_by VARCHAR(36) NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN superadmin_ok_at DATETIME NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN rejection_reason TEXT NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN rejected_by VARCHAR(36) NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN rejected_at DATETIME NULL"); } catch (Exception $e) {}
+
+    $data = base64_decode($b64);
+    if ($data === false) err('Base64 inválido');
+
+    db()->prepare('INSERT INTO letter_comprobantes (id,letter_token,tipo,filename,file_data,content_type,amount) VALUES (?,?,?,?,?,?,?)')
+        ->execute([uuid(), $ltoken, $tipo, $filename, $data, $ctype, $amount]);
+    ok(['saved' => true]);
+}
+
 if ($action === 'comprobante_validate') {
     requireAuth();
     $b = body();

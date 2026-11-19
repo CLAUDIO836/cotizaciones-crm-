@@ -20,7 +20,11 @@ export async function POST(req: NextRequest) {
   const token = await getToken()
   if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   const body = await req.json()
-  const action = body._action === 'reject' ? 'comprobante_reject' : 'comprobante_validate'
+  const action = body._action === 'reject'
+    ? 'comprobante_reject'
+    : body._action === 'upload'
+      ? 'comprobante_upload_crm'
+      : 'comprobante_validate'
   try {
     const r = await crmPost(action, body, {}, token)
     return NextResponse.json(r)
