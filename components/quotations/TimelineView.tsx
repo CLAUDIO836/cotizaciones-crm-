@@ -198,7 +198,12 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                   </div>
                 )}
                 {cards.map(q => {
-                  const { label: statusLabel, color } = getStatusLabel(q.status)
+                  const { label: statusLabel } = getStatusLabel(q.status)
+                  const statusStyle: React.CSSProperties = q.status === 'won'
+                    ? { background: '#16a34a', color: '#fff', border: '1.5px solid #15803d' }
+                    : q.status === 'lost'
+                      ? { background: '#dc2626', color: '#fff', border: '1.5px solid #b91c1c' }
+                      : { background: '#2563eb', color: '#fff', border: '1.5px solid #1d4ed8' }
                   const vColor     = q.vendedor_name ? getVendedorColor(q.vendedor_name) : 'var(--pipe-orange)'
                   const brand      = getBrandBadge(q.company)
                   const closePrev  = getClosePrev(q)
@@ -252,7 +257,8 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                           {/* Top row */}
                           <div className="flex items-center justify-between gap-1 mb-1">
                             <div className="flex items-center gap-1 flex-shrink-0">
-                              <span className={`inline-flex px-1.5 py-0 rounded-full text-xs font-semibold ${color}`}>
+                              <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold"
+                                style={statusStyle}>
                                 {statusLabel}
                               </span>
                               <span className="inline-flex px-1.5 py-0 rounded-full text-xs font-bold"
@@ -283,7 +289,7 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                             <p className="text-base font-bold" style={{ color: 'var(--pipe-orange)' }}>
                               {formatCLP(q.total)}
                             </p>
-                            {isAdmin && q.vendedor_name && (
+                            {q.vendedor_name && (
                               <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
                                 <div className="flex items-center gap-1.5">
                                   <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold uppercase"
@@ -294,7 +300,7 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                                 </div>
                                 {q.created_at && (
                                   <span className="text-[10px] text-gray-400">
-                                    {new Date(q.created_at).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                    creado {new Date(q.created_at).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                                   </span>
                                 )}
                               </div>
