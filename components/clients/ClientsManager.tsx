@@ -13,6 +13,15 @@ import { Plus, Pencil, AlertTriangle, Trash2, ChevronDown, ChevronRight, Phone, 
 import { formatRut, validateRut, rutKey, autoFormatRut } from '@/lib/rut'
 import { validateChileanPhone, autoFormatPhone, phoneError, PHONE_DEFAULT_MOBILE } from '@/lib/phone'
 
+const MEDIO_LABELS: Record<string, string> = {
+  al_contado: 'Contado 100%',
+  cincuenta_cincuenta: 'Contado 50%+50%',
+  credito_7: 'Crédito 7 días',
+  credito_15: 'Crédito 15 días',
+  credito_30: 'Crédito 30 días',
+  credito_60: 'Crédito 60 días',
+}
+
 interface Contact {
   id: string
   name: string
@@ -452,6 +461,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
               <th className="text-left px-4 py-3 font-medium text-gray-500">Nombre</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500">RUT</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500">Email</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">Medio de pago</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500">Teléfono</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -459,13 +469,13 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
           <tbody>
             {clients.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-gray-400">
+                <td colSpan={7} className="text-center py-12 text-gray-400">
                   No hay clientes registrados
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-gray-400">
+                <td colSpan={7} className="text-center py-12 text-gray-400">
                   No hay resultados para &ldquo;{search}&rdquo;
                 </td>
               </tr>
@@ -500,6 +510,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                       </td>
                       <td className="px-4 py-3 text-gray-600">{c.rut ? formatRut(c.rut) : '—'}</td>
                       <td className="px-4 py-3 text-gray-600">{c.email ?? '—'}</td>
+                      <td className="px-4 py-3 text-gray-600 text-sm">{MEDIO_LABELS[c.medio_pago ?? ''] ?? '—'}</td>
                       <td className="px-4 py-3 text-gray-600">{c.phone ?? '—'}</td>
                       <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center gap-2 justify-end">
