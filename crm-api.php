@@ -2556,6 +2556,8 @@ if ($action === 'letters_create') {
 }
 
 if ($action === 'letters_get') {
+    // Ensure forma_pago column exists (migration for old letters)
+    try { db()->exec("ALTER TABLE approval_letters ADD COLUMN forma_pago VARCHAR(30) NULL"); } catch (Exception $e) {}
     $token = $_GET['token'] ?? '';
     $stmt = db()->prepare('SELECT al.*, q.pipedrive_deal_id, q.number AS quotation_number FROM approval_letters al LEFT JOIN quotations q ON q.id=al.quotation_id WHERE al.token=?');
     $stmt->execute([$token]);

@@ -54,6 +54,15 @@ const TIPO_LABELS: Record<string, string> = {
   total:  'Pago total (100%)',
 }
 
+const MEDIO_LABELS: Record<string, string> = {
+  al_contado:        'Contado — 1 pago total (100%)',
+  cincuenta_cincuenta: 'Contado — 50% + 50%',
+  credito_7:         'Crédito 7 días',
+  credito_15:        'Crédito 15 días',
+  credito_30:        'Crédito 30 días',
+  credito_60:        'Crédito 60 días',
+}
+
 // Qué tipos de comprobante corresponden según forma_pago
 function getTiposComprobante(formaPago: string): ('abono1' | 'abono2' | 'total')[] {
   if (formaPago === 'al_contado') return ['total']
@@ -83,13 +92,12 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
   const token = letter.token as string
 
   useEffect(() => {
-    if (!readOnly && !done) return
     if (!showComprobantes) return
     fetch(`/api/approval-letters/${token}/comprobantes`)
       .then(r => r.json())
       .then(j => setComprobantes(j.data ?? []))
       .catch(() => {})
-  }, [token, readOnly, done, showComprobantes])
+  }, [token, showComprobantes])
 
   async function handleUpload() {
     if (!uploadFile) { setUploadError('Selecciona un archivo'); return }
@@ -208,6 +216,7 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
             <Row label="Fecha de retorno" value={formatFecha(letter.fecha_retorno as string, letter.hora_retorno as string)} wide />
           )}
           {letter.seller_name && <Row label="Ejecutivo/a a cargo" value={letter.seller_name as string} />}
+          {formaPago && MEDIO_LABELS[formaPago] && <Row label="Medio de pago acordado" value={MEDIO_LABELS[formaPago]} wide />}
         </div>
         {letter.total && (
           <div style={{ marginTop: 20, padding: '14px 18px', background: '#f0fdf4', borderRadius: 10, border: '1px solid #86efac', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -259,8 +268,8 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
         )}
       </div>
 
-      {/* Comprobantes — en modo readOnly también se muestran, si aplica */}
-      {readOnly && showComprobantes && (
+      {/* Comprobantes — siempre visible si aplica (antes y después de firmar) */}
+      {showComprobantes && (
         <ComprobanteUploadSection
           comprobantes={comprobantes}
           uploadTipo={uploadTipo}
