@@ -848,14 +848,16 @@ if ($action === 'quotations_summary') {
 if ($action === 'won_from_date') {
     requireAdmin();
     $from = $_GET['from'] ?? '2026-01-01';
+    // Columnas seguras; contact_email puede no existir, usamos COALESCE desde contacts
     $stmt = db()->prepare('
-        SELECT q.id, q.number, q.total, q.fecha_salida, q.fecha_retorno, q.desde, q.hasta,
-               q.status, q.contact_email, q.contact_name,
+        SELECT q.id, q.number, q.total, q.fecha_salida, q.desde, q.hasta,
                c.name AS client_name, c.email AS client_email,
+               COALESCE(ct.email, c.email, \'\') AS contact_email,
                p.name AS seller_name
         FROM quotations q
         LEFT JOIN clients c ON c.id = q.client_id
         LEFT JOIN profiles p ON p.id = q.user_id
+        LEFT JOIN contacts ct ON ct.id = q.contact_id
         WHERE q.status = \'won\'
           AND q.fecha_salida >= ?
         ORDER BY q.fecha_salida ASC

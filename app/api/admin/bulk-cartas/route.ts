@@ -13,9 +13,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Solo admin' }, { status: 403 })
 
   const from = req.nextUrl.searchParams.get('from') ?? '2026-11-19'
-  const r = await fetch(`${CRM_API}?action=won_from_date&from=${encodeURIComponent(from)}&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
-  const d = await r.json()
-  return NextResponse.json({ quotations: d.data ?? [] })
+  try {
+    const r = await fetch(`${CRM_API}?action=won_from_date&from=${encodeURIComponent(from)}&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
+    const text = await r.text()
+    const d = JSON.parse(text)
+    return NextResponse.json({ quotations: d.data ?? [] })
+  } catch (e) {
+    return NextResponse.json({ error: `Error al consultar PHP: ${String(e)}` }, { status: 500 })
+  }
 }
 
 // POST — envía correo + carta a todas las cotizaciones del listado
