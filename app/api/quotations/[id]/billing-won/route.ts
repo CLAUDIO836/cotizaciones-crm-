@@ -5,11 +5,12 @@ import { sendViaGmail, MailAttachment } from '@/lib/gmail'
 const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 
 const FORMA_LABELS: Record<string, string> = {
-  al_contado:        'Al contado',
-  cincuenta_cincuenta: '50% abono + 50% antes del servicio',
-  credito_7:         'Crédito a 7 días',
-  credito_15:        'Crédito a 15 días',
-  credito_30:        'Crédito a 30 días',
+  al_contado:          'Contado — 1 pago total',
+  cincuenta_cincuenta: 'Contado — 50% + 50%',
+  credito_7:           'Crédito a 7 días',
+  credito_15:          'Crédito a 15 días',
+  credito_30:          'Crédito a 30 días',
+  credito_60:          'Crédito a 60 días',
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

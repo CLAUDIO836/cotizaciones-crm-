@@ -15,11 +15,12 @@ interface Props {
 }
 
 const FORMAS_PAGO = [
-  { key: 'al_contado',          label: 'Al contado',                        desc: 'Pago total antes del servicio', color: '#1B8A4B', isCredit: false },
-  { key: 'cincuenta_cincuenta', label: '50% + 50%',                         desc: '50% abono ahora, 50% antes del servicio', color: '#0ea5e9', isCredit: false },
+  { key: 'al_contado',          label: 'Contado — 1 pago total',             desc: 'Pago total antes del servicio', color: '#1B8A4B', isCredit: false },
+  { key: 'cincuenta_cincuenta', label: 'Contado — 50% + 50%',               desc: '50% abono ahora, 50% antes del servicio', color: '#0ea5e9', isCredit: false },
   { key: 'credito_7',           label: 'Crédito 7 días',                    desc: 'Requiere autorización de gerencia', color: '#f97316', isCredit: true },
   { key: 'credito_15',          label: 'Crédito 15 días',                   desc: 'Requiere autorización de gerencia', color: '#f97316', isCredit: true },
   { key: 'credito_30',          label: 'Crédito 30 días',                   desc: 'Requiere autorización de gerencia', color: '#f97316', isCredit: true },
+  { key: 'credito_60',          label: 'Crédito 60 días',                   desc: 'Requiere autorización de gerencia', color: '#f97316', isCredit: true },
 ]
 
 export default function BillingModal({ quotationId, billingName, billingRut, billingAddr, onSuccess, onClose, alreadyWon = false }: Props) {

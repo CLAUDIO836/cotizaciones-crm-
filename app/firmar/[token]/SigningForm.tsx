@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const CLAUSES = [
   { title: '1. Objeto del Contrato', text: 'El prestador de servicios se obliga a proporcionar el servicio de transporte indicado en la presente carta, en las fechas, horarios y lugares especificados, con los medios de transporte y conductores idóneos para tal efecto.' },
@@ -39,6 +39,21 @@ function formatFecha(fecha: string, hora?: string): string {
 
 type Letter = Record<string, string | number | null>
 
+interface Comprobante {
+  id: string
+  tipo: string
+  filename: string
+  content_type: string
+  uploaded_at: string
+  size_bytes: number
+}
+
+const TIPO_LABELS: Record<string, string> = {
+  abono1: '1er abono (50%)',
+  abono2: '2do abono (50%)',
+  total:  'Pago total (100%)',
+}
+
 export default function SigningForm({ letter, readOnly }: { letter: Letter; readOnly?: boolean }) {
   const [signedName, setSignedName] = useState('')
   const [signedRut, setSignedRut] = useState('')
@@ -46,6 +61,47 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
+
+  // Comprobantes
+  const [comprobantes, setComprobantes] = useState<Comprobante[]>([])
+  const [uploadTipo, setUploadTipo] = useState<'abono1' | 'abono2' | 'total'>('abono1')
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadDone, setUploadDone] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const token = letter.token as string
+
+  useEffect(() => {
+    if (!readOnly && !done) return
+    fetch(`/api/approval-letters/${token}/comprobantes`)
+      .then(r => r.json())
+      .then(j => setComprobantes(j.data ?? []))
+      .catch(() => {})
+  }, [token, readOnly, done])
+
+  async function handleUpload() {
+    if (!uploadFile) { setUploadError('Selecciona un archivo'); return }
+    setUploading(true)
+    setUploadError('')
+    const fd = new FormData()
+    fd.append('tipo', uploadTipo)
+    fd.append('file', uploadFile)
+    try {
+      const res = await fetch(`/api/approval-letters/${token}/comprobantes`, { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error')
+      setUploadDone(true)
+      setUploadFile(null)
+      // Reload list
+      const r2 = await fetch(`/api/approval-letters/${token}/comprobantes`)
+      const j2 = await r2.json()
+      setComprobantes(j2.data ?? [])
+    } catch (e) {
+      setUploadError(String(e))
+    } finally {
+      setUploading(false)
+    }
+  }
 
   async function handleSign() {
     if (!signedName.trim() || !signedRut.trim()) {
@@ -82,13 +138,26 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
 
   if (done) {
     return (
-      <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 40, textAlign: 'center' }}>
-        <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-          <svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 32, textAlign: 'center' }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+            <svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+          </div>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: '#111827', margin: '0 0 8px' }}>¡Documento firmado exitosamente!</h2>
+          <p style={{ color: '#6b7280', margin: '0 0 4px', fontSize: 15 }}>Has aprobado el servicio de transporte.</p>
+          <p style={{ color: '#6b7280', margin: 0, fontSize: 13 }}>Se ha registrado tu firma con validez legal según la Ley 19.799.</p>
         </div>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: '#111827', margin: '0 0 8px' }}>¡Documento firmado exitosamente!</h2>
-        <p style={{ color: '#6b7280', margin: '0 0 4px', fontSize: 15 }}>Has aprobado el servicio de transporte.</p>
-        <p style={{ color: '#6b7280', margin: 0, fontSize: 13 }}>Se ha registrado tu firma con validez legal según la Ley 19.799.</p>
+        <ComprobanteUploadSection
+          comprobantes={comprobantes}
+          uploadTipo={uploadTipo}
+          uploadFile={uploadFile}
+          uploading={uploading}
+          uploadDone={uploadDone}
+          uploadError={uploadError}
+          onTipo={setUploadTipo}
+          onFile={setUploadFile}
+          onUpload={handleUpload}
+        />
       </div>
     )
   }
@@ -175,6 +244,21 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
         )}
       </div>
 
+      {/* Comprobantes — en modo readOnly también se muestran */}
+      {readOnly && (
+        <ComprobanteUploadSection
+          comprobantes={comprobantes}
+          uploadTipo={uploadTipo}
+          uploadFile={uploadFile}
+          uploading={uploading}
+          uploadDone={uploadDone}
+          uploadError={uploadError}
+          onTipo={setUploadTipo}
+          onFile={setUploadFile}
+          onUpload={handleUpload}
+        />
+      )}
+
       {/* Firma — solo si no es readOnly */}
       {!readOnly && (
         <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 24 }}>
@@ -210,6 +294,106 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
           </p>
         </div>
       )}
+    </div>
+  )
+}
+
+interface UploadSectionProps {
+  comprobantes: Comprobante[]
+  uploadTipo: 'abono1' | 'abono2' | 'total'
+  uploadFile: File | null
+  uploading: boolean
+  uploadDone: boolean
+  uploadError: string
+  onTipo: (v: 'abono1' | 'abono2' | 'total') => void
+  onFile: (f: File | null) => void
+  onUpload: () => void
+}
+
+function ComprobanteUploadSection({ comprobantes, uploadTipo, uploadFile, uploading, uploadDone, uploadError, onTipo, onFile, onUpload }: UploadSectionProps) {
+  return (
+    <div style={{ background: 'white', borderRadius: 16, border: '2px solid #bfdbfe', padding: 24 }}>
+      <h2 style={{ fontSize: 17, fontWeight: 700, color: '#082e62', margin: '0 0 6px', borderBottom: '2px solid #e52832', paddingBottom: 10 }}>
+        Comprobantes de Pago
+      </h2>
+      <p style={{ margin: '12px 0 16px', fontSize: 13, color: '#6b7280' }}>
+        Para confirmar tu reserva, sube aquí el comprobante de transferencia o depósito. Puedes subir más de uno.
+      </p>
+
+      {/* Comprobantes ya subidos */}
+      {comprobantes.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Documentos recibidos</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {comprobantes.map(c => (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8 }}>
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#166534', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {TIPO_LABELS[c.tipo] ?? c.tipo}
+                  </p>
+                  <p style={{ margin: '1px 0 0', fontSize: 11, color: '#4ade80' }}>{c.filename} · {(c.size_bytes / 1024).toFixed(0)} KB</p>
+                </div>
+                <p style={{ margin: 0, fontSize: 11, color: '#86efac', flexShrink: 0 }}>
+                  {new Date(c.uploaded_at).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Formulario de subida */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Tipo de pago *</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {(['abono1', 'abono2', 'total'] as const).map(t => (
+              <button key={t} type="button" onClick={() => onTipo(t)}
+                style={{ padding: '7px 14px', borderRadius: 8, border: `2px solid ${uploadTipo === t ? '#082e62' : '#e5e7eb'}`,
+                  background: uploadTipo === t ? '#eef2ff' : 'white', fontSize: 13, fontWeight: uploadTipo === t ? 700 : 400,
+                  color: uploadTipo === t ? '#082e62' : '#6b7280', cursor: 'pointer' }}>
+                {TIPO_LABELS[t]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Archivo (imagen o PDF) *</label>
+          <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '16px 12px',
+            border: '2px dashed #d1d5db', borderRadius: 10, cursor: 'pointer',
+            background: uploadFile ? '#f0fdf4' : 'white', transition: 'all 0.15s' }}>
+            {uploadFile
+              ? <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#166534' }}>✅ {uploadFile.name}</p>
+              : <>
+                  <svg width="24" height="24" fill="none" viewBox="0 0 24 24"><path stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" d="M12 16V8m0 0-3 3m3-3 3 3"/><path stroke="#9ca3af" strokeWidth="1.5" d="M20 16.7A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/></svg>
+                  <p style={{ margin: 0, fontSize: 13, color: '#9ca3af' }}>Haz clic para seleccionar el comprobante</p>
+                  <p style={{ margin: 0, fontSize: 11, color: '#d1d5db' }}>PDF o imagen (máx. 10MB)</p>
+                </>
+            }
+            <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
+              onChange={e => onFile(e.target.files?.[0] ?? null)} />
+          </label>
+        </div>
+
+        {uploadError && (
+          <div style={{ padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8 }}>
+            <p style={{ margin: 0, color: '#991b1b', fontSize: 13 }}>{uploadError}</p>
+          </div>
+        )}
+        {uploadDone && (
+          <div style={{ padding: '8px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8 }}>
+            <p style={{ margin: 0, color: '#166534', fontSize: 13, fontWeight: 600 }}>✅ Comprobante enviado. Puedes subir otro si necesitas.</p>
+          </div>
+        )}
+
+        <button onClick={onUpload} disabled={uploading || !uploadFile}
+          style={{ padding: '13px 20px', borderRadius: 10, border: 'none', fontSize: 15, fontWeight: 700,
+            background: uploading || !uploadFile ? '#d1d5db' : '#082e62', color: 'white',
+            cursor: uploading || !uploadFile ? 'not-allowed' : 'pointer' }}>
+          {uploading ? 'Enviando...' : 'Enviar comprobante'}
+        </button>
+      </div>
     </div>
   )
 }

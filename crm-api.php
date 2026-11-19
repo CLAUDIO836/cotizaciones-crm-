@@ -2569,6 +2569,74 @@ if ($action === 'letters_sign') {
     ok($stmt2->fetch());
 }
 
+// ── LETTER COMPROBANTES ───────────────────────────────────────────────────────
+if ($action === 'letters_save_comprobante') {
+    $b = body();
+    $token    = $b['token']    ?? '';
+    $tipo     = $b['tipo']     ?? 'abono1'; // abono1 | abono2 | total
+    $filename = $b['filename'] ?? 'comprobante';
+    $b64      = $b['data']     ?? '';
+    $ctype    = $b['content_type'] ?? 'application/octet-stream';
+    if (!$token || !$b64) err('token y data requeridos');
+
+    // Verify letter exists
+    $stmt = db()->prepare('SELECT id FROM approval_letters WHERE token = ?');
+    $stmt->execute([$token]);
+    if (!$stmt->fetch()) err('Carta no encontrada', 404);
+
+    // Auto-create table
+    db()->exec("CREATE TABLE IF NOT EXISTS letter_comprobantes (
+        id          VARCHAR(36)   NOT NULL PRIMARY KEY,
+        letter_token VARCHAR(100) NOT NULL,
+        tipo        VARCHAR(20)   NOT NULL DEFAULT 'abono1',
+        filename    VARCHAR(255)  NOT NULL,
+        file_data   MEDIUMBLOB    NOT NULL,
+        content_type VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+        uploaded_at DATETIME      NOT NULL DEFAULT NOW(),
+        INDEX idx_lc_token (letter_token)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $data = base64_decode($b64);
+    if ($data === false) err('Base64 inválido');
+
+    db()->prepare('INSERT INTO letter_comprobantes (id,letter_token,tipo,filename,file_data,content_type) VALUES (?,?,?,?,?,?)')
+        ->execute([uuid(), $token, $tipo, $filename, $data, $ctype]);
+    ok(['saved' => true]);
+}
+
+if ($action === 'letters_get_comprobantes') {
+    $token = $_GET['token'] ?? '';
+    if (!$token) err('token requerido');
+    // Auto-create table if doesn't exist
+    db()->exec("CREATE TABLE IF NOT EXISTS letter_comprobantes (
+        id          VARCHAR(36)   NOT NULL PRIMARY KEY,
+        letter_token VARCHAR(100) NOT NULL,
+        tipo        VARCHAR(20)   NOT NULL DEFAULT 'abono1',
+        filename    VARCHAR(255)  NOT NULL,
+        file_data   MEDIUMBLOB    NOT NULL,
+        content_type VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+        uploaded_at DATETIME      NOT NULL DEFAULT NOW(),
+        INDEX idx_lc_token (letter_token)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $stmt = db()->prepare('SELECT id,tipo,filename,content_type,uploaded_at,LENGTH(file_data) AS size_bytes FROM letter_comprobantes WHERE letter_token=? ORDER BY uploaded_at ASC');
+    $stmt->execute([$token]);
+    ok($stmt->fetchAll());
+}
+
+if ($action === 'letters_download_comprobante') {
+    $id = $_GET['id'] ?? '';
+    if (!$id) err('id requerido');
+    $stmt = db()->prepare('SELECT filename,file_data,content_type FROM letter_comprobantes WHERE id=?');
+    $stmt->execute([$id]);
+    $row = $stmt->fetch();
+    if (!$row) err('No encontrado', 404);
+    header('Content-Type: ' . $row['content_type']);
+    header('Content-Disposition: inline; filename="' . addslashes($row['filename']) . '"');
+    header('Content-Length: ' . strlen($row['file_data']));
+    echo $row['file_data'];
+    exit;
+}
+
 // ── LEAD REQUESTS ─────────────────────────────────────────────────────────────
 if ($action === 'leads_pending_count') {
     requireAuth();
