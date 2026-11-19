@@ -30,6 +30,7 @@ interface Quotation {
   activity_count?: number
   notes_count?: number
   created_at?: string
+  payment_status?: string | null
 }
 
 interface Props {
@@ -306,6 +307,13 @@ export default function TimelineView({ quotations, isAdmin }: Props) {
                               </div>
                             )}
                           </div>
+
+                          {/* Badge PAGADO */}
+                          {q.payment_status === 'paid' && (
+                            <p className="text-xs mt-1 font-bold text-green-700">
+                              💳 PAGADO
+                            </p>
+                          )}
 
                           {/* Fecha de cierre previsto — todos los estados */}
                           {closePrev && (

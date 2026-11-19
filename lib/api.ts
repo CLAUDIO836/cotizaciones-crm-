@@ -243,6 +243,7 @@ export interface QuotationSummary {
   updated_at?: string   // última vez que cambió el estado (quotation_status_log)
   activity_count?: number  // cantidad de gestiones registradas
   notes_count?: number     // cantidad de notas registradas
+  payment_status?: 'paid' | null
 }
 
 export interface Quotation {

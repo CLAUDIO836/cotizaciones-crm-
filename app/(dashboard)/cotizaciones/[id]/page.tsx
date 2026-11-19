@@ -47,14 +47,17 @@ export default async function CotizacionDetailPage({
   const user = await getSession()
   const isReadOnly = user?.role === 'coordinador'
 
-  const [q, activities, notes, pipelines, emailsData] = await Promise.all([
+  const [q, activities, notes, pipelines, emailsData, comprobantesData] = await Promise.all([
     fetchQuotation(id),
     fetchActivities(id),
     fetchNotes(id),
     fetchPipelines(),
     crmGet('emails_list', { quotation_id: id }).catch(() => ({ data: [] })),
+    crmGet('quotation_comprobantes_list', { quotation_id: id }).catch(() => ({ data: [] })),
   ])
   const emails = (emailsData?.data as { id: string }[]) ?? []
+  const comprobantes = (Array.isArray(comprobantesData?.data) ? comprobantesData.data : []) as { validation_status: string }[]
+  const isFullyPaid = comprobantes.length > 0 && comprobantes.every(c => c.validation_status === 'approved')
 
   if (!q) notFound()
 
@@ -436,6 +439,16 @@ export default async function CotizacionDetailPage({
 
             {tab === 'datos' && (
               <div className="max-w-xl space-y-4">
+                {/* Banner PAGADO */}
+                {isFullyPaid && (
+                  <div className="flex items-center gap-3 bg-green-50 border border-green-300 rounded-xl px-4 py-3">
+                    <span className="text-2xl">💳</span>
+                    <div>
+                      <p className="text-sm font-bold text-green-800 uppercase tracking-wide">Pago completamente validado</p>
+                      <p className="text-xs text-green-700">Todos los comprobantes han sido aprobados</p>
+                    </div>
+                  </div>
+                )}
                 {/* Carta de aprobación — nueva y única para open y won */}
                 {!isReadOnly && (q.status === 'open' || q.status === 'won') && !isDiario && (
                   <div className="space-y-3">

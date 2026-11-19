@@ -38,6 +38,7 @@ interface Quotation {
   pipeline_name?: string
   pipeline_color?: string
   company?: string
+  payment_status?: string | null
 }
 
 interface Props {
@@ -113,6 +114,9 @@ function QuotationCard({
       <p className="text-base font-bold mb-2" style={{ color: '#1B8A4B' }}>
         {formatCLP(q.total)}
       </p>
+      {q.payment_status === 'paid' && (
+        <p className="text-xs font-bold text-green-700 mb-1">💳 PAGADO</p>
+      )}
       <div className="flex flex-col gap-1">
         {q.expiry_date && (
           <div className="flex items-center gap-1.5 text-xs text-gray-400">

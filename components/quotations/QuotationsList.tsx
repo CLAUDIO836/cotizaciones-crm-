@@ -18,6 +18,7 @@ interface Quotation {
   client_name?: string
   vendedor_name?: string
   vendedor_id?: string
+  payment_status?: string | null
 }
 
 interface Vendedor { id: string; name: string }
@@ -127,9 +128,14 @@ export default function QuotationsList({ quotations, vendedores, isAdmin, curren
                     <td className="px-4 py-3 font-medium text-gray-900">{q.client_name ?? '—'}</td>
                     {isAdmin && <td className="px-4 py-3 text-gray-600">{q.vendedor_name ?? '—'}</td>}
                     <td className="px-4 py-3">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
-                        {label}
-                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
+                          {label}
+                        </span>
+                        {q.payment_status === 'paid' && (
+                          <span className="text-[10px] font-bold text-green-700">💳 PAGADO</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-500">{formatDate(q.issue_date)}</td>
                     <td className="px-4 py-3 text-gray-500">{q.expiry_date ? formatDate(q.expiry_date) : '—'}</td>

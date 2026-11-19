@@ -1238,6 +1238,45 @@ if ($action === 'run_migration') {
         ok(['migration' => 'add_activity_count', 'view_updated' => true, 'rows' => $count]);
     }
 
+    if ($num === 'add_payment_status') {
+        db()->exec("CREATE OR REPLACE VIEW quotations_summary AS
+            SELECT q.id, q.number, q.status, q.etapa, q.company, q.company_id,
+                   q.total, q.issue_date, q.fecha_salida,
+                   YEAR(COALESCE(q.fecha_salida, q.issue_date)) AS `year`,
+                   MONTH(COALESCE(q.fecha_salida, q.issue_date)) AS `month`,
+                   q.user_id AS vendedor_id, p.name AS vendedor_name,
+                   c.name AS client_name, c.rut AS client_rut,
+                   q.client_id, q.pipeline_id,
+                   q.pipedrive_deal_id, q.created_at,
+                   (SELECT sl.changed_at FROM quotation_status_log sl
+                    WHERE sl.quotation_id = q.id
+                    ORDER BY sl.changed_at DESC LIMIT 1) AS updated_at,
+                   (SELECT COUNT(*) FROM quotation_activities a
+                    WHERE a.quotation_id = q.id) AS activity_count,
+                   (SELECT COUNT(*) FROM quotation_notes n
+                    WHERE n.quotation_id = q.id) AS notes_count,
+                   (CASE
+                     WHEN EXISTS(
+                       SELECT 1 FROM letter_comprobantes lc
+                       JOIN approval_letters al ON CONVERT(al.token USING latin1) = lc.letter_token
+                       WHERE CONVERT(al.quotation_id USING latin1) = q.id
+                     ) AND NOT EXISTS(
+                       SELECT 1 FROM letter_comprobantes lc2
+                       JOIN approval_letters al2 ON CONVERT(al2.token USING latin1) = lc2.letter_token
+                       WHERE CONVERT(al2.quotation_id USING latin1) = q.id
+                         AND lc2.validation_status != 'approved'
+                     )
+                     THEN 'paid'
+                     ELSE NULL
+                   END) AS payment_status
+            FROM quotations q
+            LEFT JOIN profiles p ON p.id = q.user_id
+            LEFT JOIN clients c ON c.id = q.client_id
+            WHERE q.is_deleted = 0 OR q.is_deleted IS NULL");
+        $count = (int)db()->query("SELECT COUNT(*) FROM quotations_summary")->fetchColumn();
+        ok(['migration' => 'add_payment_status', 'view_updated' => true, 'rows' => $count]);
+    }
+
     if ($num === 'backfill_from_sync_log') {
         // Reconstruir historial de cambios de estado desde sync_log (webhooks Pipedrive)
         // after_data contiene {"status":"won"|"lost"|"open",...} cuando cambió el status
@@ -2987,7 +3026,7 @@ if ($action === 'comprobante_upload_crm') {
 }
 
 if ($action === 'comprobante_validate') {
-    requireAuth();
+    $user = requireAuth();
     $b = body();
     $id    = $b['id']    ?? '';
     $level = $b['level'] ?? '';
