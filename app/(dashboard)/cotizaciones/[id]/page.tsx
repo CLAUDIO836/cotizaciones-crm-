@@ -17,6 +17,7 @@ import ResyncButton from '@/components/quotations/ResyncButton'
 import DocumentsTab from '@/components/quotations/DocumentsTab'
 import AgentButton from '@/components/quotations/AgentButton'
 import EmailsPanel from '@/components/quotations/EmailsPanel'
+import HistorialPanel from '@/components/quotations/HistorialPanel'
 import FechaServicioEditor from '@/components/quotations/FechaServicioEditor'
 import DuplicateButton from '@/components/quotations/DuplicateButton'
 import OwnerEditor from '@/components/quotations/OwnerEditor'
@@ -425,6 +426,7 @@ export default async function CotizacionDetailPage({
             activitiesCount={activities.length}
             notesCount={notes.length}
             emailsCount={emails.length}
+            historialCount={0}
           />
 
           {/* Tab content */}
@@ -563,6 +565,12 @@ export default async function CotizacionDetailPage({
                   userRole={user?.role ?? ''}
                   status={q.status ?? ''}
                 />
+              </div>
+            )}
+
+            {tab === 'historial' && (
+              <div className="max-w-2xl">
+                <HistorialPanel quotationId={id} />
               </div>
             )}
 

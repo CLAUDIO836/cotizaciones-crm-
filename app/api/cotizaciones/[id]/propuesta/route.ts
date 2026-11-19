@@ -1,5 +1,7 @@
 import { fetchQuotation } from '@/lib/api'
 import { formatCLP } from '@/lib/utils'
+
+export const dynamic = 'force-dynamic'
 import * as fs from 'fs'
 import * as path from 'path'
 

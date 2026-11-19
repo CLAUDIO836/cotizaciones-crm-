@@ -1089,6 +1089,36 @@ if ($action === 'quotations_update') {
             $itemStmt->execute([uuid(), $id, $item['codigo'] ?? null, $item['description'], $item['pasajeros'] ?? null, $qty, $up, $item['subtotal'] ?? $qty * $up, $item['sort_order'] ?? $i]);
         }
     }
+
+    // Registrar edición en historial (silencioso si falla)
+    try {
+        db()->exec("CREATE TABLE IF NOT EXISTS quotation_edit_log (
+            id VARCHAR(36) NOT NULL PRIMARY KEY,
+            quotation_id VARCHAR(36) NOT NULL,
+            user_id VARCHAR(36) NULL,
+            summary TEXT NOT NULL,
+            edited_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_qedit_qid (quotation_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+        $editedFields = array_keys(array_intersect_key($b, array_flip(array_keys($fields))));
+        if (isset($b['items'])) $editedFields[] = 'items';
+        $editSummary = 'Cotización editada';
+        if (!empty($editedFields)) {
+            $labelMap = [
+                'total'=>'Total','fecha_salida'=>'Fecha salida','desde'=>'Origen','hasta'=>'Destino',
+                'vehicle_type'=>'Tipo vehículo','status'=>'Estado','notes'=>'Notas','items'=>'Líneas de cotización',
+                'hora_salida'=>'Hora salida','fecha_retorno'=>'Fecha retorno','hora_retorno'=>'Hora retorno',
+                'observaciones'=>'Observaciones','client_id'=>'Cliente',
+            ];
+            $labels = array_map(fn($f) => $labelMap[$f] ?? $f, $editedFields);
+            $editSummary = 'Editado: ' . implode(', ', $labels);
+        }
+        $eid = bin2hex(random_bytes(16));
+        db()->prepare('INSERT INTO quotation_edit_log (id, quotation_id, user_id, summary) VALUES (?,?,?,?)')
+            ->execute([$eid, $id, $user['id'] ?? null, $editSummary]);
+    } catch (\Throwable $e) {}
+
     ok();
 }
 
@@ -2424,6 +2454,105 @@ if ($action === 'emails_save') {
     $row = db()->prepare('SELECT * FROM quotation_emails WHERE id = ?');
     $row->execute([$id]);
     ok($row->fetch());
+}
+
+// ── QUOTATION HISTORY (ediciones + correos + estado) ─────────────────────────
+
+if ($action === 'quotation_history_list') {
+    requireAuth();
+    $qid = $_GET['quotation_id'] ?? '';
+    if (!$qid) err('quotation_id requerido');
+
+    // Crear tabla de ediciones si no existe
+    db()->exec("CREATE TABLE IF NOT EXISTS quotation_edit_log (
+        id           VARCHAR(36)  NOT NULL PRIMARY KEY,
+        quotation_id VARCHAR(36)  NOT NULL,
+        user_id      VARCHAR(36)  NULL,
+        summary      TEXT         NOT NULL,
+        edited_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_qedit_qid (quotation_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $rows = [];
+
+    // 1. Ediciones manuales
+    $stmt = db()->prepare('
+        SELECT e.id, e.edited_at AS event_at, "edit" AS tipo,
+               COALESCE(p.name, "Sistema") AS usuario, e.summary AS descripcion
+        FROM quotation_edit_log e
+        LEFT JOIN profiles p ON p.id = e.user_id
+        WHERE e.quotation_id = ?
+    ');
+    $stmt->execute([$qid]);
+    foreach ($stmt->fetchAll() as $r) $rows[] = $r;
+
+    // 2. Correos enviados/recibidos
+    $stmt2 = db()->prepare('
+        SELECT id, sent_at AS event_at,
+               IF(direction="received","email_in","email_out") AS tipo,
+               from_email AS usuario,
+               CONCAT(IF(direction="received","Correo recibido de ","Correo enviado a "), to_email, " — ", subject) AS descripcion
+        FROM quotation_emails
+        WHERE quotation_id = ?
+    ');
+    $stmt2->execute([$qid]);
+    foreach ($stmt2->fetchAll() as $r) $rows[] = $r;
+
+    // 3. Cambios de estado
+    $stmt3 = db()->prepare('
+        SELECT sl.id, sl.changed_at AS event_at, "status" AS tipo,
+               COALESCE(p.name, sl.changed_by, "Sistema") AS usuario,
+               CONCAT("Estado cambiado de ",
+                      CASE sl.old_status WHEN "open" THEN "Abierta" WHEN "won" THEN "Ganada" WHEN "lost" THEN "Perdida" ELSE COALESCE(sl.old_status,"—") END,
+                      " a ",
+                      CASE sl.new_status WHEN "open" THEN "Abierta" WHEN "won" THEN "Ganada" WHEN "lost" THEN "Perdida" ELSE COALESCE(sl.new_status,"—") END
+               ) AS descripcion
+        FROM quotation_status_log sl
+        LEFT JOIN profiles p ON p.id = sl.changed_by
+        WHERE sl.quotation_id = ?
+    ');
+    $stmt3->execute([$qid]);
+    foreach ($stmt3->fetchAll() as $r) $rows[] = $r;
+
+    // 4. Carta firmada
+    try {
+        $stmt4 = db()->prepare('
+            SELECT id, signed_at AS event_at, "firma" AS tipo,
+                   COALESCE(signed_name, "Cliente") AS usuario,
+                   CONCAT("Carta firmada por ", COALESCE(signed_name,"el cliente"), " (", COALESCE(signed_rut,"sin RUT"), ")") AS descripcion
+            FROM approval_letters
+            WHERE quotation_id = ? AND signed_at IS NOT NULL
+        ');
+        $stmt4->execute([$qid]);
+        foreach ($stmt4->fetchAll() as $r) $rows[] = $r;
+    } catch (\Throwable $e) {}
+
+    // Ordenar por fecha desc
+    usort($rows, fn($a,$b) => strcmp($b['event_at'] ?? '', $a['event_at'] ?? ''));
+
+    ok($rows);
+}
+
+if ($action === 'quotation_edit_log_save') {
+    requireAuth();
+    $b = body();
+    $qid     = $b['quotation_id'] ?? '';
+    $summary = trim($b['summary'] ?? '');
+    if (!$qid || !$summary) err('quotation_id y summary requeridos');
+
+    db()->exec("CREATE TABLE IF NOT EXISTS quotation_edit_log (
+        id           VARCHAR(36)  NOT NULL PRIMARY KEY,
+        quotation_id VARCHAR(36)  NOT NULL,
+        user_id      VARCHAR(36)  NULL,
+        summary      TEXT         NOT NULL,
+        edited_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_qedit_qid (quotation_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $id = bin2hex(random_bytes(16));
+    db()->prepare('INSERT INTO quotation_edit_log (id, quotation_id, user_id, summary) VALUES (?,?,?,?)')
+        ->execute([$id, $qid, $user['id'] ?? null, $summary]);
+    ok(['id' => $id]);
 }
 
 // ── QUOTATION APPROVALS ───────────────────────────────────────────────────────

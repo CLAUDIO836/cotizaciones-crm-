@@ -1,6 +1,8 @@
 import { fetchQuotation } from '@/lib/api'
 import { generateQuotationHtml } from '@/lib/quotation-html'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const baseUrl = new URL(req.url).origin
   const { id } = await params
@@ -10,6 +12,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!q) return new Response('Not found', { status: 404 })
 
   return new Response(generateQuotationHtml(q, baseUrl), {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+    },
   })
 }

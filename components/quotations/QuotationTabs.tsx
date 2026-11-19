@@ -9,6 +9,7 @@ interface Props {
   activitiesCount: number
   notesCount: number
   emailsCount?: number
+  historialCount?: number
 }
 
 const TABS = [
@@ -17,14 +18,16 @@ const TABS = [
   { key: 'gestiones',  label: 'Gestiones' },
   { key: 'notas',      label: 'Notas' },
   { key: 'correos',    label: 'Correos' },
+  { key: 'historial',  label: 'Historial' },
   { key: 'documentos', label: 'Documentos' },
 ]
 
-export default function QuotationTabs({ quotationId, currentTab, activitiesCount, notesCount, emailsCount }: Props) {
+export default function QuotationTabs({ quotationId, currentTab, activitiesCount, notesCount, emailsCount, historialCount }: Props) {
   const badges: Record<string, number> = {
     gestiones: activitiesCount,
     notas: notesCount,
     correos: emailsCount ?? 0,
+    historial: historialCount ?? 0,
   }
 
   return (

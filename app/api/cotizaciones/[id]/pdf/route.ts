@@ -3,6 +3,8 @@ import { QuotationPDF } from '@/lib/pdf/generate'
 import { TKSQuotationPDF } from '@/lib/pdf/tks-quotation'
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchQuotation, getToken } from '@/lib/api'
+
+export const dynamic = 'force-dynamic'
 import React from 'react'
 
 export async function GET(
