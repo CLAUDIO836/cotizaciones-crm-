@@ -146,7 +146,7 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
           {status === 'won' && (
             <Button variant="outline" size="sm" onClick={() => setShowBilling(true)} disabled={loading}>
               <Upload className="w-4 h-4 mr-1.5" />
-              Comprobantes
+              Cambiar forma de pago
             </Button>
           )}
           {isAdmin && (
