@@ -79,8 +79,8 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
     billing_rut:  (letter.client_rut  as string) ?? '',
     billing_address: '',
     billing_glosa: '',
+    billing_obs: '',
   })
-  const [billingErrors, setBillingErrors] = useState({ billing_name: false, billing_rut: false })
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
@@ -108,16 +108,8 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
   }, [token, showComprobantes])
 
   async function handleSign() {
-    const nameErr = !billing.billing_name.trim()
-    const rutErr  = !billing.billing_rut.trim()
-    setBillingErrors({ billing_name: nameErr, billing_rut: rutErr })
-
     if (!signedName.trim() || !signedRut.trim()) {
       setError('Debes ingresar tu nombre y RUT para firmar.')
-      return
-    }
-    if (nameErr || rutErr) {
-      setError('Completa los datos de facturación marcados en rojo.')
       return
     }
     setLoading(true)
@@ -242,22 +234,11 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
               Ingrese los datos para emitir la factura del servicio.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <Field
-                label="Razón social / Nombre"
-                value={billing.billing_name}
-                onChange={v => { setBilling(b => ({ ...b, billing_name: v })); setBillingErrors(e => ({ ...e, billing_name: false })) }}
-                required
-                hasError={billingErrors.billing_name}
-              />
-              <Field
-                label="RUT de facturación"
-                value={billing.billing_rut}
-                onChange={v => { setBilling(b => ({ ...b, billing_rut: v })); setBillingErrors(e => ({ ...e, billing_rut: false })) }}
-                required
-                hasError={billingErrors.billing_rut}
-              />
+              <LockedField label="Razón social / Nombre" value={billing.billing_name} />
+              <LockedField label="RUT de facturación" value={billing.billing_rut} />
               <Field label="Dirección" value={billing.billing_address} onChange={v => setBilling(b => ({ ...b, billing_address: v }))} />
               <Field label="Glosa / detalle factura" value={billing.billing_glosa} onChange={v => setBilling(b => ({ ...b, billing_glosa: v }))} />
+              <Field label="Observación" value={billing.billing_obs} onChange={v => setBilling(b => ({ ...b, billing_obs: v }))} placeholder="Observaciones adicionales para la factura (opcional)" />
             </div>
           </>
         )}
@@ -496,6 +477,27 @@ function Field({ label, value, onChange, placeholder, required, hasError }: {
           fontFamily: 'inherit', background: hasError ? '#fff5f5' : 'white',
         }}
       />
+    </div>
+  )
+}
+
+function LockedField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>
+        {label} <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: 11 }}>(preconfigurado)</span>
+      </label>
+      <div style={{
+        width: '100%', boxSizing: 'border-box', padding: '10px 13px', borderRadius: 8,
+        border: '1px solid #e5e7eb', fontSize: 16, color: '#374151',
+        background: '#f9fafb', display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+          <path stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+        </svg>
+        <span>{value || <em style={{ color: '#9ca3af', fontSize: 14 }}>No especificado</em>}</span>
+      </div>
     </div>
   )
 }

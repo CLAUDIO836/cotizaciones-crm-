@@ -2638,16 +2638,19 @@ if ($action === 'letters_sign') {
     $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
 
+    try { db()->exec("ALTER TABLE approval_letters ADD COLUMN billing_obs TEXT NULL DEFAULT NULL"); } catch (Exception $e) {}
+
     db()->prepare('
         UPDATE approval_letters SET
           signed_at=NOW(), signed_name=?, signed_rut=?, signed_ip=?, signed_user_agent=?,
-          billing_name=?, billing_rut=?, billing_address=?, billing_company=?, billing_glosa=?
+          billing_name=?, billing_rut=?, billing_address=?, billing_company=?, billing_glosa=?,
+          billing_obs=?
         WHERE token=?
     ')->execute([
         $signed_name, $signed_rut, $ip, $ua,
         $b['billing_name'] ?? null, $b['billing_rut'] ?? null,
         $b['billing_address'] ?? null, $b['billing_company'] ?? null,
-        $b['billing_glosa'] ?? null, $token,
+        $b['billing_glosa'] ?? null, $b['billing_obs'] ?? null, $token,
     ]);
     // Return letter with updated data for PDF generation in Next.js
     $stmt2 = db()->prepare('SELECT al.*, q.pipedrive_deal_id, q.number AS quotation_number FROM approval_letters al LEFT JOIN quotations q ON q.id=al.quotation_id WHERE al.token=?');
