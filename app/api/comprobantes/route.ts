@@ -8,8 +8,12 @@ export async function GET(req: NextRequest) {
   if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   const { searchParams } = new URL(req.url)
   const quotationId = searchParams.get('quotation_id') ?? ''
-  const r = await crmGet('quotation_comprobantes_list', { quotation_id: quotationId }, token)
-  return NextResponse.json(r)
+  try {
+    const r = await crmGet('quotation_comprobantes_list', { quotation_id: quotationId }, token)
+    return NextResponse.json(r)
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
 }
 
 export async function POST(req: NextRequest) {
