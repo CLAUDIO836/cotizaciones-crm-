@@ -845,6 +845,25 @@ if ($action === 'quotations_summary') {
     ok($stmt->fetchAll());
 }
 
+if ($action === 'won_from_date') {
+    requireAdmin();
+    $from = $_GET['from'] ?? '2026-01-01';
+    $stmt = db()->prepare('
+        SELECT q.id, q.number, q.total, q.fecha_salida, q.fecha_retorno, q.desde, q.hasta,
+               q.status, q.contact_email, q.contact_name,
+               c.name AS client_name, c.email AS client_email,
+               p.name AS seller_name
+        FROM quotations q
+        LEFT JOIN clients c ON c.id = q.client_id
+        LEFT JOIN profiles p ON p.id = q.user_id
+        WHERE q.status = \'won\'
+          AND q.fecha_salida >= ?
+        ORDER BY q.fecha_salida ASC
+    ');
+    $stmt->execute([$from]);
+    ok($stmt->fetchAll());
+}
+
 if ($action === 'quotations_get') {
     $id = $_GET['id'] ?? '';
     // Acceso público vía carta-token (para propuesta desde email al cliente)
