@@ -39,7 +39,7 @@ function formatFecha(fecha: string, hora?: string): string {
 
 type Letter = Record<string, string | number | null>
 
-export default function SigningForm({ letter }: { letter: Letter }) {
+export default function SigningForm({ letter, readOnly }: { letter: Letter; readOnly?: boolean }) {
   const [signedName, setSignedName] = useState('')
   const [signedRut, setSignedRut] = useState('')
   const [billing, setBilling] = useState({ billing_name: '', billing_rut: '', billing_address: '', billing_glosa: '' })
@@ -153,50 +153,63 @@ export default function SigningForm({ letter }: { letter: Letter }) {
         <h2 style={{ fontSize: 17, fontWeight: 700, color: '#082e62', margin: '0 0 6px', borderBottom: '2px solid #e52832', paddingBottom: 10 }}>
           Datos de Facturación
         </h2>
-        <p style={{ margin: '12px 0 16px', fontSize: 13, color: '#6b7280' }}>
-          Ingrese los datos para emitir la factura del servicio.
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <Field label="Razón social / Nombre *" value={billing.billing_name} onChange={v => setBilling(b => ({ ...b, billing_name: v }))} placeholder={letter.client_name as string} />
-          <Field label="RUT de facturación *" value={billing.billing_rut} onChange={v => setBilling(b => ({ ...b, billing_rut: v }))} placeholder={(letter.client_rut as string) ?? '12.345.678-9'} />
-          <Field label="Dirección" value={billing.billing_address} onChange={v => setBilling(b => ({ ...b, billing_address: v }))} />
-          <Field label="Glosa / detalle factura" value={billing.billing_glosa} onChange={v => setBilling(b => ({ ...b, billing_glosa: v }))} />
-        </div>
+        {readOnly ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px 24px', marginTop: 16 }}>
+            {letter.billing_name && <Row label="Razón social" value={letter.billing_name as string} />}
+            {letter.billing_rut  && <Row label="RUT facturación" value={letter.billing_rut as string} />}
+            {letter.billing_address && <Row label="Dirección" value={letter.billing_address as string} />}
+            {letter.billing_glosa && <Row label="Glosa" value={letter.billing_glosa as string} wide />}
+          </div>
+        ) : (
+          <>
+            <p style={{ margin: '12px 0 16px', fontSize: 13, color: '#6b7280' }}>
+              Ingrese los datos para emitir la factura del servicio.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <Field label="Razón social / Nombre *" value={billing.billing_name} onChange={v => setBilling(b => ({ ...b, billing_name: v }))} placeholder={letter.client_name as string} />
+              <Field label="RUT de facturación *" value={billing.billing_rut} onChange={v => setBilling(b => ({ ...b, billing_rut: v }))} placeholder={(letter.client_rut as string) ?? '12.345.678-9'} />
+              <Field label="Dirección" value={billing.billing_address} onChange={v => setBilling(b => ({ ...b, billing_address: v }))} />
+              <Field label="Glosa / detalle factura" value={billing.billing_glosa} onChange={v => setBilling(b => ({ ...b, billing_glosa: v }))} />
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Firma */}
-      <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 24 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 700, color: '#082e62', margin: '0 0 6px', borderBottom: '2px solid #e52832', paddingBottom: 10 }}>
-          Firma Digital
-        </h2>
-        <p style={{ margin: '12px 0 16px', fontSize: 13, color: '#6b7280' }}>
-          Al firmar, declara haber leído y aceptado todos los términos y condiciones. Válido según Ley 19.799.
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <Field label="Nombre completo del representante *" value={signedName} onChange={setSignedName} />
-          <Field label="RUT del representante *" value={signedRut} onChange={setSignedRut} placeholder="12.345.678-9" />
-        </div>
-        {error && (
-          <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca' }}>
-            <p style={{ margin: 0, color: '#991b1b', fontSize: 13 }}>{error}</p>
+      {/* Firma — solo si no es readOnly */}
+      {!readOnly && (
+        <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 24 }}>
+          <h2 style={{ fontSize: 17, fontWeight: 700, color: '#082e62', margin: '0 0 6px', borderBottom: '2px solid #e52832', paddingBottom: 10 }}>
+            Firma Digital
+          </h2>
+          <p style={{ margin: '12px 0 16px', fontSize: 13, color: '#6b7280' }}>
+            Al firmar, declara haber leído y aceptado todos los términos y condiciones. Válido según Ley 19.799.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Field label="Nombre completo del representante *" value={signedName} onChange={setSignedName} />
+            <Field label="RUT del representante *" value={signedRut} onChange={setSignedRut} placeholder="12.345.678-9" />
           </div>
-        )}
-        <button
-          onClick={handleSign}
-          disabled={loading}
-          style={{
-            marginTop: 20, width: '100%', padding: '16px 24px', borderRadius: 10,
-            background: loading ? '#9ca3af' : '#082e62', color: 'white', border: 'none',
-            fontSize: 16, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
-            transition: 'background 0.15s',
-          }}
-        >
-          {loading ? 'Firmando...' : 'Firmar y aceptar servicio'}
-        </button>
-        <p style={{ margin: '12px 0 0', fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>
-          Firma electrónica simple con validez legal — Ley N° 19.799
-        </p>
-      </div>
+          {error && (
+            <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca' }}>
+              <p style={{ margin: 0, color: '#991b1b', fontSize: 13 }}>{error}</p>
+            </div>
+          )}
+          <button
+            onClick={handleSign}
+            disabled={loading}
+            style={{
+              marginTop: 20, width: '100%', padding: '16px 24px', borderRadius: 10,
+              background: loading ? '#9ca3af' : '#082e62', color: 'white', border: 'none',
+              fontSize: 16, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+              transition: 'background 0.15s',
+            }}
+          >
+            {loading ? 'Firmando...' : 'Firmar y aceptar servicio'}
+          </button>
+          <p style={{ margin: '12px 0 0', fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>
+            Firma electrónica simple con validez legal — Ley N° 19.799
+          </p>
+        </div>
+      )}
     </div>
   )
 }

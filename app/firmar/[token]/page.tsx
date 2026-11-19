@@ -60,16 +60,29 @@ export default async function SignPage({ params }: { params: Promise<{ token: st
 }
 
 function AlreadySigned({ letter }: { letter: Record<string, string> }) {
+  // Muestra el contenido completo de la carta + banner de firma al tope
   return (
-    <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 32, textAlign: 'center' }}>
-      <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-        <svg width="28" height="28" fill="none" viewBox="0 0 24 24"><path stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Banner firma */}
+      <div style={{ background: '#f0fdf4', borderRadius: 14, border: '2px solid #86efac', padding: '18px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="24" height="24" fill="none" viewBox="0 0 24 24"><path stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+        </div>
+        <div>
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#15803d' }}>Documento firmado digitalmente</p>
+          <p style={{ margin: '3px 0 0', fontSize: 13, color: '#166534' }}>
+            Firmado por: <strong>{letter.signed_name}</strong>
+            {letter.signed_rut ? ` · RUT ${letter.signed_rut}` : ''}
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: '#4ade80' }}>
+            {new Date(letter.signed_at).toLocaleString('es-CL', { dateStyle: 'full', timeStyle: 'short' })}
+            {' · Validez legal Ley 19.799'}
+          </p>
+        </div>
       </div>
-      <h2 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: '0 0 8px' }}>Documento ya firmado</h2>
-      <p style={{ color: '#6b7280', margin: '0 0 4px', fontSize: 14 }}>Firmado por: <strong>{letter.signed_name}</strong></p>
-      <p style={{ color: '#6b7280', margin: 0, fontSize: 14 }}>
-        {new Date(letter.signed_at).toLocaleString('es-CL')}
-      </p>
+
+      {/* Contenido completo de la carta en modo lectura */}
+      <SigningForm letter={letter} readOnly />
     </div>
   )
 }
