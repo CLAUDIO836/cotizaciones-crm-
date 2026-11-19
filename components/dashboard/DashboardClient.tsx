@@ -425,24 +425,60 @@ export default function DashboardClient({
 
         <div className="flex flex-wrap gap-2 items-center">
 
-          {/* ── Selector de período (abre calendario) ── */}
-          <div ref={calRef} className="relative">
+          {/* ── Selector de período: Hoy + meses del año ── */}
+          <div className="flex flex-wrap gap-1 items-center">
+            {/* Hoy */}
             <button
-              onClick={() => setShowCal(v => !v)}
-              className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 transition-colors"
-              style={showCal ? { borderColor: '#1B8A4B', color: '#1B8A4B' } : {}}>
-              📅 <span>{rangeDescription}</span>
+              onClick={() => { setCalStart(todayStr); setCalEnd(todayStr); setDrill(null) }}
+              className="text-xs px-2.5 py-1.5 rounded-lg border font-semibold transition-colors"
+              style={calStart === todayStr && calEnd === todayStr
+                ? { background: '#082e62', color: '#fff', borderColor: '#082e62' }
+                : { background: '#fff', color: '#374151', borderColor: '#e5e7eb' }
+              }>
+              Hoy
             </button>
-            {showCal && (
-              <div className="absolute right-0 top-full mt-1 z-50">
-                <CalendarPicker
-                  start={calStart} end={calEnd}
-                  todayStr={todayStr}
-                  availableYears={availableYears}
-                  onChange={(s, e) => { setCalStart(s); setCalEnd(e); setDrill(null) }}
-                />
-              </div>
-            )}
+            {/* Meses del año actual */}
+            {MONTH_NAMES.map((name, idx) => {
+              const m = idx + 1
+              const y = now.getFullYear()
+              if (m > now.getMonth() + 1) return null
+              const firstDay = `${y}-${String(m).padStart(2, '0')}-01`
+              const lastDate = new Date(y, m, 0)
+              const lastDay  = `${y}-${String(m).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`
+              const clampEnd = lastDay > todayStr ? todayStr : lastDay
+              const isActive = calStart === firstDay && calEnd === clampEnd
+              return (
+                <button key={m}
+                  onClick={() => { setCalStart(firstDay); setCalEnd(clampEnd); setDrill(null) }}
+                  className="text-xs px-2.5 py-1.5 rounded-lg border transition-colors"
+                  style={isActive
+                    ? { background: '#1B8A4B', color: '#fff', borderColor: '#1B8A4B', fontWeight: 700 }
+                    : { background: '#fff', color: '#374151', borderColor: '#e5e7eb' }
+                  }>
+                  {name.slice(0, 3)}
+                </button>
+              )
+            })}
+            {/* Rango personalizado */}
+            <div ref={calRef} className="relative">
+              <button
+                onClick={() => setShowCal(v => !v)}
+                title="Rango personalizado"
+                className="text-xs px-2 py-1.5 rounded-lg border transition-colors"
+                style={showCal ? { background: '#f3f4f6', borderColor: '#1B8A4B' } : { background: '#fff', borderColor: '#e5e7eb', color: '#6b7280' }}>
+                📅
+              </button>
+              {showCal && (
+                <div className="absolute right-0 top-full mt-1 z-50">
+                  <CalendarPicker
+                    start={calStart} end={calEnd}
+                    todayStr={todayStr}
+                    availableYears={availableYears}
+                    onChange={(s, e) => { setCalStart(s); setCalEnd(e); setDrill(null); setShowCal(false) }}
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Ejecutiva */}
@@ -467,38 +503,9 @@ export default function DashboardClient({
 
       {/* ── KPIs del rango ── */}
       <div>
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <p className="text-xs text-gray-400 uppercase tracking-widest font-medium">
-            Gestión {rangeDescription}
-          </p>
-          {/* Botones rápidos de mes */}
-          <div className="flex flex-wrap gap-1">
-            {MONTH_NAMES.map((name, idx) => {
-              const m = idx + 1
-              const y = now.getFullYear()
-              const firstDay = `${y}-${String(m).padStart(2, '0')}-01`
-              const lastDate = new Date(y, m, 0)
-              const lastDay = `${y}-${String(m).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`
-              const clampedEnd = lastDay > todayStr ? todayStr : lastDay
-              const isActive = calStart === firstDay && calEnd === clampedEnd
-              // Solo mostrar meses hasta el actual
-              if (m > now.getMonth() + 1) return null
-              return (
-                <button
-                  key={m}
-                  onClick={() => { setCalStart(firstDay); setCalEnd(clampedEnd); setDrill(null) }}
-                  className="text-xs px-2 py-1 rounded-md border transition-colors"
-                  style={isActive
-                    ? { background: '#1B8A4B', color: '#fff', borderColor: '#1B8A4B', fontWeight: 700 }
-                    : { background: '#fff', color: '#374151', borderColor: '#e5e7eb' }
-                  }
-                >
-                  {name.slice(0, 3)}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        <p className="text-xs text-gray-400 uppercase tracking-widest mb-3 font-medium">
+          Gestión {rangeDescription}
+        </p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <KpiCard label="Creadas" count={createdInRange.length} monto={sum(createdInRange)} color="#6b7280" bg="#f3f4f6" />
           <KpiCard label="Ganadas" count={wonInRange.length} monto={sum(wonInRange)} color="#1B8A4B" bg="#f0fdf4" />
