@@ -2868,6 +2868,19 @@ if ($action === 'quotation_comprobantes_list') {
     $qid = $_GET['quotation_id'] ?? '';
     if (!$qid) err('quotation_id requerido');
 
+    // Crear tabla base si no existe
+    db()->exec("CREATE TABLE IF NOT EXISTS letter_comprobantes (
+        id           VARCHAR(36)   NOT NULL PRIMARY KEY,
+        letter_token VARCHAR(100)  NOT NULL,
+        tipo         VARCHAR(20)   NOT NULL DEFAULT 'abono1',
+        filename     VARCHAR(255)  NOT NULL,
+        file_data    MEDIUMBLOB    NOT NULL,
+        content_type VARCHAR(100)  NOT NULL DEFAULT 'application/octet-stream',
+        uploaded_at  DATETIME      NOT NULL DEFAULT NOW(),
+        amount       BIGINT        NULL,
+        INDEX idx_lc_token (letter_token)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
     // Auto-migrate validation columns
     try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN validation_status ENUM('pending','vendedor_ok','approved','rejected') NOT NULL DEFAULT 'pending'"); } catch (Exception $e) {}
     try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN vendedor_ok_by VARCHAR(36) NULL"); } catch (Exception $e) {}
@@ -2906,7 +2919,6 @@ if ($action === 'comprobante_validate') {
     $level = $b['level'] ?? '';
     if (!$id || !$level) err('id y level requeridos');
 
-    // Auto-migrate validation columns
     try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN validation_status ENUM('pending','vendedor_ok','approved','rejected') NOT NULL DEFAULT 'pending'"); } catch (Exception $e) {}
     try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN vendedor_ok_by VARCHAR(36) NULL"); } catch (Exception $e) {}
     try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN vendedor_ok_at DATETIME NULL"); } catch (Exception $e) {}
@@ -2941,7 +2953,6 @@ if ($action === 'comprobante_reject') {
     $reason = $b['reason'] ?? '';
     if (!$id) err('id requerido');
 
-    // Auto-migrate
     try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN validation_status ENUM('pending','vendedor_ok','approved','rejected') NOT NULL DEFAULT 'pending'"); } catch (Exception $e) {}
     try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN rejection_reason TEXT NULL"); } catch (Exception $e) {}
     try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN rejected_by VARCHAR(36) NULL"); } catch (Exception $e) {}
