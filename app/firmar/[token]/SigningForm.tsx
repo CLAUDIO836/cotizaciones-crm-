@@ -74,7 +74,13 @@ function getTiposComprobante(formaPago: string): ('abono1' | 'abono2' | 'total')
 export default function SigningForm({ letter, readOnly }: { letter: Letter; readOnly?: boolean }) {
   const [signedName, setSignedName] = useState('')
   const [signedRut, setSignedRut] = useState('')
-  const [billing, setBilling] = useState({ billing_name: '', billing_rut: '', billing_address: '', billing_glosa: '' })
+  const [billing, setBilling] = useState({
+    billing_name: (letter.client_name as string) ?? '',
+    billing_rut:  (letter.client_rut  as string) ?? '',
+    billing_address: '',
+    billing_glosa: '',
+  })
+  const [billingErrors, setBillingErrors] = useState({ billing_name: false, billing_rut: false })
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
@@ -102,12 +108,16 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
   }, [token, showComprobantes])
 
   async function handleSign() {
+    const nameErr = !billing.billing_name.trim()
+    const rutErr  = !billing.billing_rut.trim()
+    setBillingErrors({ billing_name: nameErr, billing_rut: rutErr })
+
     if (!signedName.trim() || !signedRut.trim()) {
       setError('Debes ingresar tu nombre y RUT para firmar.')
       return
     }
-    if (!billing.billing_rut.trim()) {
-      setError('Debes ingresar el RUT de facturación.')
+    if (nameErr || rutErr) {
+      setError('Completa los datos de facturación marcados en rojo.')
       return
     }
     setLoading(true)
@@ -232,8 +242,20 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
               Ingrese los datos para emitir la factura del servicio.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <Field label="Razón social / Nombre *" value={billing.billing_name} onChange={v => setBilling(b => ({ ...b, billing_name: v }))} placeholder={letter.client_name as string} />
-              <Field label="RUT de facturación *" value={billing.billing_rut} onChange={v => setBilling(b => ({ ...b, billing_rut: v }))} placeholder={(letter.client_rut as string) ?? '12.345.678-9'} />
+              <Field
+                label="Razón social / Nombre"
+                value={billing.billing_name}
+                onChange={v => { setBilling(b => ({ ...b, billing_name: v })); setBillingErrors(e => ({ ...e, billing_name: false })) }}
+                required
+                hasError={billingErrors.billing_name}
+              />
+              <Field
+                label="RUT de facturación"
+                value={billing.billing_rut}
+                onChange={v => { setBilling(b => ({ ...b, billing_rut: v })); setBillingErrors(e => ({ ...e, billing_rut: false })) }}
+                required
+                hasError={billingErrors.billing_rut}
+              />
               <Field label="Dirección" value={billing.billing_address} onChange={v => setBilling(b => ({ ...b, billing_address: v }))} />
               <Field label="Glosa / detalle factura" value={billing.billing_glosa} onChange={v => setBilling(b => ({ ...b, billing_glosa: v }))} />
             </div>
@@ -453,10 +475,15 @@ function Row({ label, value, wide }: { label: string; value: string; wide?: bool
   )
 }
 
-function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+function Field({ label, value, onChange, placeholder, required, hasError }: {
+  label: string; value: string; onChange: (v: string) => void
+  placeholder?: string; required?: boolean; hasError?: boolean
+}) {
   return (
     <div>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>{label}</label>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: hasError ? '#dc2626' : '#374151', marginBottom: 5 }}>
+        {label}{required && <span style={{ color: '#dc2626', marginLeft: 3 }}>*</span>}
+      </label>
       <input
         type="text"
         value={value}
@@ -464,8 +491,9 @@ function Field({ label, value, onChange, placeholder }: { label: string; value: 
         placeholder={placeholder}
         style={{
           width: '100%', boxSizing: 'border-box', padding: '10px 13px', borderRadius: 8,
-          border: '1px solid #d1d5db', fontSize: 16, color: '#111827', outline: 'none',
-          fontFamily: 'inherit', background: 'white',
+          border: `1px solid ${hasError ? '#dc2626' : '#d1d5db'}`,
+          fontSize: 16, color: '#111827', outline: 'none',
+          fontFamily: 'inherit', background: hasError ? '#fff5f5' : 'white',
         }}
       />
     </div>
