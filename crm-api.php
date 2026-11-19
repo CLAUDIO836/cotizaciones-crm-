@@ -2512,8 +2512,8 @@ if ($action === 'approvals_respond') {
 // ── APPROVAL LETTERS ─────────────────────────────────────────────────────────
 if ($action === 'letters_by_quotation') {
     requireAuth();
-    // Ensure comprobantes table and amount column exist
-    db()->exec("CREATE TABLE IF NOT EXISTS letter_comprobantes (
+    // Setup comprobantes table safely (all wrapped in try-catch to never break this endpoint)
+    try { db()->exec("CREATE TABLE IF NOT EXISTS letter_comprobantes (
         id          VARCHAR(36)   NOT NULL PRIMARY KEY,
         letter_token VARCHAR(100) NOT NULL,
         tipo        VARCHAR(20)   NOT NULL DEFAULT 'abono1',
@@ -2521,18 +2521,26 @@ if ($action === 'letters_by_quotation') {
         file_data   MEDIUMBLOB    NOT NULL,
         content_type VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
         uploaded_at DATETIME      NOT NULL DEFAULT NOW(),
+        amount      BIGINT        NULL DEFAULT NULL,
         INDEX idx_lc_token (letter_token)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"); } catch (Exception $e) {}
     try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN amount BIGINT NULL DEFAULT NULL"); } catch (Exception $e) {}
-    $stmt = db()->prepare('
-        SELECT al.*,
-          COALESCE((SELECT SUM(lc.amount) FROM letter_comprobantes lc WHERE lc.letter_token = al.token), 0) AS total_paid,
-          COALESCE((SELECT COUNT(*) FROM letter_comprobantes lc WHERE lc.letter_token = al.token), 0) AS comprobantes_count
-        FROM approval_letters al
-        WHERE al.quotation_id = ?
-        ORDER BY al.created_at DESC
-    ');
-    $stmt->execute([$_GET['quotation_id'] ?? '']);
+
+    // Try with payment totals; fallback to simple query if letter_comprobantes not ready
+    try {
+        $stmt = db()->prepare('
+            SELECT al.*,
+              COALESCE((SELECT SUM(lc.amount) FROM letter_comprobantes lc WHERE lc.letter_token = al.token), 0) AS total_paid,
+              COALESCE((SELECT COUNT(*) FROM letter_comprobantes lc WHERE lc.letter_token = al.token), 0) AS comprobantes_count
+            FROM approval_letters al
+            WHERE al.quotation_id = ?
+            ORDER BY al.created_at DESC
+        ');
+        $stmt->execute([$_GET['quotation_id'] ?? '']);
+    } catch (Exception $e) {
+        $stmt = db()->prepare('SELECT * FROM approval_letters WHERE quotation_id = ? ORDER BY created_at DESC');
+        $stmt->execute([$_GET['quotation_id'] ?? '']);
+    }
     ok($stmt->fetchAll());
 }
 
