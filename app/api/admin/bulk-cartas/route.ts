@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   if (!session || !['admin', 'superadmin'].includes(session.role ?? ''))
     return NextResponse.json({ error: 'Solo admin' }, { status: 403 })
 
-  const from = req.nextUrl.searchParams.get('from') ?? '2026-11-19'
+  const from = req.nextUrl.searchParams.get('from') ?? '2026-01-01'
   try {
     const r = await fetch(`${CRM_API}?action=won_from_date&from=${encodeURIComponent(from)}&token=${encodeURIComponent(token)}`, { cache: 'no-store' })
     const text = await r.text()

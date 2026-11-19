@@ -432,25 +432,18 @@ export default async function CotizacionDetailPage({
 
             {tab === 'datos' && (
               <div className="max-w-xl space-y-4">
-                {/* Aprobación comercial */}
-                {!isReadOnly && q.status === 'open' && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                    <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Aprobación de cotización</p>
-                    <p className="text-xs text-blue-600 mb-3">Genera un link de firma digital para que el cliente acepte o rechace esta cotización.</p>
-                    <QuotationApprovalButton quotationId={id} isTKS={isTKS} />
+                {/* Carta de aprobación — nueva y única para open y won */}
+                {!isReadOnly && (q.status === 'open' || q.status === 'won') && !isDiario && (
+                  <div className="space-y-3">
+                    {q.status === 'won' && <QuotationApprovalButton quotationId={id} wonMode isTKS={isTKS} />}
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                      <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">Carta de aprobación de servicio</p>
+                      <p className="text-xs text-green-600 mb-3">Genera y envía la carta de aprobación para que el cliente firme digitalmente.</p>
+                      <ApprovalLetterButton quotationId={id} />
+                    </div>
                   </div>
                 )}
-                {!isReadOnly && q.status === 'won' && (
-                  <div className="space-y-3">
-                    <QuotationApprovalButton quotationId={id} wonMode isTKS={isTKS} />
-                    {!isDiario && (
-                      <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                        <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">Carta de aprobación de servicio</p>
-                        <p className="text-xs text-green-600 mb-3">Genera y envía la carta de aprobación para que el cliente firme digitalmente antes del servicio.</p>
-                        <ApprovalLetterButton quotationId={id} />
-                      </div>
-                    )}
-                    {isDiario && (
+                {!isReadOnly && q.status === 'won' && isDiario && (
                       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                         <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Resultado de la cotización</p>
                         <p className="text-xs text-blue-600 mb-3">Registra si el cliente aprueba o rechaza esta propuesta de Traslado Diario.</p>
@@ -471,8 +464,6 @@ export default async function CotizacionDetailPage({
                           clientMedioPago={(q.clients as { medio_pago?: string })?.medio_pago ?? ''}
                         />
                       </div>
-                    )}
-                  </div>
                 )}
                 {/* Notas y términos */}
                 {(q.notes || (q.terms && q.terms !== 'NULL')) && (

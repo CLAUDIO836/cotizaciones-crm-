@@ -20,7 +20,7 @@ function formatCLP(n: number) {
 }
 
 export default function BulkCartasPage() {
-  const [from, setFrom] = useState('2026-11-19')
+  const [from, setFrom] = useState('2026-01-01')
   const [quotations, setQuotations] = useState<Quotation[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
