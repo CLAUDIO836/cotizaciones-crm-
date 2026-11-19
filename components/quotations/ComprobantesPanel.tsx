@@ -36,6 +36,7 @@ const TIPO_LABEL: Record<string, string> = {
   abono1: '1er abono (50%)',
   abono2: '2do abono (50%)',
   total: 'Pago total',
+  factura: 'Factura',
 }
 
 export default function ComprobantesPanel({ quotationId, userRole }: { quotationId: string; userRole: string }) {
@@ -46,12 +47,17 @@ export default function ComprobantesPanel({ quotationId, userRole }: { quotation
   const [rejectId, setRejectId] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState('')
 
-  // Upload form state
+  // Upload form state (comprobantes)
   const [showUpload, setShowUpload] = useState(false)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadTipo, setUploadTipo] = useState('abono1')
   const [uploadAmount, setUploadAmount] = useState('')
   const [uploading, setUploading] = useState(false)
+
+  // Upload factura state
+  const [showFacturaUpload, setShowFacturaUpload] = useState(false)
+  const [facturaFile, setFacturaFile] = useState<File | null>(null)
+  const [uploadingFactura, setUploadingFactura] = useState(false)
 
   const isSuperAdmin = userRole === 'superadmin' || userRole === 'gerencia' || userRole === 'admin'
 
@@ -124,6 +130,39 @@ export default function ComprobantesPanel({ quotationId, userRole }: { quotation
     }
   }
 
+  async function uploadFactura() {
+    if (!facturaFile) { alert('Selecciona un archivo'); return }
+    setUploadingFactura(true)
+    try {
+      const b64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = e => resolve((e.target?.result as string).split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(facturaFile)
+      })
+      const r = await fetch('/api/comprobantes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          _action: 'upload',
+          quotation_id: quotationId,
+          tipo: 'factura',
+          filename: facturaFile.name,
+          content_type: facturaFile.type || 'application/octet-stream',
+          file_data: b64,
+        }),
+      })
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? 'Error') }
+      setShowFacturaUpload(false)
+      setFacturaFile(null)
+      await load()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error al subir factura')
+    } finally {
+      setUploadingFactura(false)
+    }
+  }
+
   async function reject(id: string) {
     if (!rejectReason.trim()) { alert('Escribe el motivo de rechazo'); return }
     setWorking(id + 'reject')
@@ -152,9 +191,13 @@ export default function ComprobantesPanel({ quotationId, userRole }: { quotation
 
   if (error) return <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>
 
+  // Separar comprobantes de pago vs facturas
+  const comprobantes = items.filter(c => c.tipo !== 'factura')
+  const facturas     = items.filter(c => c.tipo === 'factura')
+
   // Global banner
-  const allApproved = items.length > 0 && items.every(c => c.validation_status === 'approved')
-  const anyRejected = items.some(c => c.validation_status === 'rejected')
+  const allApproved = comprobantes.length > 0 && comprobantes.every(c => c.validation_status === 'approved')
+  const anyRejected = comprobantes.some(c => c.validation_status === 'rejected')
 
   const banner = items.length === 0
     ? { bg: '#f9fafb', border: '#e5e7eb', text: 'Sin comprobantes subidos aún por el cliente.', icon: '📂' }
@@ -178,7 +221,7 @@ export default function ComprobantesPanel({ quotationId, userRole }: { quotation
         </div>
       )}
 
-      {/* Upload button */}
+      {/* Upload button (comprobantes) */}
       <div className="flex justify-end">
         <button
           onClick={() => setShowUpload(v => !v)}
@@ -234,7 +277,7 @@ export default function ComprobantesPanel({ quotationId, userRole }: { quotation
         </div>
       )}
 
-      {items.map(c => {
+      {comprobantes.map(c => {
         const isImg = c.content_type.startsWith('image/')
         const fileIcon = isImg ? '🖼' : '📄'
         const viewUrl = `/api/comprobantes/download?id=${c.id}`
@@ -363,6 +406,95 @@ export default function ComprobantesPanel({ quotationId, userRole }: { quotation
           </div>
         )
       })}
+
+      {/* ── Sección Factura (solo contabilidad, solo cuando pago validado) ── */}
+      {isSuperAdmin && allApproved && (
+        <div className="mt-2 rounded-xl border-2 overflow-hidden" style={{ borderColor: '#6366f1' }}>
+          <div className="px-4 py-3 flex items-center justify-between gap-2"
+            style={{ background: '#eef2ff' }}>
+            <div>
+              <p className="text-xs font-bold text-indigo-800 uppercase tracking-wide">🧾 Factura</p>
+              <p className="text-xs text-indigo-600">Documento emitido por contabilidad</p>
+            </div>
+            {!showFacturaUpload && (
+              <button
+                onClick={() => setShowFacturaUpload(true)}
+                className="px-3 py-1.5 text-xs rounded-lg font-semibold text-white transition-colors"
+                style={{ background: '#6366f1' }}>
+                ⬆ Subir factura
+              </button>
+            )}
+          </div>
+
+          {/* Facturas ya subidas */}
+          {facturas.length > 0 && (
+            <div className="divide-y" style={{ borderColor: '#e0e7ff' }}>
+              {facturas.map(f => {
+                const isImg = f.content_type.startsWith('image/')
+                const viewUrl = `/api/comprobantes/download?id=${f.id}`
+                const dlUrl   = `/api/comprobantes/download?id=${f.id}&download=1`
+                return (
+                  <div key={f.id} className="px-4 py-3 bg-white flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {isImg ? '🖼' : '📄'} {f.filename}
+                      </p>
+                      <p className="text-xs text-gray-400">{utcToChile(f.uploaded_at)} · {f.sadm_name ?? ''}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <a href={viewUrl} target="_blank" rel="noopener noreferrer"
+                        className="px-2 py-1 text-xs rounded-lg border font-medium text-indigo-600 hover:bg-indigo-50 transition-colors"
+                        style={{ borderColor: '#c7d2fe' }}>
+                        👁 Ver
+                      </a>
+                      <a href={dlUrl}
+                        className="px-2 py-1 text-xs rounded-lg border font-medium text-indigo-600 hover:bg-indigo-50 transition-colors"
+                        style={{ borderColor: '#c7d2fe' }}>
+                        ⬇ Descargar
+                      </a>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Upload form factura */}
+          {showFacturaUpload && (
+            <div className="px-4 py-4 bg-white space-y-3 border-t" style={{ borderColor: '#e0e7ff' }}>
+              <p className="text-xs font-semibold text-indigo-700">Subir factura emitida</p>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Archivo (PDF o imagen)</label>
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={e => setFacturaFile(e.target.files?.[0] ?? null)}
+                  className="w-full text-xs text-gray-600 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={uploadFactura}
+                  disabled={uploadingFactura || !facturaFile}
+                  className="px-4 py-2 text-xs rounded-lg font-semibold text-white disabled:opacity-50 transition-colors"
+                  style={{ background: '#6366f1' }}>
+                  {uploadingFactura ? 'Subiendo...' : '⬆ Subir factura'}
+                </button>
+                <button
+                  onClick={() => { setShowFacturaUpload(false); setFacturaFile(null) }}
+                  className="px-3 py-2 text-xs rounded-lg border font-medium text-gray-500 hover:bg-gray-50">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {facturas.length === 0 && !showFacturaUpload && (
+            <div className="px-4 py-3 bg-white">
+              <p className="text-xs text-gray-400 italic">Sin factura subida aún.</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

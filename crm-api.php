@@ -2980,7 +2980,7 @@ if ($action === 'comprobante_upload_crm') {
     requireAuth();
     $b        = body();
     $qid      = $b['quotation_id'] ?? '';
-    $tipo     = in_array($b['tipo'] ?? '', ['abono1','abono2','total']) ? $b['tipo'] : 'abono1';
+    $tipo     = in_array($b['tipo'] ?? '', ['abono1','abono2','total','factura']) ? $b['tipo'] : 'abono1';
     $filename = $b['filename']     ?? 'comprobante';
     $ctype    = $b['content_type'] ?? 'application/octet-stream';
     $b64      = $b['file_data']    ?? '';
@@ -3020,8 +3020,15 @@ if ($action === 'comprobante_upload_crm') {
     $data = base64_decode($b64);
     if ($data === false) err('Base64 inválido');
 
-    db()->prepare('INSERT INTO letter_comprobantes (id,letter_token,tipo,filename,file_data,content_type,amount) VALUES (?,?,?,?,?,?,?)')
-        ->execute([uuid(), $ltoken, $tipo, $filename, $data, $ctype, $amount]);
+    $user = requireAuth();
+    if ($tipo === 'factura') {
+        // Facturas subidas por contabilidad se aprueban automáticamente
+        db()->prepare('INSERT INTO letter_comprobantes (id,letter_token,tipo,filename,file_data,content_type,amount,validation_status,superadmin_ok_by,superadmin_ok_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())')
+            ->execute([uuid(), $ltoken, $tipo, $filename, $data, $ctype, $amount, 'approved', $user['id'] ?? null]);
+    } else {
+        db()->prepare('INSERT INTO letter_comprobantes (id,letter_token,tipo,filename,file_data,content_type,amount) VALUES (?,?,?,?,?,?,?)')
+            ->execute([uuid(), $ltoken, $tipo, $filename, $data, $ctype, $amount]);
+    }
     ok(['saved' => true]);
 }
 
