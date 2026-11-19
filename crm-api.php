@@ -389,6 +389,9 @@ if ($action === 'companies_delete') {
 // ── CLIENTS ─────────────────────────────────────────────────────────────────
 if ($action === 'clients_list') {
     requireAuth();
+    // Ensure medio_pago column exists and all clients have a value
+    try { db()->exec("ALTER TABLE clients ADD COLUMN medio_pago VARCHAR(30) NULL"); } catch (Exception $e) {}
+    db()->exec("UPDATE clients SET medio_pago = 'cincuenta_cincuenta' WHERE medio_pago IS NULL OR medio_pago = ''");
     ok(db()->query('SELECT * FROM clients ORDER BY name')->fetchAll());
 }
 

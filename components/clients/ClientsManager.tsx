@@ -55,7 +55,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
   const [clients, setClients] = useState<Client[]>(initialClients)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
-  const [form, setForm] = useState({ name: '', rut: '', email: '', phone: '', address: '', tipo: '' as '' | 'natural' | 'empresa' | 'colegio', medio_pago: '' })
+  const [form, setForm] = useState({ name: '', rut: '', email: '', phone: '', address: '', tipo: '' as '' | 'natural' | 'empresa' | 'colegio', medio_pago: 'cincuenta_cincuenta' })
   const [tipoFilter, setTipoFilter] = useState<'' | 'natural' | 'empresa' | 'colegio'>('')
   const [loading, setLoading] = useState(false)
   const [rutError, setRutError] = useState('')
@@ -244,7 +244,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
 
   function openNew() {
     setEditing(null)
-    setForm({ name: '', rut: '', email: '', phone: PHONE_DEFAULT_MOBILE, address: '', tipo: '', medio_pago: '' })
+    setForm({ name: '', rut: '', email: '', phone: PHONE_DEFAULT_MOBILE, address: '', tipo: '', medio_pago: 'cincuenta_cincuenta' })
     setRutError('')
     setDupClient(null)
     setOpen(true)
@@ -852,7 +852,6 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
               <Label>Medio de pago *</Label>
               <div className="grid grid-cols-1 gap-1.5">
                 {([
-                  ['', 'Sin definir'],
                   ['al_contado', 'Contado — 1 pago total'],
                   ['cincuenta_cincuenta', 'Contado — 50% + 50%'],
                   ['credito_7', 'Crédito 7 días'],
