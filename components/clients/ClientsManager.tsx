@@ -320,6 +320,9 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
     // Tipo obligatorio
     if (!form.tipo) { toast.error('Selecciona el tipo de cliente (Natural, Empresa o Colegio)'); return }
 
+    // Medio de pago obligatorio
+    if (!form.medio_pago) { toast.error('Selecciona el medio de pago del cliente'); return }
+
     // Persona natural: al menos nombre y apellido
     if (form.tipo === 'natural' && nameTrimmed.split(/\s+/).filter(Boolean).length < 2) {
       toast.error('Para persona natural ingresa al menos nombre y apellido'); return
@@ -846,7 +849,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Medio de pago habitual</Label>
+              <Label>Medio de pago *</Label>
               <div className="grid grid-cols-1 gap-1.5">
                 {([
                   ['', 'Sin definir'],

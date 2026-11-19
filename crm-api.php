@@ -2519,24 +2519,32 @@ if ($action === 'letters_create') {
     $b = body();
     $quotation_id = $b['quotation_id'] ?? '';
 
-    $stmt = db()->prepare('SELECT q.*,c.name AS cname,c.rut AS crut,c.email AS cemail,c.phone AS cphone,p.name AS pname FROM quotations q LEFT JOIN clients c ON c.id=q.client_id LEFT JOIN profiles p ON p.id=q.user_id WHERE q.id=?');
+    // Auto-migrate forma_pago column on approval_letters
+    try { db()->exec("ALTER TABLE approval_letters ADD COLUMN forma_pago VARCHAR(30) NULL"); } catch (Exception $e) {}
+    // Auto-migrate medio_pago column on clients (may not exist yet on first run)
+    try { db()->exec("ALTER TABLE clients ADD COLUMN medio_pago VARCHAR(30) NULL"); } catch (Exception $e) {}
+    // Set default medio_pago = cincuenta_cincuenta for all clients that don't have one
+    db()->exec("UPDATE clients SET medio_pago = 'cincuenta_cincuenta' WHERE medio_pago IS NULL OR medio_pago = ''");
+
+    $stmt = db()->prepare('SELECT q.*,c.name AS cname,c.rut AS crut,c.email AS cemail,c.phone AS cphone,c.medio_pago AS cmedio_pago,p.name AS pname FROM quotations q LEFT JOIN clients c ON c.id=q.client_id LEFT JOIN profiles p ON p.id=q.user_id WHERE q.id=?');
     $stmt->execute([$quotation_id]);
     $q = $stmt->fetch();
     if (!$q) err('Cotización no encontrada', 404);
 
     $id = uuid();
     $token = (db()->query('SELECT UUID() AS u')->fetch())['u'];
+    $formaPago = $q['cmedio_pago'] ?? 'cincuenta_cincuenta';
     db()->prepare('
         INSERT INTO approval_letters (id,token,quotation_id,client_name,client_rut,client_email,client_phone,
-          seller_name,desde,hasta,fecha_salida,hora_salida,fecha_retorno,hora_retorno,total,company_name,sent_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+          seller_name,desde,hasta,fecha_salida,hora_salida,fecha_retorno,hora_retorno,total,company_name,forma_pago,sent_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
     ')->execute([
         $id, $token, $quotation_id,
         $q['cname'], $q['crut'], $q['cemail'], $q['cphone'],
         $q['pname'], $q['desde'], $q['hasta'],
         $q['fecha_salida'], $q['hora_salida'],
         $q['fecha_retorno'], $q['hora_retorno'],
-        $q['total'], $q['company'] ?? 'Transccl SpA',
+        $q['total'], $q['company'] ?? 'Transccl SpA', $formaPago,
     ]);
     // Return full letter data including pipedrive_deal_id for immediate use
     $stmt2 = db()->prepare('SELECT al.*, q.pipedrive_deal_id, q.number AS quotation_number FROM approval_letters al LEFT JOIN quotations q ON q.id=al.quotation_id WHERE al.id=?');

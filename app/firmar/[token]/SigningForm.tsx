@@ -54,6 +54,13 @@ const TIPO_LABELS: Record<string, string> = {
   total:  'Pago total (100%)',
 }
 
+// Qué tipos de comprobante corresponden según forma_pago
+function getTiposComprobante(formaPago: string): ('abono1' | 'abono2' | 'total')[] {
+  if (formaPago === 'al_contado') return ['total']
+  if (formaPago === 'cincuenta_cincuenta') return ['abono1', 'abono2']
+  return [] // crédito: sin comprobante
+}
+
 export default function SigningForm({ letter, readOnly }: { letter: Letter; readOnly?: boolean }) {
   const [signedName, setSignedName] = useState('')
   const [signedRut, setSignedRut] = useState('')
@@ -62,9 +69,13 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
 
+  const formaPago = (letter.forma_pago as string) ?? 'cincuenta_cincuenta'
+  const tiposComprobante = getTiposComprobante(formaPago)
+  const showComprobantes = tiposComprobante.length > 0
+
   // Comprobantes
   const [comprobantes, setComprobantes] = useState<Comprobante[]>([])
-  const [uploadTipo, setUploadTipo] = useState<'abono1' | 'abono2' | 'total'>('abono1')
+  const [uploadTipo, setUploadTipo] = useState<'abono1' | 'abono2' | 'total'>(tiposComprobante[0] ?? 'total')
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadDone, setUploadDone] = useState(false)
@@ -73,11 +84,12 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
 
   useEffect(() => {
     if (!readOnly && !done) return
+    if (!showComprobantes) return
     fetch(`/api/approval-letters/${token}/comprobantes`)
       .then(r => r.json())
       .then(j => setComprobantes(j.data ?? []))
       .catch(() => {})
-  }, [token, readOnly, done])
+  }, [token, readOnly, done, showComprobantes])
 
   async function handleUpload() {
     if (!uploadFile) { setUploadError('Selecciona un archivo'); return }
@@ -147,17 +159,20 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
           <p style={{ color: '#6b7280', margin: '0 0 4px', fontSize: 15 }}>Has aprobado el servicio de transporte.</p>
           <p style={{ color: '#6b7280', margin: 0, fontSize: 13 }}>Se ha registrado tu firma con validez legal según la Ley 19.799.</p>
         </div>
-        <ComprobanteUploadSection
-          comprobantes={comprobantes}
-          uploadTipo={uploadTipo}
-          uploadFile={uploadFile}
-          uploading={uploading}
-          uploadDone={uploadDone}
-          uploadError={uploadError}
-          onTipo={setUploadTipo}
-          onFile={setUploadFile}
-          onUpload={handleUpload}
-        />
+        {showComprobantes && (
+          <ComprobanteUploadSection
+            comprobantes={comprobantes}
+            uploadTipo={uploadTipo}
+            uploadFile={uploadFile}
+            uploading={uploading}
+            uploadDone={uploadDone}
+            uploadError={uploadError}
+            tiposDisponibles={tiposComprobante}
+            onTipo={setUploadTipo}
+            onFile={setUploadFile}
+            onUpload={handleUpload}
+          />
+        )}
       </div>
     )
   }
@@ -244,8 +259,8 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
         )}
       </div>
 
-      {/* Comprobantes — en modo readOnly también se muestran */}
-      {readOnly && (
+      {/* Comprobantes — en modo readOnly también se muestran, si aplica */}
+      {readOnly && showComprobantes && (
         <ComprobanteUploadSection
           comprobantes={comprobantes}
           uploadTipo={uploadTipo}
@@ -253,6 +268,7 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
           uploading={uploading}
           uploadDone={uploadDone}
           uploadError={uploadError}
+          tiposDisponibles={tiposComprobante}
           onTipo={setUploadTipo}
           onFile={setUploadFile}
           onUpload={handleUpload}
@@ -305,12 +321,13 @@ interface UploadSectionProps {
   uploading: boolean
   uploadDone: boolean
   uploadError: string
+  tiposDisponibles: ('abono1' | 'abono2' | 'total')[]
   onTipo: (v: 'abono1' | 'abono2' | 'total') => void
   onFile: (f: File | null) => void
   onUpload: () => void
 }
 
-function ComprobanteUploadSection({ comprobantes, uploadTipo, uploadFile, uploading, uploadDone, uploadError, onTipo, onFile, onUpload }: UploadSectionProps) {
+function ComprobanteUploadSection({ comprobantes, uploadTipo, uploadFile, uploading, uploadDone, uploadError, tiposDisponibles, onTipo, onFile, onUpload }: UploadSectionProps) {
   return (
     <div style={{ background: 'white', borderRadius: 16, border: '2px solid #bfdbfe', padding: 24 }}>
       <h2 style={{ fontSize: 17, fontWeight: 700, color: '#082e62', margin: '0 0 6px', borderBottom: '2px solid #e52832', paddingBottom: 10 }}>
@@ -348,7 +365,7 @@ function ComprobanteUploadSection({ comprobantes, uploadTipo, uploadFile, upload
         <div>
           <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Tipo de pago *</label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {(['abono1', 'abono2', 'total'] as const).map(t => (
+            {tiposDisponibles.map(t => (
               <button key={t} type="button" onClick={() => onTipo(t)}
                 style={{ padding: '7px 14px', borderRadius: 8, border: `2px solid ${uploadTipo === t ? '#082e62' : '#e5e7eb'}`,
                   background: uploadTipo === t ? '#eef2ff' : 'white', fontSize: 13, fontWeight: uploadTipo === t ? 700 : 400,
