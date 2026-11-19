@@ -85,49 +85,21 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
 
   // Comprobantes
   const [comprobantes, setComprobantes] = useState<Comprobante[]>([])
-  const [uploadTipo, setUploadTipo] = useState<'abono1' | 'abono2' | 'total'>(tiposComprobante[0] ?? 'total')
-  const [uploadFile, setUploadFile] = useState<File | null>(null)
-  const [uploadMonto, setUploadMonto] = useState('')
-  const [uploading, setUploading] = useState(false)
-  const [uploadDone, setUploadDone] = useState(false)
-  const [uploadError, setUploadError] = useState('')
   const token = letter.token as string
   const letterTotal = Number(letter.total ?? 0)
 
-  useEffect(() => {
-    if (!showComprobantes) return
-    fetch(`/api/approval-letters/${token}/comprobantes`)
-      .then(r => r.json())
-      .then(j => setComprobantes(j.data ?? []))
-      .catch(() => {})
-  }, [token, showComprobantes])
-
-  async function handleUpload() {
-    if (!uploadFile) { setUploadError('Selecciona un archivo'); return }
-    setUploading(true)
-    setUploadError('')
-    const fd = new FormData()
-    fd.append('tipo', uploadTipo)
-    fd.append('file', uploadFile)
-    const montoNum = parseInt(uploadMonto.replace(/\D/g, ''), 10)
-    if (montoNum > 0) fd.append('monto', String(montoNum))
+  async function reloadComprobantes() {
     try {
-      const res = await fetch(`/api/approval-letters/${token}/comprobantes`, { method: 'POST', body: fd })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Error')
-      setUploadDone(true)
-      setUploadFile(null)
-      setUploadMonto('')
-      // Reload list
-      const r2 = await fetch(`/api/approval-letters/${token}/comprobantes`)
-      const j2 = await r2.json()
-      setComprobantes(j2.data ?? [])
-    } catch (e) {
-      setUploadError(String(e))
-    } finally {
-      setUploading(false)
-    }
+      const r = await fetch(`/api/approval-letters/${token}/comprobantes`)
+      const j = await r.json()
+      setComprobantes(j.data ?? [])
+    } catch { /* ignore */ }
   }
+
+  useEffect(() => {
+    if (showComprobantes) reloadComprobantes()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, showComprobantes])
 
   async function handleSign() {
     if (!signedName.trim() || !signedRut.trim()) {
@@ -176,18 +148,10 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
         {showComprobantes && (
           <ComprobanteUploadSection
             comprobantes={comprobantes}
-            uploadTipo={uploadTipo}
-            uploadFile={uploadFile}
-            uploading={uploading}
-            uploadDone={uploadDone}
-            uploadError={uploadError}
             tiposDisponibles={tiposComprobante}
-            onTipo={setUploadTipo}
-            onFile={setUploadFile}
-            onUpload={handleUpload}
-            uploadMonto={uploadMonto}
-            onMonto={setUploadMonto}
             total={letterTotal}
+            token={token}
+            onUploaded={reloadComprobantes}
           />
         )}
       </div>
@@ -281,18 +245,10 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
       {showComprobantes && (
         <ComprobanteUploadSection
           comprobantes={comprobantes}
-          uploadTipo={uploadTipo}
-          uploadFile={uploadFile}
-          uploading={uploading}
-          uploadDone={uploadDone}
-          uploadError={uploadError}
           tiposDisponibles={tiposComprobante}
-          onTipo={setUploadTipo}
-          onFile={setUploadFile}
-          onUpload={handleUpload}
-          uploadMonto={uploadMonto}
-          onMonto={setUploadMonto}
           total={letterTotal}
+          token={token}
+          onUploaded={reloadComprobantes}
         />
       )}
 
@@ -337,21 +293,112 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
 
 interface UploadSectionProps {
   comprobantes: Comprobante[]
-  uploadTipo: 'abono1' | 'abono2' | 'total'
-  uploadFile: File | null
-  uploading: boolean
-  uploadDone: boolean
-  uploadError: string
   tiposDisponibles: ('abono1' | 'abono2' | 'total')[]
-  onTipo: (v: 'abono1' | 'abono2' | 'total') => void
-  onFile: (f: File | null) => void
-  onUpload: () => void
-  uploadMonto: string
-  onMonto: (v: string) => void
   total: number
+  token: string
+  onUploaded: () => void
 }
 
-function ComprobanteUploadSection({ comprobantes, uploadTipo, uploadFile, uploading, uploadDone, uploadError, tiposDisponibles, onTipo, onFile, onUpload, uploadMonto, onMonto, total }: UploadSectionProps) {
+function AbonoCard({ tipo, existing, total, token, onUploaded }: {
+  tipo: 'abono1' | 'abono2' | 'total'
+  existing: Comprobante | undefined
+  total: number
+  token: string
+  onUploaded: () => void
+}) {
+  const [file, setFile] = useState<File | null>(null)
+  const [monto, setMonto] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState('')
+
+  const label = TIPO_LABELS[tipo] ?? tipo
+
+  async function submit() {
+    if (!file || !monto) return
+    setUploading(true)
+    setError('')
+    try {
+      const fd = new FormData()
+      fd.append('tipo', tipo)
+      fd.append('file', file)
+      fd.append('monto', monto.replace(/\D/g, ''))
+      const r = await fetch(`/api/approval-letters/${token}/comprobantes`, { method: 'POST', body: fd })
+      const j = await r.json()
+      if (!r.ok) { setError(j.error ?? 'Error al subir'); return }
+      setFile(null)
+      setMonto('')
+      onUploaded()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // Si ya está subido mostramos el recibo, pero igual dejamos subir otro reemplazo
+  return (
+    <div style={{ border: existing ? '2px solid #86efac' : '2px dashed #bfdbfe', borderRadius: 12, padding: 16, background: existing ? '#f0fdf4' : '#f8faff' }}>
+      <p style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700, color: '#082e62' }}>{label}</p>
+
+      {existing && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: '#dcfce7', borderRadius: 8, border: '1px solid #86efac' }}>
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#166534' }}>
+              {existing.amount ? formatCLP(existing.amount) : 'Recibido'}
+            </p>
+            <p style={{ margin: 0, fontSize: 11, color: '#4ade80', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {existing.filename} · {new Date(existing.uploaded_at).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Subida */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '12px',
+          border: '2px dashed #d1d5db', borderRadius: 8, cursor: 'pointer', background: file ? '#f0fdf4' : 'white' }}>
+          {file
+            ? <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#166534' }}>✅ {file.name}</p>
+            : <>
+                <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><path stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" d="M12 16V8m0 0-3 3m3-3 3 3"/><path stroke="#9ca3af" strokeWidth="1.5" d="M20 16.7A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/></svg>
+                <p style={{ margin: 0, fontSize: 12, color: '#9ca3af' }}>{existing ? 'Subir nuevo comprobante' : 'Seleccionar foto o PDF'}</p>
+              </>
+          }
+          <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
+            onChange={e => setFile(e.target.files?.[0] ?? null)} />
+        </label>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Monto $</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={monto}
+            onChange={e => {
+              const digits = e.target.value.replace(/\D/g, '')
+              setMonto(digits ? '$' + Number(digits).toLocaleString('es-CL') : '')
+            }}
+            placeholder={total > 0 ? `Ej: ${formatCLP(total / 2)}` : 'Ej: $350.000'}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 8,
+              border: '1px solid #d1d5db', fontSize: 15, color: '#111827', outline: 'none' }}
+          />
+        </div>
+
+        {error && <p style={{ margin: 0, fontSize: 12, color: '#991b1b' }}>{error}</p>}
+
+        <button onClick={submit} disabled={uploading || !file || !monto}
+          style={{ padding: '11px 16px', borderRadius: 8, border: 'none', fontSize: 14, fontWeight: 700,
+            background: uploading || !file || !monto ? '#d1d5db' : '#082e62', color: 'white',
+            cursor: uploading || !file || !monto ? 'not-allowed' : 'pointer' }}>
+          {uploading ? 'Enviando...' : existing ? 'Reemplazar comprobante' : 'Enviar comprobante'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ComprobanteUploadSection({ comprobantes, tiposDisponibles, total, token, onUploaded }: UploadSectionProps) {
   const totalPaid = comprobantes.reduce((s, c) => s + (c.amount ?? 0), 0)
   const isFullyPaid = total > 0 && totalPaid >= total
   const pending = total - totalPaid
@@ -362,115 +409,36 @@ function ComprobanteUploadSection({ comprobantes, uploadTipo, uploadFile, upload
         Comprobantes de Pago
       </h2>
       <p style={{ margin: '12px 0 16px', fontSize: 13, color: '#6b7280' }}>
-        Para confirmar tu reserva, sube aquí el comprobante de transferencia o depósito. Puedes subir más de uno.
+        Sube el comprobante de transferencia o depósito para cada abono. El sistema sumará ambos montos y verificará que coincidan con el total de la carta.
       </p>
 
-      {/* Comprobantes ya subidos */}
-      {comprobantes.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Documentos recibidos</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {comprobantes.map(c => (
-              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8 }}>
-                <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#166534', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {TIPO_LABELS[c.tipo] ?? c.tipo}
-                    {c.amount ? <span style={{ marginLeft: 8, fontWeight: 800 }}>{formatCLP(c.amount)}</span> : null}
-                  </p>
-                  <p style={{ margin: '1px 0 0', fontSize: 11, color: '#4ade80' }}>{c.filename} · {(c.size_bytes / 1024).toFixed(0)} KB</p>
-                </div>
-                <p style={{ margin: 0, fontSize: 11, color: '#86efac', flexShrink: 0 }}>
-                  {new Date(c.uploaded_at).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })}
-                </p>
-              </div>
-            ))}
-          </div>
-          {/* Resumen de pago */}
-          {totalPaid > 0 && (
-            <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 8,
-              background: isFullyPaid ? '#dcfce7' : '#fefce8', border: `1px solid ${isFullyPaid ? '#86efac' : '#fde68a'}` }}>
-              {isFullyPaid
-                ? <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#166534' }}>✅ PAGADO AL 100% — {formatCLP(totalPaid)}</p>
-                : <>
-                    <p style={{ margin: 0, fontSize: 13, color: '#78350f' }}>Recibido: <strong>{formatCLP(totalPaid)}</strong></p>
-                    <p style={{ margin: '3px 0 0', fontSize: 13, fontWeight: 700, color: '#b45309' }}>Pendiente: {formatCLP(pending)}</p>
-                  </>
-              }
-            </div>
-          )}
+      {/* Una tarjeta por cada tipo */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {tiposDisponibles.map(tipo => (
+          <AbonoCard
+            key={tipo}
+            tipo={tipo}
+            existing={comprobantes.find(c => c.tipo === tipo)}
+            total={total}
+            token={token}
+            onUploaded={onUploaded}
+          />
+        ))}
+      </div>
+
+      {/* Resumen total */}
+      {totalPaid > 0 && (
+        <div style={{ marginTop: 16, padding: '12px 16px', borderRadius: 10,
+          background: isFullyPaid ? '#dcfce7' : '#fefce8', border: `1px solid ${isFullyPaid ? '#86efac' : '#fde68a'}` }}>
+          {isFullyPaid
+            ? <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#166534' }}>✅ PAGADO AL 100% — {formatCLP(totalPaid)}</p>
+            : <>
+                <p style={{ margin: 0, fontSize: 13, color: '#78350f' }}>Total recibido: <strong>{formatCLP(totalPaid)}</strong></p>
+                <p style={{ margin: '3px 0 0', fontSize: 13, fontWeight: 700, color: '#b45309' }}>Pendiente por pagar: {formatCLP(pending)}</p>
+              </>
+          }
         </div>
       )}
-
-      {/* Formulario de subida */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Tipo de pago *</label>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {tiposDisponibles.map(t => (
-              <button key={t} type="button" onClick={() => onTipo(t)}
-                style={{ padding: '7px 14px', borderRadius: 8, border: `2px solid ${uploadTipo === t ? '#082e62' : '#e5e7eb'}`,
-                  background: uploadTipo === t ? '#eef2ff' : 'white', fontSize: 13, fontWeight: uploadTipo === t ? 700 : 400,
-                  color: uploadTipo === t ? '#082e62' : '#6b7280', cursor: 'pointer' }}>
-                {TIPO_LABELS[t]}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Archivo (imagen o PDF) *</label>
-          <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '16px 12px',
-            border: '2px dashed #d1d5db', borderRadius: 10, cursor: 'pointer',
-            background: uploadFile ? '#f0fdf4' : 'white', transition: 'all 0.15s' }}>
-            {uploadFile
-              ? <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#166534' }}>✅ {uploadFile.name}</p>
-              : <>
-                  <svg width="24" height="24" fill="none" viewBox="0 0 24 24"><path stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" d="M12 16V8m0 0-3 3m3-3 3 3"/><path stroke="#9ca3af" strokeWidth="1.5" d="M20 16.7A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/></svg>
-                  <p style={{ margin: 0, fontSize: 13, color: '#9ca3af' }}>Haz clic para seleccionar el comprobante</p>
-                  <p style={{ margin: 0, fontSize: 11, color: '#d1d5db' }}>PDF o imagen (máx. 10MB)</p>
-                </>
-            }
-            <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
-              onChange={e => onFile(e.target.files?.[0] ?? null)} />
-          </label>
-        </div>
-
-        {/* Campo monto */}
-        <div>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Monto del pago *</label>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={uploadMonto}
-            onChange={e => {
-              const digits = e.target.value.replace(/\D/g, '')
-              const formatted = digits ? '$' + Number(digits).toLocaleString('es-CL') : ''
-              onMonto(formatted)
-            }}
-            placeholder="Ej: $350.000"
-            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 13px', borderRadius: 8,
-              border: '1px solid #d1d5db', fontSize: 16, color: '#111827', outline: 'none' }}
-          />
-        </div>
-
-        {uploadError && (
-          <div style={{ padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8 }}>
-            <p style={{ margin: 0, color: '#991b1b', fontSize: 13 }}>{uploadError}</p>
-          </div>
-        )}
-        {uploadDone && (
-          <div style={{ padding: '8px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8 }}>
-            <p style={{ margin: 0, color: '#166534', fontSize: 13, fontWeight: 600 }}>✅ Comprobante enviado. Puedes subir otro si necesitas.</p>
-          </div>
-        )}
-
-        <button onClick={onUpload} disabled={uploading || !uploadFile || !uploadMonto}
-          style={{ padding: '13px 20px', borderRadius: 10, border: 'none', fontSize: 15, fontWeight: 700,
-            background: uploading || !uploadFile || !uploadMonto ? '#d1d5db' : '#082e62', color: 'white',
-            cursor: uploading || !uploadFile || !uploadMonto ? 'not-allowed' : 'pointer' }}>
-          {uploading ? 'Enviando...' : 'Enviar comprobante'}
-        </button>
-      </div>
     </div>
   )
 }
