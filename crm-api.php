@@ -2869,17 +2869,19 @@ if ($action === 'quotation_comprobantes_list') {
     if (!$qid) err('quotation_id requerido');
 
     // Crear tabla base si no existe
-    db()->exec("CREATE TABLE IF NOT EXISTS letter_comprobantes (
-        id           VARCHAR(36)   NOT NULL PRIMARY KEY,
-        letter_token VARCHAR(100)  NOT NULL,
-        tipo         VARCHAR(20)   NOT NULL DEFAULT 'abono1',
-        filename     VARCHAR(255)  NOT NULL,
-        file_data    MEDIUMBLOB    NOT NULL,
-        content_type VARCHAR(100)  NOT NULL DEFAULT 'application/octet-stream',
-        uploaded_at  DATETIME      NOT NULL DEFAULT NOW(),
-        amount       BIGINT        NULL,
-        INDEX idx_lc_token (letter_token)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    try {
+        db()->exec("CREATE TABLE IF NOT EXISTS letter_comprobantes (
+            id           VARCHAR(36)   NOT NULL PRIMARY KEY,
+            letter_token VARCHAR(100)  NOT NULL,
+            tipo         VARCHAR(20)   NOT NULL DEFAULT 'abono1',
+            filename     VARCHAR(255)  NOT NULL,
+            file_data    MEDIUMBLOB    NOT NULL,
+            content_type VARCHAR(100)  NOT NULL DEFAULT 'application/octet-stream',
+            uploaded_at  DATETIME      NOT NULL DEFAULT NOW(),
+            amount       BIGINT        NULL,
+            INDEX idx_lc_token (letter_token)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    } catch (Exception $e) {}
 
     // Auto-migrate validation columns
     try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN validation_status ENUM('pending','vendedor_ok','approved','rejected') NOT NULL DEFAULT 'pending'"); } catch (Exception $e) {}
@@ -2891,25 +2893,48 @@ if ($action === 'quotation_comprobantes_list') {
     try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN rejected_by VARCHAR(36) NULL"); } catch (Exception $e) {}
     try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN rejected_at DATETIME NULL"); } catch (Exception $e) {}
 
-    $stmt = db()->prepare("
-        SELECT lc.id, lc.letter_token, lc.tipo, lc.filename, lc.content_type,
-               lc.uploaded_at, lc.amount, lc.validation_status,
-               lc.vendedor_ok_by, lc.vendedor_ok_at,
-               lc.superadmin_ok_by, lc.superadmin_ok_at,
-               lc.rejection_reason, lc.rejected_by, lc.rejected_at,
-               pv.name AS vok_name,
-               ps.name AS sadm_name,
-               pr.name AS rej_name
-        FROM letter_comprobantes lc
-        JOIN approval_letters al ON al.token = lc.letter_token
-        LEFT JOIN profiles pv ON pv.id = lc.vendedor_ok_by
-        LEFT JOIN profiles ps ON ps.id = lc.superadmin_ok_by
-        LEFT JOIN profiles pr ON pr.id = lc.rejected_by
-        WHERE al.quotation_id = ?
-        ORDER BY lc.uploaded_at ASC
-    ");
-    $stmt->execute([$qid]);
-    ok($stmt->fetchAll());
+    try {
+        $stmt = db()->prepare("
+            SELECT lc.id, lc.letter_token, lc.tipo, lc.filename, lc.content_type,
+                   lc.uploaded_at, lc.amount, lc.validation_status,
+                   lc.vendedor_ok_by, lc.vendedor_ok_at,
+                   lc.superadmin_ok_by, lc.superadmin_ok_at,
+                   lc.rejection_reason, lc.rejected_by, lc.rejected_at,
+                   pv.name AS vok_name,
+                   ps.name AS sadm_name,
+                   pr.name AS rej_name
+            FROM letter_comprobantes lc
+            JOIN approval_letters al ON CONVERT(al.token USING latin1) = lc.letter_token
+            LEFT JOIN profiles pv ON pv.id = lc.vendedor_ok_by
+            LEFT JOIN profiles ps ON ps.id = lc.superadmin_ok_by
+            LEFT JOIN profiles pr ON pr.id = lc.rejected_by
+            WHERE CONVERT(al.quotation_id USING latin1) = ?
+            ORDER BY lc.uploaded_at ASC
+        ");
+        $stmt->execute([$qid]);
+        ok($stmt->fetchAll());
+    } catch (Exception $e) {
+        // Fallback: validation columns may not exist yet; return rows with pending defaults
+        try {
+            $stmt2 = db()->prepare("
+                SELECT lc.id, lc.letter_token, lc.tipo, lc.filename, lc.content_type,
+                       lc.uploaded_at, lc.amount,
+                       'pending' AS validation_status,
+                       NULL AS vendedor_ok_by, NULL AS vendedor_ok_at,
+                       NULL AS superadmin_ok_by, NULL AS superadmin_ok_at,
+                       NULL AS rejection_reason, NULL AS rejected_by, NULL AS rejected_at,
+                       NULL AS vok_name, NULL AS sadm_name, NULL AS rej_name
+                FROM letter_comprobantes lc
+                JOIN approval_letters al ON CONVERT(al.token USING latin1) = lc.letter_token
+                WHERE CONVERT(al.quotation_id USING latin1) = ?
+                ORDER BY lc.uploaded_at ASC
+            ");
+            $stmt2->execute([$qid]);
+            ok($stmt2->fetchAll());
+        } catch (Exception $e2) {
+            ok([]);
+        }
+    }
 }
 
 if ($action === 'comprobante_validate') {
@@ -2962,7 +2987,7 @@ if ($action === 'comprobante_reject') {
         ->execute([$user['id'], $reason, $id]);
 
     // Fetch client email
-    $info = db()->prepare('SELECT al.client_email, al.client_name, q.number, al.token FROM letter_comprobantes lc JOIN approval_letters al ON al.token=lc.letter_token JOIN quotations q ON q.id=al.quotation_id WHERE lc.id=?');
+    $info = db()->prepare('SELECT al.client_email, al.client_name, q.number, al.token FROM letter_comprobantes lc JOIN approval_letters al ON CONVERT(al.token USING latin1)=lc.letter_token JOIN quotations q ON CONVERT(q.id USING latin1)=CONVERT(al.quotation_id USING latin1) WHERE lc.id=?');
     $info->execute([$id]);
     $inf = $info->fetch();
     $sent = false;
