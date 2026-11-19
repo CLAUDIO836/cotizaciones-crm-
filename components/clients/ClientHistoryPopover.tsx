@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { CheckCircle, XCircle, Clock, ExternalLink, History, X, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -30,20 +31,33 @@ export default function ClientHistoryPopover({
   clientId, clientName, clientRut, clientEmail, clientPhone, clientAddress,
 }: Props) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
   const [history, setHistory] = useState<HistoryItem[] | null>(null)
   const [loading, setLoading] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (
+        popoverRef.current && !popoverRef.current.contains(e.target as Node) &&
+        triggerRef.current && !triggerRef.current.contains(e.target as Node)
+      ) setOpen(false)
     }
     if (open) document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open])
 
-  async function toggle() {
-    setOpen(v => !v)
+  async function toggle(e: React.MouseEvent) {
+    if (open) { setOpen(false); return }
+    // Calcular posición fixed relativa al botón clickeado
+    const rect = (e.currentTarget as HTMLElement).closest('[data-client-trigger]')?.getBoundingClientRect()
+      ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const popW = 320
+    const left = Math.min(rect.left, window.innerWidth - popW - 16)
+    const top = rect.bottom + 6
+    setPos({ top, left })
+    setOpen(true)
     if (!history && !loading) {
       setLoading(true)
       try {
@@ -65,40 +79,12 @@ export default function ClientHistoryPopover({
   const sum = (arr: HistoryItem[]) => arr.reduce((s, h) => s + Number(h.total ?? 0), 0)
   const fmt = (n: number) => `$${n.toLocaleString('es-CL')}`
 
-  return (
-    <div ref={ref} className="relative">
-      {/* ── Datos del cliente (nombre y RUT como links) ── */}
-      <div className="space-y-0.5">
-        <button
-          onClick={toggle}
-          className="font-semibold text-sm text-blue-600 hover:text-blue-800 hover:underline text-left leading-tight w-full flex items-center gap-1"
-        >
-          {clientName}
-          <History className="w-3 h-3 opacity-50 flex-shrink-0" />
-        </button>
-        {clientRut && (
-          <button
-            onClick={toggle}
-            className="text-xs text-blue-500 hover:text-blue-700 hover:underline text-left"
-          >
-            RUT: {clientRut}
-          </button>
-        )}
-        {clientEmail && <p className="text-xs text-gray-500">{clientEmail}</p>}
-        {clientPhone && <p className="text-xs text-gray-500">{clientPhone}</p>}
-        {clientAddress && <p className="text-xs text-gray-400 mt-0.5 leading-tight">{clientAddress}</p>}
-        <Link
-          href={`/clientes?open=${clientId}&tab=historia`}
-          className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-green-600 mt-1"
-        >
-          <ExternalLink className="w-3 h-3" />
-          Ver en Clientes
-        </Link>
-      </div>
-
-      {/* ── Popover flotante ── */}
-      {open && (
-        <div className="absolute left-0 top-full mt-2 z-50 w-80 bg-white rounded-xl border shadow-xl overflow-hidden">
+  const popover = open ? createPortal(
+    <div
+      ref={popoverRef}
+      style={{ position: 'fixed', top: pos.top, left: pos.left, width: 320, zIndex: 9999 }}
+      className="bg-white rounded-xl border shadow-2xl overflow-hidden"
+    >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
             <div className="min-w-0">
@@ -195,8 +181,38 @@ export default function ClientHistoryPopover({
               </div>
             )}
           </div>
-        </div>
+    </div>,
+    document.body
+  ) : null
+
+  return (
+    <div ref={triggerRef} data-client-trigger className="space-y-0.5">
+      <button
+        onClick={toggle}
+        className="font-semibold text-sm text-blue-600 hover:text-blue-800 hover:underline text-left leading-tight w-full flex items-center gap-1"
+      >
+        {clientName}
+        <History className="w-3 h-3 opacity-50 flex-shrink-0" />
+      </button>
+      {clientRut && (
+        <button
+          onClick={toggle}
+          className="text-xs text-blue-500 hover:text-blue-700 hover:underline text-left"
+        >
+          RUT: {clientRut}
+        </button>
       )}
+      {clientEmail && <p className="text-xs text-gray-500">{clientEmail}</p>}
+      {clientPhone && <p className="text-xs text-gray-500">{clientPhone}</p>}
+      {clientAddress && <p className="text-xs text-gray-400 mt-0.5 leading-tight">{clientAddress}</p>}
+      <Link
+        href={`/clientes?open=${clientId}&tab=historia`}
+        className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-green-600 mt-1"
+      >
+        <ExternalLink className="w-3 h-3" />
+        Ver en Clientes
+      </Link>
+      {popover}
     </div>
   )
 }
