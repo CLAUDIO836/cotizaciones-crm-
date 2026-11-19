@@ -311,6 +311,12 @@ export default function DashboardClient({
   const openInRange = inRange.filter(q => q.status === 'open')
   const lostInRange = inRange.filter(q => q.status === 'lost')
 
+  // Creadas en el rango (por fecha de creación, independiente del estado actual)
+  const createdInRange = useMemo(() => {
+    const { from, to } = range
+    return filtered.filter(q => { const ds = getCreatedDate(q); return ds >= from && ds <= to })
+  }, [filtered, range])
+
   // Eficiencia del período seleccionado (no histórico global)
   const totalCotizado = sum(inRange)
   const totalGanado   = sum(wonInRange)
@@ -461,12 +467,41 @@ export default function DashboardClient({
 
       {/* ── KPIs del rango ── */}
       <div>
-        <p className="text-xs text-gray-400 uppercase tracking-widest mb-3 font-medium">
-          Gestión {rangeDescription}
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <p className="text-xs text-gray-400 uppercase tracking-widest font-medium">
+            Gestión {rangeDescription}
+          </p>
+          {/* Botones rápidos de mes */}
+          <div className="flex flex-wrap gap-1">
+            {MONTH_NAMES.map((name, idx) => {
+              const m = idx + 1
+              const y = now.getFullYear()
+              const firstDay = `${y}-${String(m).padStart(2, '0')}-01`
+              const lastDate = new Date(y, m, 0)
+              const lastDay = `${y}-${String(m).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`
+              const clampedEnd = lastDay > todayStr ? todayStr : lastDay
+              const isActive = calStart === firstDay && calEnd === clampedEnd
+              // Solo mostrar meses hasta el actual
+              if (m > now.getMonth() + 1) return null
+              return (
+                <button
+                  key={m}
+                  onClick={() => { setCalStart(firstDay); setCalEnd(clampedEnd); setDrill(null) }}
+                  className="text-xs px-2 py-1 rounded-md border transition-colors"
+                  style={isActive
+                    ? { background: '#1B8A4B', color: '#fff', borderColor: '#1B8A4B', fontWeight: 700 }
+                    : { background: '#fff', color: '#374151', borderColor: '#e5e7eb' }
+                  }
+                >
+                  {name.slice(0, 3)}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <KpiCard label="Creadas" count={createdInRange.length} monto={sum(createdInRange)} color="#6b7280" bg="#f3f4f6" />
           <KpiCard label="Ganadas" count={wonInRange.length} monto={sum(wonInRange)} color="#1B8A4B" bg="#f0fdf4" />
-          {/* Abiertas = total actualmente abiertas, no filtrado por fecha */}
           <KpiCard label="Abiertas" count={openInRange.length} monto={sum(openInRange)} color="#3b82f6" bg="#eff6ff" />
           <KpiCard label="Perdidas" count={lostInRange.length} monto={sum(lostInRange)} color="#ef4444" bg="#fef2f2" />
         </div>
