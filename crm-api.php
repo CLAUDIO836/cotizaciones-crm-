@@ -817,10 +817,11 @@ if ($action === 'quotations_summary') {
     if (!empty($_GET['year']))  { $where[] = '`year` = ?';  $params[] = (int)$_GET['year']; }
     if (!empty($_GET['month'])) { $where[] = '`month` = ?'; $params[] = (int)$_GET['month']; }
     if (!empty($_GET['start'])) { $where[] = 'issue_date >= ?'; $params[] = $_GET['start']; }
+    if (!empty($_GET['client_id'])) { $where[] = 'client_id = ?'; $params[] = $_GET['client_id']; }
     if (!empty($_GET['q'])) {
-        $where[] = '(number LIKE ? OR client_name LIKE ?)';
+        $where[] = '(number LIKE ? OR client_name LIKE ? OR client_rut LIKE ?)';
         $like = '%' . $_GET['q'] . '%';
-        $params[] = $like; $params[] = $like;
+        $params[] = $like; $params[] = $like; $params[] = $like;
     }
 
     $sql = 'SELECT * FROM quotations_summary WHERE ' . implode(' AND ', $where) . ' ORDER BY created_at DESC';

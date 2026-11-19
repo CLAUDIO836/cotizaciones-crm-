@@ -43,6 +43,8 @@ interface HistoryItem {
   desde?: string
   hasta?: string
   vendedor_name?: string
+  client_name?: string
+  client_rut?: string
   created_at?: string
 }
 
@@ -631,12 +633,20 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                                   <div className="space-y-2">
                                     {(history[c.id] ?? []).map(h => {
                                       const num = h.number ?? h.pipedrive_deal_id ?? h.id.slice(0, 8)
-                                      const date = h.created_at ?? h.issue_date ?? ''
-                                      const dateStr = date ? new Date(date).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—'
+                                      const rawDate = h.created_at ?? h.issue_date ?? ''
+                                      // Sumar 3h para compensar UTC→Chile
+                                      const dateObj = rawDate ? new Date(new Date(rawDate).getTime() + 3 * 60 * 60 * 1000) : null
+                                      const mesAnio = dateObj ? dateObj.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }) : '—'
                                       const amount = h.total ? `$${Number(h.total).toLocaleString('es-CL')}` : '—'
+                                      const rut = h.client_rut ? h.client_rut : c.rut
                                       return (
-                                        <div key={h.id} className="flex items-center gap-3 bg-white rounded-lg border px-4 py-2.5 hover:border-gray-300 transition-colors">
-                                          <div className="flex-shrink-0">
+                                        <a
+                                          key={h.id}
+                                          href={`/cotizaciones/${h.id}`}
+                                          onClick={e => e.stopPropagation()}
+                                          className="flex items-start gap-3 bg-white rounded-lg border px-4 py-3 hover:border-green-300 hover:bg-green-50/30 transition-colors group"
+                                        >
+                                          <div className="flex-shrink-0 mt-0.5">
                                             {h.status === 'won'
                                               ? <CheckCircle className="w-4 h-4 text-green-500" />
                                               : h.status === 'lost'
@@ -645,8 +655,9 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                                             }
                                           </div>
                                           <div className="flex-1 min-w-0">
+                                            {/* Fila 1: N° + pipeline + estado */}
                                             <div className="flex items-center gap-2 flex-wrap">
-                                              <span className="text-sm font-semibold text-gray-800">#{num}</span>
+                                              <span className="text-sm font-bold text-gray-800 group-hover:text-green-700">#{num}</span>
                                               {h.pipeline_name && (
                                                 <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full truncate max-w-[160px]">{h.pipeline_name}</span>
                                               )}
@@ -658,28 +669,23 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                                                 {h.status === 'won' ? 'Ganado' : h.status === 'lost' ? 'Perdido' : 'En proceso'}
                                               </span>
                                             </div>
-                                            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                                              <span className="text-xs text-gray-400">{dateStr}</span>
-                                              {h.desde && h.hasta && (
-                                                <span className="text-xs text-gray-500 truncate max-w-[200px]">{h.desde} → {h.hasta}</span>
-                                              )}
+                                            {/* Fila 2: RUT · nombre · mes */}
+                                            <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
+                                              {rut && <span className="font-mono">{rut}</span>}
+                                              {rut && (h.client_name || c.name) && <span className="text-gray-300">·</span>}
+                                              {(h.client_name || c.name) && <span>{h.client_name ?? c.name}</span>}
+                                              <span className="text-gray-300">·</span>
+                                              <span className="capitalize">{mesAnio}</span>
                                               {h.vendedor_name && (
-                                                <span className="text-xs text-gray-400">{h.vendedor_name}</span>
+                                                <><span className="text-gray-300">·</span><span>{h.vendedor_name}</span></>
                                               )}
                                             </div>
                                           </div>
-                                          <div className="flex items-center gap-3 flex-shrink-0">
+                                          <div className="flex items-center gap-2 flex-shrink-0 self-center">
                                             <span className="text-sm font-semibold text-gray-700">{amount}</span>
-                                            <a
-                                              href={`/cotizaciones/${h.id}`}
-                                              onClick={e => e.stopPropagation()}
-                                              className="text-gray-300 hover:text-blue-500 transition-colors"
-                                              title="Abrir negocio"
-                                            >
-                                              <ExternalLink className="w-3.5 h-3.5" />
-                                            </a>
+                                            <ExternalLink className="w-3.5 h-3.5 text-gray-300 group-hover:text-green-500 transition-colors" />
                                           </div>
-                                        </div>
+                                        </a>
                                       )
                                     })}
                                   </div>
