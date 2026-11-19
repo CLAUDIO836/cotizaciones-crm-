@@ -618,81 +618,103 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                           ))}
 
                           {/* HISTORIA COMERCIAL TAB */}
-                          {(activeTab[c.id] ?? 'contactos') === 'historia' && (
-                            <div className="space-y-2">
-                              {loadingHistory === c.id ? (
-                                <p className="text-sm text-gray-400">Cargando historia...</p>
-                              ) : (history[c.id] ?? []).length === 0 ? (
-                                <p className="text-sm text-gray-400 italic">Sin negocios registrados para este cliente</p>
-                              ) : (
-                                <>
-                                  <p className="text-xs text-gray-400 mb-3">
-                                    {(history[c.id] ?? []).length} negocio{(history[c.id] ?? []).length !== 1 ? 's' : ''} en total
-                                    {' · '}{(history[c.id] ?? []).filter(h => h.status === 'won').length} ganado{(history[c.id] ?? []).filter(h => h.status === 'won').length !== 1 ? 's' : ''}
-                                  </p>
-                                  <div className="space-y-2">
-                                    {(history[c.id] ?? []).map(h => {
-                                      const num = h.number ?? h.pipedrive_deal_id ?? h.id.slice(0, 8)
-                                      const rawDate = h.created_at ?? h.issue_date ?? ''
-                                      // Sumar 3h para compensar UTC→Chile
-                                      const dateObj = rawDate ? new Date(new Date(rawDate).getTime() + 3 * 60 * 60 * 1000) : null
-                                      const mesAnio = dateObj ? dateObj.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }) : '—'
-                                      const amount = h.total ? `$${Number(h.total).toLocaleString('es-CL')}` : '—'
-                                      const rut = h.client_rut ? h.client_rut : c.rut
-                                      return (
-                                        <a
-                                          key={h.id}
-                                          href={`/cotizaciones/${h.id}`}
-                                          onClick={e => e.stopPropagation()}
-                                          className="flex items-start gap-3 bg-white rounded-lg border px-4 py-3 hover:border-green-300 hover:bg-green-50/30 transition-colors group"
-                                        >
-                                          <div className="flex-shrink-0 mt-0.5">
-                                            {h.status === 'won'
-                                              ? <CheckCircle className="w-4 h-4 text-green-500" />
-                                              : h.status === 'lost'
-                                              ? <XCircle className="w-4 h-4 text-red-400" />
-                                              : <Clock className="w-4 h-4 text-amber-400" />
-                                            }
-                                          </div>
-                                          <div className="flex-1 min-w-0">
-                                            {/* Fila 1: N° + pipeline + estado */}
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                              <span className="text-sm font-bold text-gray-800 group-hover:text-green-700">#{num}</span>
-                                              {h.pipeline_name && (
-                                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full truncate max-w-[160px]">{h.pipeline_name}</span>
-                                              )}
-                                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                                                h.status === 'won' ? 'bg-green-50 text-green-700' :
-                                                h.status === 'lost' ? 'bg-red-50 text-red-600' :
-                                                'bg-amber-50 text-amber-700'
-                                              }`}>
-                                                {h.status === 'won' ? 'Ganado' : h.status === 'lost' ? 'Perdido' : 'En proceso'}
+                          {(activeTab[c.id] ?? 'contactos') === 'historia' && (() => {
+                            const hist = history[c.id] ?? []
+                            const abiertas = hist.filter(h => h.status === 'open')
+                            const ganadas  = hist.filter(h => h.status === 'won')
+                            const perdidas = hist.filter(h => h.status === 'lost')
+                            const sum = (arr: HistoryItem[]) => arr.reduce((s, h) => s + Number(h.total ?? 0), 0)
+                            const fmt = (n: number) => `$${n.toLocaleString('es-CL')}`
+                            return (
+                              <div className="space-y-2">
+                                {loadingHistory === c.id ? (
+                                  <p className="text-sm text-gray-400">Cargando historia...</p>
+                                ) : hist.length === 0 ? (
+                                  <p className="text-sm text-gray-400 italic">Sin negocios registrados para este cliente</p>
+                                ) : (
+                                  <>
+                                    {/* Resumen por estado */}
+                                    <div className="flex flex-wrap gap-3 mb-3">
+                                      {abiertas.length > 0 && (
+                                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200">
+                                          <Clock className="w-3.5 h-3.5 text-amber-500" />
+                                          <span className="text-xs font-semibold text-amber-700">{abiertas.length} Abierta{abiertas.length !== 1 ? 's' : ''}</span>
+                                          <span className="text-xs text-amber-600">{fmt(sum(abiertas))}</span>
+                                        </div>
+                                      )}
+                                      {ganadas.length > 0 && (
+                                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-50 border border-green-200">
+                                          <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                                          <span className="text-xs font-semibold text-green-700">{ganadas.length} Ganada{ganadas.length !== 1 ? 's' : ''}</span>
+                                          <span className="text-xs text-green-600">{fmt(sum(ganadas))}</span>
+                                        </div>
+                                      )}
+                                      {perdidas.length > 0 && (
+                                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 border border-red-200">
+                                          <XCircle className="w-3.5 h-3.5 text-red-400" />
+                                          <span className="text-xs font-semibold text-red-600">{perdidas.length} Perdida{perdidas.length !== 1 ? 's' : ''}</span>
+                                          <span className="text-xs text-red-500">{fmt(sum(perdidas))}</span>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                      {hist.map(h => {
+                                        const num = h.number ?? h.pipedrive_deal_id ?? h.id.slice(0, 8)
+                                        // Fecha del servicio (mes de embudo); fallback a created_at
+                                        const rawDate = h.fecha_salida ?? h.issue_date ?? h.created_at ?? ''
+                                        const dateObj = rawDate ? new Date(new Date(rawDate).getTime() + 3 * 60 * 60 * 1000) : null
+                                        const mesAnio = dateObj ? dateObj.toLocaleDateString('es-CL', { month: 'short', year: '2-digit' }) : '—'
+                                        const amount = h.total ? fmt(Number(h.total)) : '—'
+                                        const rut = h.client_rut ?? c.rut
+                                        const statusLabel = h.status === 'won' ? 'Ganado' : h.status === 'lost' ? 'Perdido' : 'Abierto'
+                                        const statusStyle = h.status === 'won'
+                                          ? 'bg-green-50 text-green-700 border-green-200'
+                                          : h.status === 'lost'
+                                          ? 'bg-red-50 text-red-600 border-red-200'
+                                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                                        return (
+                                          <div key={h.id} className="flex items-center gap-3 bg-white rounded-lg border px-4 py-2.5 hover:border-gray-300 transition-colors">
+                                            {/* Número de cotización como link */}
+                                            <a
+                                              href={`/cotizaciones/${h.id}`}
+                                              onClick={e => e.stopPropagation()}
+                                              className="text-sm font-bold text-blue-600 hover:text-blue-800 hover:underline flex-shrink-0 flex items-center gap-1"
+                                            >
+                                              #{num}
+                                              <ExternalLink className="w-3 h-3 opacity-50" />
+                                            </a>
+                                            <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                                              {/* Estado */}
+                                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${statusStyle}`}>
+                                                {statusLabel}
                                               </span>
-                                            </div>
-                                            {/* Fila 2: RUT · nombre · mes */}
-                                            <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
-                                              {rut && <span className="font-mono">{rut}</span>}
-                                              {rut && (h.client_name || c.name) && <span className="text-gray-300">·</span>}
-                                              {(h.client_name || c.name) && <span>{h.client_name ?? c.name}</span>}
-                                              <span className="text-gray-300">·</span>
-                                              <span className="capitalize">{mesAnio}</span>
+                                              {/* Pipeline */}
+                                              {h.pipeline_name && (
+                                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full truncate max-w-[140px]">{h.pipeline_name}</span>
+                                              )}
+                                              {/* RUT · nombre · mes */}
+                                              <span className="text-xs text-gray-400 hidden sm:inline">
+                                                {rut && <span className="font-mono">{rut}</span>}
+                                                {rut && ' · '}
+                                                {(h.client_name ?? c.name)}
+                                              </span>
+                                              {/* Mes del servicio */}
+                                              <span className="text-xs text-gray-400 capitalize">{mesAnio}</span>
                                               {h.vendedor_name && (
-                                                <><span className="text-gray-300">·</span><span>{h.vendedor_name}</span></>
+                                                <span className="text-xs text-gray-400 hidden md:inline">· {h.vendedor_name}</span>
                                               )}
                                             </div>
+                                            <span className="text-sm font-semibold text-gray-700 flex-shrink-0">{amount}</span>
                                           </div>
-                                          <div className="flex items-center gap-2 flex-shrink-0 self-center">
-                                            <span className="text-sm font-semibold text-gray-700">{amount}</span>
-                                            <ExternalLink className="w-3.5 h-3.5 text-gray-300 group-hover:text-green-500 transition-colors" />
-                                          </div>
-                                        </a>
-                                      )
-                                    })}
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          )}
+                                        )
+                                      })}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )
+                          })()}
                         </td>
                       </tr>
                     )}
