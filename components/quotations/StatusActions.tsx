@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { CheckCircle, XCircle, RotateCcw, Upload } from 'lucide-react'
 import BillingModal from './BillingModal'
+import LostReasonModal from './LostReasonModal'
 
 interface Props {
   quotationId: string
@@ -19,19 +20,24 @@ interface Props {
   btnWidth?: number
   wonLabel?: string
   lostLabel?: string
+  userRole?: string
   // billing pre-fill
   billingName?: string
   billingRut?:  string
   billingAddr?: string
+  clientMedioPago?: string
 }
 
 const ERP_IMPORT_URL = process.env.NEXT_PUBLIC_ERP_IMPORT_URL ?? 'https://erp.transccl.cl/api/crm-import'
 const ERP_TOKEN      = process.env.NEXT_PUBLIC_CRM_SYNC_TOKEN ?? ''
 
-export default function StatusActions({ quotationId, quotationNumber, clientId, userId, total, status, pipedriveDealId, inline, btnWidth, wonLabel, lostLabel, billingName = '', billingRut = '', billingAddr = '' }: Props) {
+export default function StatusActions({ quotationId, quotationNumber, clientId, userId, total, status, pipedriveDealId, inline, btnWidth, wonLabel, lostLabel, userRole = '', billingName = '', billingRut = '', billingAddr = '', clientMedioPago = '' }: Props) {
   const router = useRouter()
-  const [loading,       setLoading]       = useState(false)
-  const [showBilling,   setShowBilling]   = useState(false)
+  const [loading,         setLoading]         = useState(false)
+  const [showBilling,     setShowBilling]      = useState(false)
+  const [showLostModal,   setShowLostModal]    = useState(false)
+
+  const isAdmin = userRole === 'admin' || userRole === 'superadmin'
 
   async function setStatus(newStatus: string) {
     const res = await fetch('/api/quotations', {
@@ -85,10 +91,19 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
   }
 
   async function markLost() {
-    if (!window.confirm('¿Marcar esta cotización como perdida?')) return
+    setShowLostModal(true)
+  }
+
+  async function confirmLost(reason: string, comment: string) {
     setLoading(true)
     try {
-      await setStatus('lost')
+      const res = await fetch('/api/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _action: 'set_status', id: quotationId, status: 'lost', pipedrive_deal_id: pipedriveDealId, lost_reason: reason, lost_comment: comment }),
+      })
+      if (!res.ok) throw new Error('Error')
+      setShowLostModal(false)
       toast.success('Cotización marcada como perdida')
       router.refresh()
     } catch (err) {
@@ -122,6 +137,7 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
             billingRut={billingRut}
             billingAddr={billingAddr}
             alreadyWon
+            defaultFormaPago={clientMedioPago}
             onSuccess={() => { setShowBilling(false); router.refresh() }}
             onClose={() => setShowBilling(false)}
           />
@@ -133,10 +149,12 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
               Comprobantes
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={reopen} disabled={loading}>
-            <RotateCcw className="w-4 h-4 mr-1.5" />
-            {loading ? 'Reabriendo...' : 'Reabrir'}
-          </Button>
+          {isAdmin && (
+            <Button variant="outline" size="sm" onClick={reopen} disabled={loading}>
+              <RotateCcw className="w-4 h-4 mr-1.5" />
+              {loading ? 'Reabriendo...' : 'Reabrir'}
+            </Button>
+          )}
         </div>
       </>
     )
@@ -150,8 +168,16 @@ export default function StatusActions({ quotationId, quotationNumber, clientId, 
           billingName={billingName}
           billingRut={billingRut}
           billingAddr={billingAddr}
+          defaultFormaPago={clientMedioPago}
           onSuccess={finalizarWon}
           onClose={() => setShowBilling(false)}
+        />
+      )}
+      {showLostModal && (
+        <LostReasonModal
+          onConfirm={confirmLost}
+          onClose={() => setShowLostModal(false)}
+          loading={loading}
         />
       )}
       <div className="flex gap-2">

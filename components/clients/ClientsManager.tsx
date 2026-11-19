@@ -30,6 +30,7 @@ interface Client {
   phone?: string
   address?: string
   tipo?: 'natural' | 'empresa' | 'colegio' | null
+  medio_pago?: string | null
 }
 
 interface HistoryItem {
@@ -54,7 +55,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
   const [clients, setClients] = useState<Client[]>(initialClients)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
-  const [form, setForm] = useState({ name: '', rut: '', email: '', phone: '', address: '', tipo: '' as '' | 'natural' | 'empresa' | 'colegio' })
+  const [form, setForm] = useState({ name: '', rut: '', email: '', phone: '', address: '', tipo: '' as '' | 'natural' | 'empresa' | 'colegio', medio_pago: '' })
   const [tipoFilter, setTipoFilter] = useState<'' | 'natural' | 'empresa' | 'colegio'>('')
   const [loading, setLoading] = useState(false)
   const [rutError, setRutError] = useState('')
@@ -243,7 +244,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
 
   function openNew() {
     setEditing(null)
-    setForm({ name: '', rut: '', email: '', phone: PHONE_DEFAULT_MOBILE, address: '', tipo: '' })
+    setForm({ name: '', rut: '', email: '', phone: PHONE_DEFAULT_MOBILE, address: '', tipo: '', medio_pago: '' })
     setRutError('')
     setDupClient(null)
     setOpen(true)
@@ -251,7 +252,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
 
   function openEdit(c: Client) {
     setEditing(c)
-    setForm({ name: c.name, rut: c.rut ? formatRut(c.rut) : '', email: c.email ?? '', phone: c.phone || PHONE_DEFAULT_MOBILE, address: c.address ?? '', tipo: c.tipo ?? '' })
+    setForm({ name: c.name, rut: c.rut ? formatRut(c.rut) : '', email: c.email ?? '', phone: c.phone || PHONE_DEFAULT_MOBILE, address: c.address ?? '', tipo: c.tipo ?? '', medio_pago: c.medio_pago ?? '' })
     setRutError('')
     setDupClient(null)
     setOpen(true)
@@ -337,6 +338,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
         phone: form.phone.trim() || null,
         address: form.address.trim() || null,
         tipo: form.tipo || null,
+        medio_pago: form.medio_pago || null,
       }
       const body = editing ? { ...payload, id: editing.id } : payload
       const res = await fetch('/api/clients', {
@@ -361,7 +363,7 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
       if (!res.ok) throw new Error(json.error ?? 'Error al guardar')
 
       if (editing) {
-        setClients(prev => prev.map(c => c.id === editing.id ? { ...c, ...payload, tipo: (payload.tipo as Client['tipo']) ?? c.tipo } as Client : c))
+        setClients(prev => prev.map(c => c.id === editing.id ? { ...c, ...payload, tipo: (payload.tipo as Client['tipo']) ?? c.tipo, medio_pago: payload.medio_pago } as Client : c))
         toast.success('Cliente actualizado')
       } else {
         setClients(prev => [...prev, json.data ?? json as Client].sort((a, b) => a.name.localeCompare(b.name)))
@@ -838,6 +840,32 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
                     style={form.tipo === v
                       ? { background: '#1B8A4B', color: 'white', borderColor: '#1B8A4B' }
                       : { background: 'white', color: '#6B7280', borderColor: '#E5E7EB' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Medio de pago habitual</Label>
+              <div className="grid grid-cols-1 gap-1.5">
+                {([
+                  ['', 'Sin definir'],
+                  ['al_contado', 'Contado — 1 pago total'],
+                  ['cincuenta_cincuenta', 'Contado — 50% + 50%'],
+                  ['credito_7', 'Crédito 7 días'],
+                  ['credito_15', 'Crédito 15 días'],
+                  ['credito_30', 'Crédito 30 días'],
+                  ['credito_60', 'Crédito 60 días'],
+                ] as const).map(([v, label]) => (
+                  <button key={v} type="button" onClick={() => setForm(f => ({ ...f, medio_pago: v }))}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-left text-xs transition-all"
+                    style={form.medio_pago === v
+                      ? { borderColor: '#1B8A4B', background: '#f0fdf4', color: '#14532d', fontWeight: 600 }
+                      : { borderColor: '#e5e7eb', background: 'white', color: '#374151' }}>
+                    <div className="w-3 h-3 rounded-full border-2 flex items-center justify-center flex-shrink-0"
+                      style={{ borderColor: form.medio_pago === v ? '#1B8A4B' : '#d1d5db' }}>
+                      {form.medio_pago === v && <div className="w-1.5 h-1.5 rounded-full bg-green-700" />}
+                    </div>
                     {label}
                   </button>
                 ))}

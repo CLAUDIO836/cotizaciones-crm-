@@ -499,11 +499,15 @@ if ($action === 'clients_create') {
         }
     }
 
+    // Auto-migrate medio_pago column
+    try { db()->exec("ALTER TABLE clients ADD COLUMN medio_pago VARCHAR(30) NULL"); } catch (Exception $e) {}
     $id = uuid();
     $phone = $b['phone'] ?? $b['telefono_celular'] ?? $b['telefono_fijo'] ?? null;
     $tipo = in_array($b['tipo'] ?? '', ['natural','empresa','colegio']) ? $b['tipo'] : null;
-    db()->prepare('INSERT INTO clients (id,name,rut,email,phone,address,tipo) VALUES (?,?,?,?,?,?,?)')->execute([
-        $id, $b['name'] ?? '', $storedRut, $b['email'] ?? null, $phone, $b['address'] ?? null, $tipo
+    $validMedios = ['al_contado','cincuenta_cincuenta','credito_7','credito_15','credito_30','credito_60'];
+    $medioPago = in_array($b['medio_pago'] ?? '', $validMedios) ? $b['medio_pago'] : null;
+    db()->prepare('INSERT INTO clients (id,name,rut,email,phone,address,tipo,medio_pago) VALUES (?,?,?,?,?,?,?,?)')->execute([
+        $id, $b['name'] ?? '', $storedRut, $b['email'] ?? null, $phone, $b['address'] ?? null, $tipo, $medioPago
     ]);
     $stmt = db()->prepare('SELECT * FROM clients WHERE id = ?');
     $stmt->execute([$id]);
@@ -552,9 +556,17 @@ if ($action === 'clients_update') {
     }
 
     $tipo = in_array($b['tipo'] ?? '', ['natural','empresa','colegio']) ? $b['tipo'] : null;
-    db()->prepare('UPDATE clients SET name=?,rut=?,email=?,phone=?,address=?,tipo=? WHERE id=?')->execute([
-        $b['name'] ?? '', $storedRut, $b['email'] ?? null, $b['phone'] ?? null, $b['address'] ?? null, $tipo, $id
-    ]);
+    $validMedios = ['al_contado','cincuenta_cincuenta','credito_7','credito_15','credito_30','credito_60'];
+    $medioPago = array_key_exists('medio_pago', $b) ? (in_array($b['medio_pago'], $validMedios) ? $b['medio_pago'] : null) : false;
+    if ($medioPago !== false) {
+        db()->prepare('UPDATE clients SET name=?,rut=?,email=?,phone=?,address=?,tipo=?,medio_pago=? WHERE id=?')->execute([
+            $b['name'] ?? '', $storedRut, $b['email'] ?? null, $b['phone'] ?? null, $b['address'] ?? null, $tipo, $medioPago, $id
+        ]);
+    } else {
+        db()->prepare('UPDATE clients SET name=?,rut=?,email=?,phone=?,address=?,tipo=? WHERE id=?')->execute([
+            $b['name'] ?? '', $storedRut, $b['email'] ?? null, $b['phone'] ?? null, $b['address'] ?? null, $tipo, $id
+        ]);
+    }
     ok();
 }
 
@@ -850,9 +862,10 @@ if ($action === 'quotations_get') {
     requireAuth();
     $stmt = db()->prepare('
         SELECT q.*,
-               c.name    AS client_name,  c.rut     AS client_rut,
-               c.email   AS client_email, c.phone   AS client_phone,
-               c.address AS client_address,
+               c.name       AS client_name,  c.rut        AS client_rut,
+               c.email      AS client_email, c.phone      AS client_phone,
+               c.address    AS client_address,
+               c.medio_pago AS client_medio_pago,
                p.name    AS profile_name, p.email   AS profile_email,
                pl.name   AS pipeline_name,
                ct.name          AS contact_name,
@@ -876,7 +889,7 @@ if ($action === 'quotations_get') {
     $stmt2 = db()->prepare('SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order');
     $stmt2->execute([$id]);
     $q['quotation_items'] = $stmt2->fetchAll();
-    $q['clients']   = ['name' => $q['client_name'], 'rut' => $q['client_rut'], 'email' => $q['client_email'], 'phone' => $q['client_phone'], 'address' => $q['client_address']];
+    $q['clients']   = ['name' => $q['client_name'], 'rut' => $q['client_rut'], 'email' => $q['client_email'], 'phone' => $q['client_phone'], 'address' => $q['client_address'], 'medio_pago' => $q['client_medio_pago'] ?? null];
     $q['profiles']  = ['name' => $q['profile_name'], 'email' => $q['profile_email']];
     $q['pipelines'] = ['name' => $q['pipeline_name']];
     ok($q);
@@ -1903,10 +1916,22 @@ if ($action === 'quotations_delete') {
 if ($action === 'quotations_set_status') {
     requireAuth();
     $b = body();
+    // Auto-migrate lost_reason and lost_comment columns
+    try {
+        db()->exec("ALTER TABLE quotations ADD COLUMN lost_reason VARCHAR(100) NULL");
+    } catch (Exception $e) {}
+    try {
+        db()->exec("ALTER TABLE quotations ADD COLUMN lost_comment TEXT NULL");
+    } catch (Exception $e) {}
     $prev = db()->prepare('SELECT status, user_id FROM quotations WHERE id = ?');
     $prev->execute([$b['id']]);
     $prev = $prev->fetch();
-    db()->prepare('UPDATE quotations SET status = ? WHERE id = ?')->execute([$b['status'], $b['id']]);
+    if (!empty($b['lost_reason']) && $b['status'] === 'lost') {
+        db()->prepare('UPDATE quotations SET status=?, lost_reason=?, lost_comment=? WHERE id=?')
+            ->execute([$b['status'], $b['lost_reason'], $b['lost_comment'] ?? null, $b['id']]);
+    } else {
+        db()->prepare('UPDATE quotations SET status = ? WHERE id = ?')->execute([$b['status'], $b['id']]);
+    }
     if ($prev && $b['status'] !== $prev['status']) {
         logStatusChange($b['id'], $prev['status'], $b['status'], $user['id'] ?? $prev['user_id'] ?? null, 'crm');
         // Auto-avance: won/lost → cierre

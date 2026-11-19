@@ -10,8 +10,8 @@ interface Props {
   billingAddr: string
   onSuccess:   () => void
   onClose:     () => void
-  // Si ya está ganado solo se suben comprobantes / editan datos de facturación
   alreadyWon?: boolean
+  defaultFormaPago?: string
 }
 
 const FORMAS_PAGO = [
@@ -23,8 +23,8 @@ const FORMAS_PAGO = [
   { key: 'credito_60',          label: 'Crédito 60 días',                   desc: 'Requiere autorización de gerencia', color: '#f97316', isCredit: true },
 ]
 
-export default function BillingModal({ quotationId, billingName, billingRut, billingAddr, onSuccess, onClose, alreadyWon = false }: Props) {
-  const [formaPago,   setFormaPago]   = useState('')
+export default function BillingModal({ quotationId, billingName, billingRut, billingAddr, onSuccess, onClose, alreadyWon = false, defaultFormaPago = '' }: Props) {
+  const [formaPago,   setFormaPago]   = useState(defaultFormaPago)
   const [name,        setName]        = useState(billingName)
   const [rut,         setRut]         = useState(billingRut)
   const [addr,        setAddr]        = useState(billingAddr)

@@ -181,8 +181,36 @@ export default async function CotizacionDetailPage({
                 billingAddr={(q.clients as { address?: string })?.address ?? ''}
                 wonLabel={isDiario ? 'Apruebo Cotización' : undefined}
                 lostLabel={isDiario ? 'Rechazo Cotización' : undefined}
+                userRole={user?.role ?? ''}
+                clientMedioPago={(q.clients as { medio_pago?: string })?.medio_pago ?? ''}
                 inline
               />
+            </div>
+          )}
+
+          {/* Razón de pérdida */}
+          {q.status === 'lost' && !!(qAny.lost_reason as string) && (
+            <div className="px-3 py-2.5 border-b bg-red-50">
+              <p className="text-xs text-red-400 uppercase tracking-wide mb-1">Razón de pérdida</p>
+              <p className="text-xs font-semibold text-red-700">{String(qAny.lost_reason)}</p>
+              {!!(qAny.lost_comment as string) && <p className="text-xs text-red-600 mt-0.5">{String(qAny.lost_comment)}</p>}
+            </div>
+          )}
+
+          {/* Medio de pago del cliente */}
+          {!!(q.clients as { medio_pago?: string })?.medio_pago && (
+            <div className="px-3 py-2.5 border-b">
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Medio de pago</p>
+              <p className="text-xs font-semibold text-gray-700">
+                {({
+                  al_contado: 'Contado — 1 pago total',
+                  cincuenta_cincuenta: 'Contado — 50% + 50%',
+                  credito_7: 'Crédito 7 días',
+                  credito_15: 'Crédito 15 días',
+                  credito_30: 'Crédito 30 días',
+                  credito_60: 'Crédito 60 días',
+                } as Record<string,string>)[(q.clients as { medio_pago?: string }).medio_pago ?? ''] ?? (q.clients as { medio_pago?: string }).medio_pago}
+              </p>
             </div>
           )}
 
@@ -375,7 +403,7 @@ export default async function CotizacionDetailPage({
               <DuplicateButton quotationId={id} />
             )}
             {!isReadOnly && (
-              <DeleteButton quotationId={id} pipedriveDealId={q.pipedrive_deal_id} />
+              <DeleteButton quotationId={id} pipedriveDealId={q.pipedrive_deal_id} userRole={user?.role ?? ''} />
             )}
             <AgentButton
               quotationId={id}
@@ -433,6 +461,8 @@ export default async function CotizacionDetailPage({
                           billingAddr={(q.clients as { address?: string })?.address ?? ''}
                           wonLabel="Apruebo Cotización"
                           lostLabel="Rechazo Cotización"
+                          userRole={user?.role ?? ''}
+                          clientMedioPago={(q.clients as { medio_pago?: string })?.medio_pago ?? ''}
                         />
                       </div>
                     )}

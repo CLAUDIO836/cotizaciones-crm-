@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-export default function DeleteButton({ quotationId, pipedriveDealId }: { quotationId: string; pipedriveDealId?: string }) {
+export default function DeleteButton({ quotationId, pipedriveDealId, userRole }: { quotationId: string; pipedriveDealId?: string; userRole?: string }) {
+  if (userRole && userRole !== 'admin' && userRole !== 'superadmin') return null
   const [confirming, setConfirming] = useState(false)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
