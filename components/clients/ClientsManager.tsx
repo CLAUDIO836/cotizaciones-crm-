@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -83,6 +84,30 @@ export default function ClientsManager({ initialClients }: { initialClients: Cli
   const [editContactClientId, setEditContactClientId] = useState<string | null>(null)
   const [editContactForm, setEditContactForm] = useState({ name: '', cargo: '', phone_mobile: '', phone_landline: '', email: '' })
   const [savingEditContact, setSavingEditContact] = useState(false)
+
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const openId = searchParams.get('open')
+    const tab = searchParams.get('tab') as 'contactos' | 'historia' | null
+    if (!openId) return
+    setExpandedId(openId)
+    if (tab === 'historia') {
+      setActiveTab(prev => ({ ...prev, [openId]: 'historia' }))
+      if (!history[openId]) {
+        setLoadingHistory(openId)
+        fetch(`/api/clients/history?client_id=${openId}`)
+          .then(r => r.json())
+          .then((json: { data?: HistoryItem[] }) => {
+            setHistory(prev => ({ ...prev, [openId]: json.data ?? [] }))
+          })
+          .catch(() => setHistory(prev => ({ ...prev, [openId]: [] })))
+          .finally(() => setLoadingHistory(null))
+      }
+    } else {
+      setActiveTab(prev => ({ ...prev, [openId]: 'contactos' }))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function toggleExpand(clientId: string) {
     if (expandedId === clientId) {

@@ -20,6 +20,7 @@ import EmailsPanel from '@/components/quotations/EmailsPanel'
 import FechaServicioEditor from '@/components/quotations/FechaServicioEditor'
 import DuplicateButton from '@/components/quotations/DuplicateButton'
 import OwnerEditor from '@/components/quotations/OwnerEditor'
+import ClientHistoryPopover from '@/components/clients/ClientHistoryPopover'
 
 const STAGES_ORDER = ['lead', 'contactado', 'cotizacion', 'negociacion', 'cierre']
 
@@ -188,11 +189,14 @@ export default async function CotizacionDetailPage({
           {/* Cliente */}
           <div className="px-3 py-2.5 border-b">
             <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Cliente</p>
-            <p className="font-semibold text-sm text-gray-900 leading-tight">{q.clients?.name ?? '—'}</p>
-            {q.clients?.rut && <p className="text-xs text-gray-500 mt-0.5">RUT: {q.clients.rut}</p>}
-            {q.clients?.email && <p className="text-xs text-gray-500">{q.clients.email}</p>}
-            {q.clients?.phone && <p className="text-xs text-gray-500">{q.clients.phone}</p>}
-            {q.clients?.address && <p className="text-xs text-gray-400 mt-0.5 leading-tight">{q.clients.address}</p>}
+            <ClientHistoryPopover
+              clientId={q.client_id ?? ''}
+              clientName={q.clients?.name ?? '—'}
+              clientRut={(q.clients as { rut?: string })?.rut}
+              clientEmail={q.clients?.email}
+              clientPhone={q.clients?.phone}
+              clientAddress={(q.clients as { address?: string })?.address}
+            />
           </div>
 
           {/* Contacto */}
