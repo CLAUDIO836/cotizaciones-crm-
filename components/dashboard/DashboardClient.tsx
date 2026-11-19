@@ -437,19 +437,17 @@ export default function DashboardClient({
               }>
               Hoy
             </button>
-            {/* Meses del año actual */}
+            {/* Meses del año actual — todos los 12 */}
             {MONTH_NAMES.map((name, idx) => {
               const m = idx + 1
               const y = now.getFullYear()
-              if (m > now.getMonth() + 1) return null
               const firstDay = `${y}-${String(m).padStart(2, '0')}-01`
               const lastDate = new Date(y, m, 0)
               const lastDay  = `${y}-${String(m).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`
-              const clampEnd = lastDay > todayStr ? todayStr : lastDay
-              const isActive = calStart === firstDay && calEnd === clampEnd
+              const isActive = calStart === firstDay && calEnd === lastDay
               return (
                 <button key={m}
-                  onClick={() => { setCalStart(firstDay); setCalEnd(clampEnd); setDrill(null) }}
+                  onClick={() => { setCalStart(firstDay); setCalEnd(lastDay); setDrill(null) }}
                   className="text-xs px-2.5 py-1.5 rounded-lg border transition-colors"
                   style={isActive
                     ? { background: '#1B8A4B', color: '#fff', borderColor: '#1B8A4B', fontWeight: 700 }
