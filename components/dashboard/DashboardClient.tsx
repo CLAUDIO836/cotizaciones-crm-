@@ -300,10 +300,10 @@ export default function DashboardClient({
     [quotations, ejecutiva, empresa],
   )
 
-  // inRange usa getActivityDate: abiertas por fecha servicio, ganadas/perdidas por fecha estado
+  // inRange usa getServiceDate (fecha_salida): igual que la vista "Por mes" en Negocios
   const inRange = useMemo(() => {
     const { from, to } = range
-    return filtered.filter(q => { const ds = getActivityDate(q); return ds >= from && ds <= to })
+    return filtered.filter(q => { const ds = getServiceDate(q); return ds >= from && ds <= to })
   }, [filtered, range])
 
   // Los tres KPIs miden gestión real: abiertas por created_at, ganadas/perdidas por updated_at
@@ -337,7 +337,7 @@ export default function DashboardClient({
       const cur = new Date(fromD)
       while (cur <= toD) {
         const ds = toDateStr(cur)
-        const dq = filtered.filter(q => getActivityDate(q) === ds)
+        const dq = filtered.filter(q => getServiceDate(q) === ds)
         result.push({
           label: formatLabel(cur, 'day'),
           Ganadas:  dq.filter(q => q.status === 'won').length,
@@ -356,7 +356,7 @@ export default function DashboardClient({
       const ws = getWeekStart(new Date(fromD))
       while (ws <= toD) {
         const we = new Date(ws); we.setDate(ws.getDate() + 6)
-        const wq = filtered.filter(q => { const ds = getActivityDate(q); return ds >= localDateStr(ws) && ds <= localDateStr(we) })
+        const wq = filtered.filter(q => { const ds = getServiceDate(q); return ds >= localDateStr(ws) && ds <= localDateStr(we) })
         result.push({
           label: formatLabel(ws, 'week'),
           Ganadas:  wq.filter(q => q.status === 'won').length,
@@ -377,7 +377,7 @@ export default function DashboardClient({
       const dStr  = localDateStr(cur)
       const nextM = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
       const nStr  = localDateStr(nextM)
-      const mq = filtered.filter(q => { const ds = getActivityDate(q); return ds >= dStr && ds < nStr })
+      const mq = filtered.filter(q => { const ds = getServiceDate(q); return ds >= dStr && ds < nStr })
       result.push({
         label: formatLabel(cur, 'month'),
         Ganadas:  mq.filter(q => q.status === 'won').length,
