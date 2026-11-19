@@ -31,32 +31,19 @@ export default function ClientHistoryPopover({
   clientId, clientName, clientRut, clientEmail, clientPhone, clientAddress,
 }: Props) {
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0 })
   const [history, setHistory] = useState<HistoryItem[] | null>(null)
   const [loading, setLoading] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (
-        popoverRef.current && !popoverRef.current.contains(e.target as Node) &&
-        triggerRef.current && !triggerRef.current.contains(e.target as Node)
-      ) setOpen(false)
-    }
-    if (open) document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false) }
+    if (open) document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
   }, [open])
 
-  async function toggle(e: React.MouseEvent) {
+  async function toggle() {
     if (open) { setOpen(false); return }
-    // Calcular posición fixed relativa al botón clickeado
-    const rect = (e.currentTarget as HTMLElement).closest('[data-client-trigger]')?.getBoundingClientRect()
-      ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const popW = 320
-    const left = Math.min(rect.left, window.innerWidth - popW - 16)
-    const top = rect.bottom + 6
-    setPos({ top, left })
     setOpen(true)
     if (!history && !loading) {
       setLoading(true)
@@ -80,10 +67,16 @@ export default function ClientHistoryPopover({
   const fmt = (n: number) => `$${n.toLocaleString('es-CL')}`
 
   const popover = open ? createPortal(
+    // Overlay + modal centrado
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => { if (e.target === e.currentTarget) setOpen(false) }}
+      className="bg-black/40 backdrop-blur-[2px]"
+    >
     <div
       ref={popoverRef}
-      style={{ position: 'fixed', top: pos.top, left: pos.left, width: 320, zIndex: 9999 }}
-      className="bg-white rounded-xl border shadow-2xl overflow-hidden"
+      style={{ width: 380, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
+      className="bg-white rounded-2xl border shadow-2xl overflow-hidden"
     >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
@@ -127,7 +120,7 @@ export default function ClientHistoryPopover({
           )}
 
           {/* Lista */}
-          <div className="max-h-72 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto">
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
@@ -181,12 +174,13 @@ export default function ClientHistoryPopover({
               </div>
             )}
           </div>
+    </div>
     </div>,
     document.body
   ) : null
 
   return (
-    <div ref={triggerRef} data-client-trigger className="space-y-0.5">
+    <div ref={triggerRef} className="space-y-0.5">
       <button
         onClick={toggle}
         className="font-semibold text-sm text-blue-600 hover:text-blue-800 hover:underline text-left leading-tight w-full flex items-center gap-1"
