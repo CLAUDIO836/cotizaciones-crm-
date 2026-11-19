@@ -10,19 +10,22 @@ interface Props {
   notesCount: number
   emailsCount?: number
   historialCount?: number
+  showComprobantes?: boolean
 }
 
-const TABS = [
+const BASE_TABS = [
   { key: 'datos',      label: 'Datos' },
   { key: 'items',      label: 'Ítems' },
   { key: 'gestiones',  label: 'Gestiones' },
   { key: 'notas',      label: 'Notas' },
   { key: 'correos',    label: 'Correos' },
+  { key: 'comprobantes', label: 'Comprobantes' },
   { key: 'historial',  label: 'Historial' },
   { key: 'documentos', label: 'Documentos' },
 ]
 
-export default function QuotationTabs({ quotationId, currentTab, activitiesCount, notesCount, emailsCount, historialCount }: Props) {
+export default function QuotationTabs({ quotationId, currentTab, activitiesCount, notesCount, emailsCount, historialCount, showComprobantes }: Props) {
+  const TABS = showComprobantes ? BASE_TABS : BASE_TABS.filter(t => t.key !== 'comprobantes')
   const badges: Record<string, number> = {
     gestiones: activitiesCount,
     notas: notesCount,

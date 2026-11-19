@@ -2861,6 +2861,123 @@ if ($action === 'letters_download_comprobante') {
     exit;
 }
 
+// ── COMPROBANTE VALIDATION ────────────────────────────────────────────────────
+
+if ($action === 'quotation_comprobantes_list') {
+    requireAuth();
+    $qid = $_GET['quotation_id'] ?? '';
+    if (!$qid) err('quotation_id requerido');
+
+    // Auto-migrate validation columns
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN validation_status ENUM('pending','vendedor_ok','approved','rejected') NOT NULL DEFAULT 'pending'"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN vendedor_ok_by VARCHAR(36) NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN vendedor_ok_at DATETIME NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN superadmin_ok_by VARCHAR(36) NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN superadmin_ok_at DATETIME NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN rejection_reason TEXT NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN rejected_by VARCHAR(36) NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN rejected_at DATETIME NULL"); } catch (Exception $e) {}
+
+    $stmt = db()->prepare("
+        SELECT lc.id, lc.letter_token, lc.tipo, lc.filename, lc.content_type,
+               lc.uploaded_at, lc.amount, lc.validation_status,
+               lc.vendedor_ok_by, lc.vendedor_ok_at,
+               lc.superadmin_ok_by, lc.superadmin_ok_at,
+               lc.rejection_reason, lc.rejected_by, lc.rejected_at,
+               pv.name AS vok_name,
+               ps.name AS sadm_name,
+               pr.name AS rej_name
+        FROM letter_comprobantes lc
+        JOIN approval_letters al ON al.token = lc.letter_token
+        LEFT JOIN profiles pv ON pv.id = lc.vendedor_ok_by
+        LEFT JOIN profiles ps ON ps.id = lc.superadmin_ok_by
+        LEFT JOIN profiles pr ON pr.id = lc.rejected_by
+        WHERE al.quotation_id = ?
+        ORDER BY lc.uploaded_at ASC
+    ");
+    $stmt->execute([$qid]);
+    ok($stmt->fetchAll());
+}
+
+if ($action === 'comprobante_validate') {
+    requireAuth();
+    $b = body();
+    $id    = $b['id']    ?? '';
+    $level = $b['level'] ?? '';
+    if (!$id || !$level) err('id y level requeridos');
+
+    // Auto-migrate validation columns
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN validation_status ENUM('pending','vendedor_ok','approved','rejected') NOT NULL DEFAULT 'pending'"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN vendedor_ok_by VARCHAR(36) NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN vendedor_ok_at DATETIME NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN superadmin_ok_by VARCHAR(36) NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN superadmin_ok_at DATETIME NULL"); } catch (Exception $e) {}
+
+    if ($level === 'vendedor') {
+        db()->prepare("UPDATE letter_comprobantes SET validation_status='vendedor_ok', vendedor_ok_by=?, vendedor_ok_at=NOW() WHERE id=?")
+            ->execute([$user['id'], $id]);
+        ok(['validation_status' => 'vendedor_ok']);
+    } elseif ($level === 'superadmin') {
+        if (!isAdmin($user)) err('Se requiere rol superadmin o gerencia', 403);
+        // Check it's already vendedor_ok
+        $cur = db()->prepare('SELECT validation_status FROM letter_comprobantes WHERE id=?');
+        $cur->execute([$id]);
+        $row = $cur->fetch();
+        if (!$row) err('Comprobante no encontrado', 404);
+        if ($row['validation_status'] !== 'vendedor_ok') err('El vendedor debe validar primero');
+        db()->prepare("UPDATE letter_comprobantes SET validation_status='approved', superadmin_ok_by=?, superadmin_ok_at=NOW() WHERE id=?")
+            ->execute([$user['id'], $id]);
+        ok(['validation_status' => 'approved']);
+    } else {
+        err('level debe ser vendedor o superadmin');
+    }
+}
+
+if ($action === 'comprobante_reject') {
+    requireAuth();
+    if (!isAdmin($user)) err('Se requiere rol superadmin o gerencia', 403);
+    $b      = body();
+    $id     = $b['id']     ?? '';
+    $reason = $b['reason'] ?? '';
+    if (!$id) err('id requerido');
+
+    // Auto-migrate
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN validation_status ENUM('pending','vendedor_ok','approved','rejected') NOT NULL DEFAULT 'pending'"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN rejection_reason TEXT NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN rejected_by VARCHAR(36) NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN rejected_at DATETIME NULL"); } catch (Exception $e) {}
+
+    db()->prepare("UPDATE letter_comprobantes SET validation_status='rejected', rejected_by=?, rejected_at=NOW(), rejection_reason=? WHERE id=?")
+        ->execute([$user['id'], $reason, $id]);
+
+    // Fetch client email
+    $info = db()->prepare('SELECT al.client_email, al.client_name, q.number, al.token FROM letter_comprobantes lc JOIN approval_letters al ON al.token=lc.letter_token JOIN quotations q ON q.id=al.quotation_id WHERE lc.id=?');
+    $info->execute([$id]);
+    $inf = $info->fetch();
+    $sent = false;
+    if ($inf && $inf['client_email']) {
+        $to      = $inf['client_email'];
+        $name    = $inf['client_name'] ?? 'Cliente';
+        $num     = $inf['number']      ?? '';
+        $tkn     = $inf['token']       ?? '';
+        $subject = "Comprobante de pago rechazado — Cotización N°{$num}";
+        $link    = 'https://crm.transccl.cl/firmar/' . $tkn;
+        $body_html = "<!DOCTYPE html><html><body style='font-family:Arial,sans-serif;color:#222;'>
+<p>Estimado/a <strong>{$name}</strong>,</p>
+<p>Tu comprobante de pago ha sido <strong style='color:#dc2626;'>rechazado</strong>.</p>
+" . ($reason ? "<p><strong>Motivo:</strong> " . htmlspecialchars($reason) . "</p>" : "") . "
+<p>Por favor ingresa nuevamente al link de tu carta de aprobación para subir un nuevo comprobante:</p>
+<p><a href='{$link}' style='color:#1B8A4B;'>{$link}</a></p>
+<p style='color:#6b7280;font-size:12px;'>Transportes Transccl SpA</p>
+</body></html>";
+        $headers  = "MIME-Version: 1.0\r\n";
+        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $headers .= "From: Transccl CRM <no-reply@transccl.cl>\r\n";
+        $sent = @mail($to, $subject, $body_html, $headers);
+    }
+    ok(['sent' => (bool)$sent]);
+}
+
 // ── LEAD REQUESTS ─────────────────────────────────────────────────────────────
 if ($action === 'leads_pending_count') {
     requireAuth();

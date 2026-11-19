@@ -18,6 +18,7 @@ import DocumentsTab from '@/components/quotations/DocumentsTab'
 import AgentButton from '@/components/quotations/AgentButton'
 import EmailsPanel from '@/components/quotations/EmailsPanel'
 import HistorialPanel from '@/components/quotations/HistorialPanel'
+import ComprobantesPanel from '@/components/quotations/ComprobantesPanel'
 import FechaServicioEditor from '@/components/quotations/FechaServicioEditor'
 import DuplicateButton from '@/components/quotations/DuplicateButton'
 import OwnerEditor from '@/components/quotations/OwnerEditor'
@@ -427,6 +428,7 @@ export default async function CotizacionDetailPage({
             notesCount={notes.length}
             emailsCount={emails.length}
             historialCount={0}
+            showComprobantes={q.status === 'won'}
           />
 
           {/* Tab content */}
@@ -565,6 +567,12 @@ export default async function CotizacionDetailPage({
                   userRole={user?.role ?? ''}
                   status={q.status ?? ''}
                 />
+              </div>
+            )}
+
+            {tab === 'comprobantes' && q.status === 'won' && (
+              <div className="max-w-2xl">
+                <ComprobantesPanel quotationId={id} userRole={user?.role ?? ''} />
               </div>
             )}
 
