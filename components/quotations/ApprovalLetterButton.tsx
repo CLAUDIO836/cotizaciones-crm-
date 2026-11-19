@@ -4,6 +4,10 @@ import { useState, useEffect } from 'react'
 import { FileSignature, Copy, Check, ExternalLink, Trash2, AlertTriangle, Clock, CheckCircle2, FileDown, Plus, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
+function formatCLP(n: number) {
+  return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(n)
+}
+
 interface Letter {
   id: string
   token: string
@@ -12,6 +16,9 @@ interface Letter {
   sent_at: string | null
   created_at: string
   client_name: string
+  total?: number | null
+  total_paid?: number | null
+  comprobantes_count?: number | null
 }
 
 export default function ApprovalLetterButton({ quotationId }: { quotationId: string }) {
@@ -152,6 +159,27 @@ export default function ApprovalLetterButton({ quotationId }: { quotationId: str
             Firmada por <strong className="text-gray-600">{letter.signed_name}</strong> · {new Date(letter.signed_at!).toLocaleString('es-CL')}
           </p>
         )}
+
+        {/* Estado de pago */}
+        {(() => {
+          const totalPaid = Number(letter.total_paid ?? 0)
+          const total = Number(letter.total ?? 0)
+          const compCount = Number(letter.comprobantes_count ?? 0)
+          if (compCount === 0 || totalPaid === 0) return null
+          const isFullyPaid = total > 0 && totalPaid >= total
+          const pending = total - totalPaid
+          return (
+            <div className={`rounded-lg px-3 py-2 text-xs ${isFullyPaid ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+              {isFullyPaid
+                ? <p className="font-bold text-green-700">✅ PAGADO AL 100% — {formatCLP(totalPaid)}</p>
+                : <>
+                    <p className="text-amber-700">Recibido: <strong>{formatCLP(totalPaid)}</strong></p>
+                    <p className="font-bold text-amber-700">Debe: {formatCLP(pending)}</p>
+                  </>
+              }
+            </div>
+          )
+        })()}
       </div>
     )
   }

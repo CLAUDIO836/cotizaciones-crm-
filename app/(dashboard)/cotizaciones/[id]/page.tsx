@@ -21,6 +21,7 @@ import FechaServicioEditor from '@/components/quotations/FechaServicioEditor'
 import DuplicateButton from '@/components/quotations/DuplicateButton'
 import OwnerEditor from '@/components/quotations/OwnerEditor'
 import ClientHistoryPopover from '@/components/clients/ClientHistoryPopover'
+import LetterPaymentBadge from '@/components/quotations/LetterPaymentBadge'
 
 const STAGES_ORDER = ['lead', 'contactado', 'cotizacion', 'negociacion', 'cierre']
 
@@ -186,6 +187,11 @@ export default async function CotizacionDetailPage({
                 inline
               />
             </div>
+          )}
+
+          {/* Badge pago — solo negocios ganados */}
+          {q.status === 'won' && (
+            <LetterPaymentBadge quotationId={q.id} total={q.total} />
           )}
 
           {/* Razón de pérdida */}

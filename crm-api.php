@@ -2512,7 +2512,26 @@ if ($action === 'approvals_respond') {
 // ── APPROVAL LETTERS ─────────────────────────────────────────────────────────
 if ($action === 'letters_by_quotation') {
     requireAuth();
-    $stmt = db()->prepare('SELECT * FROM approval_letters WHERE quotation_id = ? ORDER BY created_at DESC');
+    // Ensure comprobantes table and amount column exist
+    db()->exec("CREATE TABLE IF NOT EXISTS letter_comprobantes (
+        id          VARCHAR(36)   NOT NULL PRIMARY KEY,
+        letter_token VARCHAR(100) NOT NULL,
+        tipo        VARCHAR(20)   NOT NULL DEFAULT 'abono1',
+        filename    VARCHAR(255)  NOT NULL,
+        file_data   MEDIUMBLOB    NOT NULL,
+        content_type VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+        uploaded_at DATETIME      NOT NULL DEFAULT NOW(),
+        INDEX idx_lc_token (letter_token)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN amount BIGINT NULL DEFAULT NULL"); } catch (Exception $e) {}
+    $stmt = db()->prepare('
+        SELECT al.*,
+          COALESCE((SELECT SUM(lc.amount) FROM letter_comprobantes lc WHERE lc.letter_token = al.token), 0) AS total_paid,
+          COALESCE((SELECT COUNT(*) FROM letter_comprobantes lc WHERE lc.letter_token = al.token), 0) AS comprobantes_count
+        FROM approval_letters al
+        WHERE al.quotation_id = ?
+        ORDER BY al.created_at DESC
+    ');
     $stmt->execute([$_GET['quotation_id'] ?? '']);
     ok($stmt->fetchAll());
 }
@@ -2634,11 +2653,16 @@ if ($action === 'letters_save_comprobante') {
         INDEX idx_lc_token (letter_token)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    // Add amount column if not exists
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN amount BIGINT NULL DEFAULT NULL"); } catch (Exception $e) {}
+
+    $amount = isset($b['amount']) && $b['amount'] !== '' ? intval($b['amount']) : null;
+
     $data = base64_decode($b64);
     if ($data === false) err('Base64 inválido');
 
-    db()->prepare('INSERT INTO letter_comprobantes (id,letter_token,tipo,filename,file_data,content_type) VALUES (?,?,?,?,?,?)')
-        ->execute([uuid(), $token, $tipo, $filename, $data, $ctype]);
+    db()->prepare('INSERT INTO letter_comprobantes (id,letter_token,tipo,filename,file_data,content_type,amount) VALUES (?,?,?,?,?,?,?)')
+        ->execute([uuid(), $token, $tipo, $filename, $data, $ctype, $amount]);
     ok(['saved' => true]);
 }
 
@@ -2656,7 +2680,8 @@ if ($action === 'letters_get_comprobantes') {
         uploaded_at DATETIME      NOT NULL DEFAULT NOW(),
         INDEX idx_lc_token (letter_token)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    $stmt = db()->prepare('SELECT id,tipo,filename,content_type,uploaded_at,LENGTH(file_data) AS size_bytes FROM letter_comprobantes WHERE letter_token=? ORDER BY uploaded_at ASC');
+    try { db()->exec("ALTER TABLE letter_comprobantes ADD COLUMN amount BIGINT NULL DEFAULT NULL"); } catch (Exception $e) {}
+    $stmt = db()->prepare('SELECT id,tipo,filename,content_type,uploaded_at,LENGTH(file_data) AS size_bytes,amount FROM letter_comprobantes WHERE letter_token=? ORDER BY uploaded_at ASC');
     $stmt->execute([$token]);
     ok($stmt->fetchAll());
 }

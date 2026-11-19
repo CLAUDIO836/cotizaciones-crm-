@@ -46,6 +46,7 @@ interface Comprobante {
   content_type: string
   uploaded_at: string
   size_bytes: number
+  amount?: number | null
 }
 
 const TIPO_LABELS: Record<string, string> = {
@@ -86,10 +87,12 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
   const [comprobantes, setComprobantes] = useState<Comprobante[]>([])
   const [uploadTipo, setUploadTipo] = useState<'abono1' | 'abono2' | 'total'>(tiposComprobante[0] ?? 'total')
   const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadMonto, setUploadMonto] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadDone, setUploadDone] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const token = letter.token as string
+  const letterTotal = Number(letter.total ?? 0)
 
   useEffect(() => {
     if (!showComprobantes) return
@@ -106,12 +109,15 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
     const fd = new FormData()
     fd.append('tipo', uploadTipo)
     fd.append('file', uploadFile)
+    const montoNum = parseInt(uploadMonto.replace(/\D/g, ''), 10)
+    if (montoNum > 0) fd.append('monto', String(montoNum))
     try {
       const res = await fetch(`/api/approval-letters/${token}/comprobantes`, { method: 'POST', body: fd })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Error')
       setUploadDone(true)
       setUploadFile(null)
+      setUploadMonto('')
       // Reload list
       const r2 = await fetch(`/api/approval-letters/${token}/comprobantes`)
       const j2 = await r2.json()
@@ -179,6 +185,9 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
             onTipo={setUploadTipo}
             onFile={setUploadFile}
             onUpload={handleUpload}
+            uploadMonto={uploadMonto}
+            onMonto={setUploadMonto}
+            total={letterTotal}
           />
         )}
       </div>
@@ -281,6 +290,9 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
           onTipo={setUploadTipo}
           onFile={setUploadFile}
           onUpload={handleUpload}
+          uploadMonto={uploadMonto}
+          onMonto={setUploadMonto}
+          total={letterTotal}
         />
       )}
 
@@ -334,9 +346,16 @@ interface UploadSectionProps {
   onTipo: (v: 'abono1' | 'abono2' | 'total') => void
   onFile: (f: File | null) => void
   onUpload: () => void
+  uploadMonto: string
+  onMonto: (v: string) => void
+  total: number
 }
 
-function ComprobanteUploadSection({ comprobantes, uploadTipo, uploadFile, uploading, uploadDone, uploadError, tiposDisponibles, onTipo, onFile, onUpload }: UploadSectionProps) {
+function ComprobanteUploadSection({ comprobantes, uploadTipo, uploadFile, uploading, uploadDone, uploadError, tiposDisponibles, onTipo, onFile, onUpload, uploadMonto, onMonto, total }: UploadSectionProps) {
+  const totalPaid = comprobantes.reduce((s, c) => s + (c.amount ?? 0), 0)
+  const isFullyPaid = total > 0 && totalPaid >= total
+  const pending = total - totalPaid
+
   return (
     <div style={{ background: 'white', borderRadius: 16, border: '2px solid #bfdbfe', padding: 24 }}>
       <h2 style={{ fontSize: 17, fontWeight: 700, color: '#082e62', margin: '0 0 6px', borderBottom: '2px solid #e52832', paddingBottom: 10 }}>
@@ -357,6 +376,7 @@ function ComprobanteUploadSection({ comprobantes, uploadTipo, uploadFile, upload
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#166534', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {TIPO_LABELS[c.tipo] ?? c.tipo}
+                    {c.amount ? <span style={{ marginLeft: 8, fontWeight: 800 }}>{formatCLP(c.amount)}</span> : null}
                   </p>
                   <p style={{ margin: '1px 0 0', fontSize: 11, color: '#4ade80' }}>{c.filename} · {(c.size_bytes / 1024).toFixed(0)} KB</p>
                 </div>
@@ -366,6 +386,19 @@ function ComprobanteUploadSection({ comprobantes, uploadTipo, uploadFile, upload
               </div>
             ))}
           </div>
+          {/* Resumen de pago */}
+          {totalPaid > 0 && (
+            <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 8,
+              background: isFullyPaid ? '#dcfce7' : '#fefce8', border: `1px solid ${isFullyPaid ? '#86efac' : '#fde68a'}` }}>
+              {isFullyPaid
+                ? <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#166534' }}>✅ PAGADO AL 100% — {formatCLP(totalPaid)}</p>
+                : <>
+                    <p style={{ margin: 0, fontSize: 13, color: '#78350f' }}>Recibido: <strong>{formatCLP(totalPaid)}</strong></p>
+                    <p style={{ margin: '3px 0 0', fontSize: 13, fontWeight: 700, color: '#b45309' }}>Pendiente: {formatCLP(pending)}</p>
+                  </>
+              }
+            </div>
+          )}
         </div>
       )}
 
@@ -402,6 +435,24 @@ function ComprobanteUploadSection({ comprobantes, uploadTipo, uploadFile, upload
           </label>
         </div>
 
+        {/* Campo monto */}
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Monto del pago *</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={uploadMonto}
+            onChange={e => {
+              const digits = e.target.value.replace(/\D/g, '')
+              const formatted = digits ? '$' + Number(digits).toLocaleString('es-CL') : ''
+              onMonto(formatted)
+            }}
+            placeholder="Ej: $350.000"
+            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 13px', borderRadius: 8,
+              border: '1px solid #d1d5db', fontSize: 16, color: '#111827', outline: 'none' }}
+          />
+        </div>
+
         {uploadError && (
           <div style={{ padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8 }}>
             <p style={{ margin: 0, color: '#991b1b', fontSize: 13 }}>{uploadError}</p>
@@ -413,10 +464,10 @@ function ComprobanteUploadSection({ comprobantes, uploadTipo, uploadFile, upload
           </div>
         )}
 
-        <button onClick={onUpload} disabled={uploading || !uploadFile}
+        <button onClick={onUpload} disabled={uploading || !uploadFile || !uploadMonto}
           style={{ padding: '13px 20px', borderRadius: 10, border: 'none', fontSize: 15, fontWeight: 700,
-            background: uploading || !uploadFile ? '#d1d5db' : '#082e62', color: 'white',
-            cursor: uploading || !uploadFile ? 'not-allowed' : 'pointer' }}>
+            background: uploading || !uploadFile || !uploadMonto ? '#d1d5db' : '#082e62', color: 'white',
+            cursor: uploading || !uploadFile || !uploadMonto ? 'not-allowed' : 'pointer' }}>
           {uploading ? 'Enviando...' : 'Enviar comprobante'}
         </button>
       </div>

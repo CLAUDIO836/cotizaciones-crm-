@@ -23,6 +23,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     const buf = Buffer.from(await file.arrayBuffer())
     const b64 = buf.toString('base64')
 
+    const montoRaw = (formData.get('monto') as string | null) ?? ''
+    const amount = montoRaw ? parseInt(montoRaw.replace(/\D/g, ''), 10) || null : null
+
     const res = await fetch(`${CRM_API}?action=letters_save_comprobante`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -32,6 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
         filename: file.name,
         data: b64,
         content_type: file.type || 'application/octet-stream',
+        ...(amount ? { amount } : {}),
       }),
     })
     const json = await res.json()
