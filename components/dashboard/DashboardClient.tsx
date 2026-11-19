@@ -663,20 +663,24 @@ export default function DashboardClient({
         const rows = [...map.values()].sort((a, b) => b.montoGan - a.montoGan || b.won - a.won)
         if (!rows.length) return null
         const best = rows[0]
+        // Solo mostrar "Mejor cliente" si hay al menos un negocio ganado
+        const hayGanados = best.won > 0
         return (
           <>
-            {/* Mejor cliente del mes */}
-            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-5 flex flex-wrap items-center gap-4">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-green-600 uppercase tracking-wide font-medium mb-1">🏆 Mejor cliente — {rangeDescription}</p>
-                <p className="text-xl font-black text-gray-900 truncate">{best.name}</p>
-                <p className="text-sm text-gray-500 mt-0.5">{best.won} negocio{best.won !== 1 ? 's' : ''} ganado{best.won !== 1 ? 's' : ''}</p>
+            {/* Mejor cliente del período — solo si hay ganados */}
+            {hayGanados && (
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-5 flex flex-wrap items-center gap-4">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-green-600 uppercase tracking-wide font-medium mb-1">🏆 Mejor cliente — {rangeDescription}</p>
+                  <p className="text-xl font-black text-gray-900 truncate">{best.name}</p>
+                  <p className="text-sm text-gray-500 mt-0.5">{best.won} negocio{best.won !== 1 ? 's' : ''} ganado{best.won !== 1 ? 's' : ''}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-black" style={{ color: '#1B8A4B' }}>{formatCLP(best.montoGan)}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">monto ganado</p>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-3xl font-black" style={{ color: '#1B8A4B' }}>{formatCLP(best.montoGan)}</p>
-                <p className="text-xs text-gray-400 mt-0.5">monto ganado</p>
-              </div>
-            </div>
+            )}
 
             {/* Tabla clientes */}
             <div className="bg-white rounded-xl border overflow-hidden">
