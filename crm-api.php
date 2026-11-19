@@ -806,7 +806,7 @@ if ($action === 'pipelines_update') {
 // ── QUOTATIONS ───────────────────────────────────────────────────────────────
 if ($action === 'quotations_hash') {
     $user = requireAuth();
-    $isAdmin = $user['role'] === 'admin';
+    $isAdmin = isAdmin($user);
     if ($isAdmin) {
         $row = db()->query("SELECT MD5(GROUP_CONCAT(id,status,etapa,total ORDER BY id)) as hash FROM quotations WHERE is_deleted=0")->fetch();
     } else {
@@ -819,7 +819,7 @@ if ($action === 'quotations_hash') {
 
 if ($action === 'quotations_summary') {
     $user = requireAuth();
-    $isAdmin = $user['role'] === 'admin';
+    $isAdmin = isAdmin($user);
 
     $where = ['1=1'];
     $params = [];
@@ -2277,7 +2277,7 @@ if ($action === 'activities_update') {
 
 if ($action === 'activities_list_all') {
     $user = requireAuth();
-    $isAdmin = $user['role'] === 'admin';
+    $isAdmin = isAdmin($user);
 
     $where = ['1=1'];
     $params = [];
@@ -2778,7 +2778,7 @@ if ($action === 'leads_update_status') {
 // ── CONTRACTS ─────────────────────────────────────────────────────────────────
 if ($action === 'contracts_list') {
     $user = requireAuth();
-    $isAdmin = $user['role'] === 'admin';
+    $isAdmin = isAdmin($user);
     $where = ['1=1'];
     $params = [];
     if (!$isAdmin) { $where[] = 'c.user_id = ?'; $params[] = $user['id']; }
@@ -3086,7 +3086,7 @@ if ($action === 'prospects_list') {
     // Ejecutivo: solo sus prospectos. Admin: todos
     $where = 'p.campaign_id = ?';
     $vals  = [$campaign_id];
-    if ($me['role'] !== 'admin') {
+    if (!isAdmin($me)) {
         $where .= ' AND p.assigned_to = ?';
         $vals[] = $me['id'];
     }
@@ -3219,7 +3219,7 @@ if ($action === 'prospects_update') {
     if (!$id) err('ID requerido');
 
     // Ejecutivo solo puede actualizar sus propios prospectos
-    if ($me['role'] !== 'admin') {
+    if (!isAdmin($me)) {
         $row = db()->prepare("SELECT assigned_to FROM prospects WHERE id = ?")->execute([$id]);
         $p = db()->prepare("SELECT assigned_to FROM prospects WHERE id = ?")->execute([$id]) ? db()->prepare("SELECT assigned_to FROM prospects WHERE id = ?"): null;
         $stmt2 = db()->prepare("SELECT assigned_to FROM prospects WHERE id = ?");
@@ -8214,7 +8214,7 @@ if ($action === 'stg_conv_detail') {
     if (!$conv) err('Conversación no encontrada', 404);
 
     // Control de acceso: ejecutiva solo ve lo asignado a ella
-    $isAdmin = ($authUser['role'] ?? '') === 'admin';
+    $isAdmin = isAdmin($authUser);
     if (!$isAdmin && $conv['assigned_to'] !== $authUser['id']) {
         err('No tienes permiso para ver esta conversación', 403);
     }
