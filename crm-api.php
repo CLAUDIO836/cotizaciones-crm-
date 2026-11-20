@@ -3127,20 +3127,51 @@ if ($action === 'leads_create') {
     $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? null;
     $ua = $_SERVER['HTTP_USER_AGENT'] ?? null;
     $id = uuid();
+    // Migraciones columnas nuevas formulario unificado
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN tipo_cliente ENUM('natural','empresa','colegio') NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN utm_source VARCHAR(50) NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN fecha_implementacion DATE NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN service_vehicle VARCHAR(50) NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN service_hour TIME NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN service_date_return DATE NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN service_hour_return TIME NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN service_origin_place_id VARCHAR(255) NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN service_origin_lat DOUBLE NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN service_origin_lng DOUBLE NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN service_destination_place_id VARCHAR(255) NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN service_destination_lat DOUBLE NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN service_destination_lng DOUBLE NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN service_km DECIMAL(8,2) NULL"); } catch (PDOException $e) {}
     db()->prepare('
-        INSERT INTO lead_requests (id,status,target_company,tipo_servicio,empresa_nombre,empresa_rut,
+        INSERT INTO lead_requests (id,status,target_company,tipo_servicio,tipo_cliente,utm_source,
+          empresa_nombre,empresa_rut,
           contacto_nombre,contacto_cargo,contacto_email,contacto_telefono,
-          desde,hasta,pasajeros_aprox,fecha_inicio,observaciones,ip_address,user_agent)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          desde,hasta,service_origin_place_id,service_origin_lat,service_origin_lng,
+          service_destination_place_id,service_destination_lat,service_destination_lng,
+          pasajeros_aprox,fecha_inicio,service_hour,service_date_return,service_hour_return,
+          service_vehicle,service_km,observaciones,fecha_implementacion,ip_address,user_agent)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ')->execute([
         $id, 'pendiente',
         $b['target_company'] ?? null, $b['tipo_servicio'] ?? null,
+        $b['tipo_cliente'] ?? null, $b['utm_source'] ?? null,
         $b['empresa_nombre'] ?? null, $b['empresa_rut'] ?? null,
         $b['contacto_nombre'] ?? null, $b['contacto_cargo'] ?? null,
         $b['contacto_email'] ?? null, $b['contacto_telefono'] ?? null,
         $b['desde'] ?? null, $b['hasta'] ?? null,
-        $b['pasajeros_aprox'] ?? null, $b['fecha_inicio'] ?? null,
-        $b['observaciones'] ?? null, $ip, $ua,
+        $b['service_origin_place_id'] ?? null,
+        isset($b['service_origin_lat'])  ? (float)$b['service_origin_lat']  : null,
+        isset($b['service_origin_lng'])  ? (float)$b['service_origin_lng']  : null,
+        $b['service_destination_place_id'] ?? null,
+        isset($b['service_destination_lat']) ? (float)$b['service_destination_lat'] : null,
+        isset($b['service_destination_lng']) ? (float)$b['service_destination_lng'] : null,
+        isset($b['pasajeros_aprox']) && $b['pasajeros_aprox'] !== null ? (int)$b['pasajeros_aprox'] : null,
+        $b['fecha_inicio'] ?? null, $b['service_hour'] ?? null,
+        $b['service_date_return'] ?? null, $b['service_hour_return'] ?? null,
+        $b['service_vehicle'] ?? null,
+        isset($b['service_km']) && $b['service_km'] !== null ? round((float)$b['service_km'], 2) : null,
+        $b['observaciones'] ?? null, $b['fecha_implementacion'] ?? null,
+        $ip, $ua,
     ]);
     ok(['id' => $id]);
 }
@@ -5587,21 +5618,25 @@ if ($action === 'wa_form_save') {
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_destination_lng DOUBLE NULL");      } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_km DECIMAL(8,2) NULL");             } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN company_name VARCHAR(255) NULL");           } catch (PDOException $e) {}
-    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN client_type ENUM('natural','empresa') NULL DEFAULT 'natural'"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations MODIFY COLUMN client_type ENUM('natural','empresa','colegio') NULL DEFAULT 'natural'"); } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN quote_send_email VARCHAR(255) NULL");       } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour TIME NULL");                   } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL");            } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN service_date_return DATE NULL");            } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN contact_phone VARCHAR(30) NULL");           } catch (PDOException $e) {}
     try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN observaciones TEXT NULL");                  } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN tipo_servicio ENUM('viaje_especial','salida_educativa','traslado_diario') NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN utm_source VARCHAR(50) NULL");              } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN fecha_implementacion DATE NULL");           } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN contact_cargo VARCHAR(100) NULL");         } catch (PDOException $e) {}
 
-    $allowed = ['contact_name','contact_email','contact_phone','contact_rut',
-                'client_type','company_name','quote_send_email',
+    $allowed = ['contact_name','contact_email','contact_phone','contact_rut','contact_cargo',
+                'client_type','company_name','quote_send_email','utm_source','tipo_servicio',
                 'service_origin','service_origin_place_id','service_origin_lat','service_origin_lng',
                 'service_destination','service_destination_place_id','service_destination_lat','service_destination_lng',
                 'service_date','service_hour','service_date_return','service_hour_return',
                 'service_passengers','service_type','service_vehicle','service_km',
-                'observaciones'];
+                'observaciones','fecha_implementacion'];
     $sets = []; $vals = [];
     foreach ($allowed as $col) {
         if (array_key_exists($col, $b)) {
