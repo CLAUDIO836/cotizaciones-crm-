@@ -839,6 +839,9 @@ if ($action === 'quotations_summary') {
         $params[] = $like; $params[] = $like; $params[] = $like;
     }
 
+    // Excluir negocios BWA sin cliente: esos son borradores del bot y van a Solicitudes
+    $where[] = "NOT (number LIKE 'BWA%' AND (client_id IS NULL OR client_id = ''))";
+
     $sql = 'SELECT * FROM quotations_summary WHERE ' . implode(' AND ', $where) . ' ORDER BY created_at DESC';
     $stmt = db()->prepare($sql);
     $stmt->execute($params);

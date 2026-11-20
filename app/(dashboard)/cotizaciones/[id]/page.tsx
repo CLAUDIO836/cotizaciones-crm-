@@ -116,6 +116,21 @@ export default async function CotizacionDetailPage({
           style={{ background: statusBg, color: statusFg }}>{statusLabel}</span>
       </div>
 
+      {/* Banner: BWA sin cliente registrado */}
+      {q.number?.startsWith('BWA') && !q.client_id && waConvLink && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2 flex-shrink-0">
+          <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+          <span className="text-xs text-amber-800 flex-1">
+            Este negocio fue creado por el bot de WhatsApp y aún <strong>no tiene cliente registrado</strong>.
+            Revisa la conversación para completar los datos antes de continuar.
+          </span>
+          <Link href={`/bandeja?exec=todos&conv=${waConvLink.id}`}
+            className="text-xs font-semibold text-amber-700 underline whitespace-nowrap flex-shrink-0">
+            Ir a conversación WA →
+          </Link>
+        </div>
+      )}
+
       {/* 2-column body */}
       <div className="flex flex-1 overflow-hidden">
 
