@@ -168,7 +168,12 @@ interface Props {
   prefilledEmail?: string
   prefilledService?: string
   prefilledOrigin?: string
+  prefilledOriginPlaceId?: string
   prefilledDestination?: string
+  prefilledDestinationPlaceId?: string
+  prefilledDestinationLat?: number
+  prefilledDestinationLng?: number
+  prefilledKm?: number
   prefilledDate?: string
   prefilledHoraSalida?: string
   prefilledHoraRetorno?: string
@@ -249,7 +254,7 @@ const DEFAULT_DIARIO_ITEM: Item = {
   ruta_nombre: '', desde_item: '', hasta_item: '', hora_salida_item: '', hora_retorno_item: '', tiene_paradas: false, obs_paradas: '',
 }
 
-export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation, isStaging = false, prefilledPhone, prefilledName, prefilledRUT, prefilledEmail, prefilledService, prefilledOrigin, prefilledDestination, prefilledDate, prefilledHoraSalida, prefilledHoraRetorno, prefilledPassengers, prefilledVehicle }: Props) {
+export default function QuotationForm({ clients, pipelines = [], sellers = [], companies = [], userId, quotation, isStaging = false, prefilledPhone, prefilledName, prefilledRUT, prefilledEmail, prefilledService, prefilledOrigin, prefilledOriginPlaceId, prefilledDestination, prefilledDestinationPlaceId, prefilledDestinationLat, prefilledDestinationLng, prefilledKm, prefilledDate, prefilledHoraSalida, prefilledHoraRetorno, prefilledPassengers, prefilledVehicle }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
 
@@ -282,8 +287,13 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     if (prefilledName) setNewClientName(prefilledName)
     if (prefilledRUT) setNewClientRut(prefilledRUT)
     if (prefilledEmail) setNewClientEmail(prefilledEmail)
-    if (prefilledOrigin) setDesde(prefilledOrigin)
-    if (prefilledDestination) setHasta(prefilledDestination)
+    if (prefilledOrigin)              setDesde(prefilledOrigin)
+    if (prefilledOriginPlaceId)       setDesdePlaceId(prefilledOriginPlaceId)
+    if (prefilledDestination)         setHasta(prefilledDestination)
+    if (prefilledDestinationPlaceId)  setHastaPlaceId(prefilledDestinationPlaceId)
+    if (prefilledDestinationLat)      setHastaLat(prefilledDestinationLat)
+    if (prefilledDestinationLng)      setHastaLng(prefilledDestinationLng)
+    if (prefilledKm)                  setDistanciaKm(prefilledKm)
     if (prefilledDate) setFechaSalida(prefilledDate + 'T08:00')
     if (prefilledVehicle) {
       // Normalizar: "Bus 45", "minibus", "taxibus", etc. → clave del selector

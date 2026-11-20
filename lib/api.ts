@@ -353,6 +353,12 @@ export interface LeadRequest {
   service_hour_return?: string
   service_vehicle?: string
   service_km?: number | string
+  service_origin_place_id?: string
+  service_origin_lat?: number
+  service_origin_lng?: number
+  service_destination_place_id?: string
+  service_destination_lat?: number
+  service_destination_lng?: number
   fecha_implementacion?: string
   observaciones?: string
   frecuencia?: string

@@ -55,7 +55,12 @@ export default async function NuevaCotizacionPage({
   const pEmail      = lead?.contacto_email    ?? waConv?.contact_email      ?? undefined
   const pService    = lead?.tipo_servicio     ?? waConv?.service_type       ?? undefined
   const pOrigin     = lead?.desde             ?? waConv?.service_origin     ?? undefined
+  const pOriginPid  = lead?.service_origin_place_id                        ?? undefined
   const pDest       = lead?.hasta             ?? waConv?.service_destination ?? undefined
+  const pDestPid    = lead?.service_destination_place_id                   ?? undefined
+  const pDestLat    = lead?.service_destination_lat != null ? Number(lead.service_destination_lat) : undefined
+  const pDestLng    = lead?.service_destination_lng != null ? Number(lead.service_destination_lng) : undefined
+  const pKm         = lead?.service_km != null ? Number(lead.service_km) : undefined
   const pDate       = lead?.fecha_inicio      ?? waConv?.service_date       ?? undefined
   const pHoraSal    = lead?.service_hour      ?? waConv?.service_hour       ?? undefined
   const pHoraRet    = lead?.service_hour_return ?? waConv?.service_hour_return ?? undefined
@@ -77,7 +82,12 @@ export default async function NuevaCotizacionPage({
         prefilledEmail={pEmail}
         prefilledService={pService}
         prefilledOrigin={pOrigin}
+        prefilledOriginPlaceId={pOriginPid}
         prefilledDestination={pDest}
+        prefilledDestinationPlaceId={pDestPid}
+        prefilledDestinationLat={pDestLat}
+        prefilledDestinationLng={pDestLng}
+        prefilledKm={pKm}
         prefilledDate={pDate}
         prefilledHoraSalida={pHoraSal}
         prefilledHoraRetorno={pHoraRet}
