@@ -160,6 +160,8 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
 
         {/* COMERCIAL */}
         <SectionLabel label="Comercial" />
+        <NavItem href="/solicitudes" icon={Inbox}     label="Solicitudes" active={isActive('/solicitudes')}
+          badgeCount={profile?.pending_leads} />
         <NavItem href="/clientes"       icon={Users}           label="Clientes"    active={isActive('/clientes')} />
         <NavItem href="/cotizaciones"   icon={Briefcase}       label="Negocios"    active={isActive('/cotizaciones')} />
         <NavItem href="/prospectos"     icon={PhoneCall}       label="Prospectos"  active={isActive('/prospectos')} />
@@ -215,8 +217,6 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
 
         {/* GESTIÓN */}
         <SectionLabel label="Gestión" />
-        <NavItem href="/solicitudes" icon={Inbox}     label="Solicitudes" active={isActive('/solicitudes')}
-          badgeCount={profile?.pending_leads} />
         <NavItem href="/contratos"   icon={FileCheck} label="Contratos"   active={isActive('/contratos')} />
 
         {/* ADMIN */}
