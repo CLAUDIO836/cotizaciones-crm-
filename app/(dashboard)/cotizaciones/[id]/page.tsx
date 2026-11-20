@@ -382,7 +382,7 @@ export default async function CotizacionDetailPage({
           {/* Action buttons topbar */}
           <div className="border-b px-4 py-2 flex items-center gap-1.5 flex-wrap flex-shrink-0" style={{ background: '#f9fafb' }}>
             {waConvLink && (
-              <Link href={`/bandeja?exec=${waConvLink.id}`}>
+              <Link href={`/bandeja?exec=todos&conv=${waConvLink.id}`}>
                 <Button variant="outline" size="sm" className="text-xs h-7 px-2.5" style={{ borderColor: '#25D366', color: '#128C7E' }}>
                   💬 Ver conversación WA
                 </Button>
