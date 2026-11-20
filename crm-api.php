@@ -3190,7 +3190,15 @@ if ($action === 'leads_create') {
 if ($action === 'leads_update_status') {
     requireAuth();
     $b = body();
-    db()->prepare('UPDATE lead_requests SET status = ? WHERE id = ?')->execute([$b['status'], $b['id']]);
+    $sets  = [];
+    $vals  = [];
+    if (isset($b['status']))           { $sets[] = 'status = ?';           $vals[] = $b['status']; }
+    if (array_key_exists('assigned_user_id', $b)) { $sets[] = 'assigned_user_id = ?'; $vals[] = $b['assigned_user_id'] ?: null; }
+    if (array_key_exists('crm_notes', $b))        { $sets[] = 'crm_notes = ?';        $vals[] = $b['crm_notes'] ?: null; }
+    if (!empty($sets)) {
+        $vals[] = $b['id'];
+        db()->prepare('UPDATE lead_requests SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($vals);
+    }
     ok();
 }
 
