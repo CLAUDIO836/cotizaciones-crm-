@@ -230,6 +230,7 @@ function ensureTables(): void {
         "ALTER TABLE wa_cloud_conversations ADD COLUMN client_type VARCHAR(10) NULL",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour TIME NULL",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN utm_source VARCHAR(30) NULL",
     ] as $sql) {
         try { $pdo->exec($sql); } catch (PDOException $e) {
             if ($e->getCode() !== '42S21') throw $e;
@@ -253,6 +254,14 @@ function ensureTables(): void {
 function processMessage(string $wamid, string $phone, string $text, ?string $name, int $ts): void {
     if (!$text) return;
 
+    // Extraer "Origen: X" que inyecta la web en botones de WhatsApp
+    $msgOrigin = null;
+    if (preg_match('/\n+Origen:\s*([^\n]+)\s*$/iu', $text, $originMatch)) {
+        $msgOrigin = mb_strtolower(trim($originMatch[1])); // 'google', 'web', 'facebook', 'instagram'
+        $text      = trim(preg_replace('/\n+Origen:\s*[^\n]+\s*$/iu', '', $text));
+        error_log("[wa_webhook] ORIGIN_DETECTED phone={$phone} origin={$msgOrigin}");
+    }
+
     try {
         ensureTables();
         $pdo = db();
@@ -265,13 +274,13 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         if ($conv) {
             $convId    = $conv['id'];
             $botActive = (bool)(int)$conv['bot_active'];
-            $pdo->prepare("UPDATE wa_cloud_conversations SET last_msg_at = NOW(), last_message = ?, contact_name = COALESCE(?, contact_name) WHERE id = ?")
-                ->execute([mb_substr($text, 0, 500), $name ?: null, $convId]);
+            $pdo->prepare("UPDATE wa_cloud_conversations SET last_msg_at = NOW(), last_message = ?, contact_name = COALESCE(?, contact_name), utm_source = COALESCE(utm_source, ?) WHERE id = ?")
+                ->execute([mb_substr($text, 0, 500), $name ?: null, $msgOrigin, $convId]);
         } else {
             $convId    = dbUuid();
             $botActive = true;
-            $pdo->prepare("INSERT INTO wa_cloud_conversations (id, phone, contact_name, bot_active, last_msg_at, last_message) VALUES (?,?,?,1,NOW(),?)")
-                ->execute([$convId, $phone, $name ?: null, mb_substr($text, 0, 500)]);
+            $pdo->prepare("INSERT INTO wa_cloud_conversations (id, phone, contact_name, bot_active, last_msg_at, last_message, utm_source) VALUES (?,?,?,1,NOW(),?,?)")
+                ->execute([$convId, $phone, $name ?: null, mb_substr($text, 0, 500), $msgOrigin]);
 
             // Round-robin estricto entre las tres ejecutivas comerciales Meta
             assignRoundRobin($pdo, $convId, $phone, $name);
