@@ -39,7 +39,13 @@ const TIPO_LABEL: Record<string, string> = {
   factura: 'Factura',
 }
 
-export default function ComprobantesPanel({ quotationId, userRole }: { quotationId: string; userRole: string }) {
+interface ComprobantesPanelProps {
+  quotationId: string
+  userRole: string
+  quotationStatus?: string
+}
+
+export default function ComprobantesPanel({ quotationId, userRole, quotationStatus }: ComprobantesPanelProps) {
   const [items, setItems] = useState<Comprobante[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -407,8 +413,8 @@ export default function ComprobantesPanel({ quotationId, userRole }: { quotation
         )
       })}
 
-      {/* ── Sección Factura (solo contabilidad, solo cuando pago validado) ── */}
-      {isSuperAdmin && allApproved && (
+      {/* ── Sección Factura (solo contabilidad, en negocios ganados) ── */}
+      {isSuperAdmin && quotationStatus === 'won' && (
         <div className="mt-2 rounded-xl border-2 overflow-hidden" style={{ borderColor: '#6366f1' }}>
           <div className="px-4 py-3 flex items-center justify-between gap-2"
             style={{ background: '#eef2ff' }}>
