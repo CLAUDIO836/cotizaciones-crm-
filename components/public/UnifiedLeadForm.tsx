@@ -176,7 +176,7 @@ export default function UnifiedLeadForm({ phone, company }: Props) {
   // Viaje especial / Salida educativa
   const [origin, setOrigin]         = useState<PlaceField>(emptyPlace())
   const [dest, setDest]             = useState<PlaceField>(emptyPlace())
-  const [tripType, setTripType]     = useState<'one_way' | 'round_trip'>('one_way')
+  const [tripType, setTripType]     = useState<'one_way' | 'round_trip' | 'full_day'>('one_way')
   const [fechaSalida, setFechaSalida] = useState('')
   const [horaSalida, setHoraSalida] = useState('')
   const [fechaRetorno, setFechaRetorno] = useState('')
@@ -260,11 +260,11 @@ export default function UnifiedLeadForm({ phone, company }: Props) {
     } else if (servicioTipo) {
       if (!origin.address.trim()) m.push('Punto de inicio')
       if (!dest.address.trim())   m.push('Destino')
-      if (!fechaSalida)           m.push('Fecha de salida')
-      if (!horaSalida)            m.push('Hora de salida')
-      if (!pasajeros)             m.push('N° de pasajeros')
-      if (tripType === 'round_trip' && !fechaRetorno) m.push('Fecha de retorno')
-      if (tripType === 'round_trip' && !horaRetorno)  m.push('Hora de retorno')
+      if (!fechaSalida)                                   m.push('Fecha de salida')
+      if (!horaSalida && tripType !== 'full_day')         m.push('Hora de salida')
+      if (!pasajeros)                                     m.push('N° de pasajeros')
+      if (tripType === 'round_trip' && !fechaRetorno)     m.push('Fecha de retorno')
+      if (tripType === 'round_trip' && !horaRetorno)      m.push('Hora de retorno')
     }
     return m
   }
@@ -320,11 +320,13 @@ export default function UnifiedLeadForm({ phone, company }: Props) {
       payload.service_destination_place_id      = dest.placeId ?? null
       payload.service_destination_lat           = dest.lat ?? null
       payload.service_destination_lng           = dest.lng ?? null
-      payload.fecha_inicio       = fechaSalida || null
-      payload.service_date       = fechaSalida || null
-      payload.service_hour       = horaSalida || null
-      payload.service_date_return = tripType === 'round_trip' ? fechaRetorno || null : null
-      payload.service_hour_return = tripType === 'round_trip' ? horaRetorno || null : null
+      payload.fecha_inicio        = fechaSalida || null
+      payload.service_date        = fechaSalida || null
+      payload.service_hour        = horaSalida || null
+      payload.service_date_return = tripType === 'round_trip' ? (fechaRetorno || null)
+                                  : tripType === 'full_day'   ? (fechaSalida  || null)
+                                  : null
+      payload.service_hour_return = tripType === 'round_trip' ? (horaRetorno || null) : null
       payload.pasajeros_aprox    = parseInt(pasajeros) || null
       payload.service_passengers = parseInt(pasajeros) || null
       payload.service_vehicle    = vehiculo || null
@@ -570,8 +572,9 @@ export default function UnifiedLeadForm({ phone, company }: Props) {
                 <div>
                   <label style={labelStyle}>Tipo de viaje <span style={{ color: '#e53e3e' }}>*</span></label>
                   <div style={{ display: 'flex', border: '1.5px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
-                    <button type="button" style={pillActive(tripType === 'one_way')} onClick={() => setTripType('one_way')}>Solo ida</button>
+                    <button type="button" style={pillActive(tripType === 'one_way')}    onClick={() => setTripType('one_way')}>Solo ida</button>
                     <button type="button" style={{ ...pillActive(tripType === 'round_trip'), borderLeft: '1.5px solid #e2e8f0' }} onClick={() => setTripType('round_trip')}>Ida y vuelta</button>
+                    <button type="button" style={{ ...pillActive(tripType === 'full_day'),   borderLeft: '1.5px solid #e2e8f0' }} onClick={() => setTripType('full_day')}>Por el día</button>
                   </div>
                 </div>
 
@@ -582,7 +585,12 @@ export default function UnifiedLeadForm({ phone, company }: Props) {
                     <input style={{ ...inputStyle, paddingRight: 6 }} type="date" value={fechaSalida} onChange={e => setFechaSalida(e.target.value)} min={today} />
                   </div>
                   <div>
-                    <label style={labelStyle}>Hora salida <span style={{ color: '#e53e3e' }}>*</span></label>
+                    <label style={labelStyle}>
+                      Hora salida{' '}
+                      {tripType !== 'full_day'
+                        ? <span style={{ color: '#e53e3e' }}>*</span>
+                        : <span style={{ color: '#718096', fontWeight: 400 }}>(opcional)</span>}
+                    </label>
                     <input style={{ ...inputStyle, paddingRight: 6 }} type="time" value={horaSalida} onChange={e => setHoraSalida(e.target.value)} />
                   </div>
                 </div>

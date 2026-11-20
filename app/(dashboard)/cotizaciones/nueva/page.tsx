@@ -1,5 +1,5 @@
 import QuotationForm from '@/components/quotations/QuotationForm'
-import { getSession, fetchClients, fetchProfiles, fetchCompanies, fetchWaConv } from '@/lib/api'
+import { getSession, fetchClients, fetchProfiles, fetchCompanies, fetchWaConv, fetchLeadById } from '@/lib/api'
 import { redirect } from 'next/navigation'
 
 async function getPipedrivePipelines() {
@@ -19,7 +19,7 @@ async function getPipedrivePipelines() {
 export default async function NuevaCotizacionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ phone?: string; name?: string; conv_id?: string }>
+  searchParams: Promise<{ phone?: string; name?: string; conv_id?: string; lead_id?: string }>
 }) {
   const session = await getSession()
   if (!session) redirect('/login')
@@ -39,13 +39,28 @@ export default async function NuevaCotizacionPage({
     }
   }
 
-  const [clients, sellers, companies, pipelines, waConv] = await Promise.all([
+  const [clients, sellers, companies, pipelines, waConv, lead] = await Promise.all([
     fetchClients(),
     fetchProfiles(),
     fetchCompanies(),
     getPipedrivePipelines(),
     params.conv_id ? fetchWaConv(params.conv_id) : Promise.resolve(null),
+    params.lead_id ? fetchLeadById(params.lead_id) : Promise.resolve(null),
   ])
+
+  // Datos prefill: lead tiene prioridad sobre waConv
+  const pPhone      = params.phone   ?? lead?.contacto_telefono ?? waConv?.phone
+  const pName       = params.name    ?? lead?.contacto_nombre   ?? waConv?.contact_name  ?? undefined
+  const pRUT        = lead?.empresa_rut       ?? waConv?.contact_rut        ?? undefined
+  const pEmail      = lead?.contacto_email    ?? waConv?.contact_email      ?? undefined
+  const pService    = lead?.tipo_servicio     ?? waConv?.service_type       ?? undefined
+  const pOrigin     = lead?.desde             ?? waConv?.service_origin     ?? undefined
+  const pDest       = lead?.hasta             ?? waConv?.service_destination ?? undefined
+  const pDate       = lead?.fecha_inicio      ?? waConv?.service_date       ?? undefined
+  const pHoraSal    = lead?.service_hour      ?? waConv?.service_hour       ?? undefined
+  const pHoraRet    = lead?.service_hour_return ?? waConv?.service_hour_return ?? undefined
+  const pPassengers = lead?.pasajeros_aprox   ?? waConv?.service_passengers ?? undefined
+  const pVehicle    = lead?.service_vehicle   ?? lead?.vehiculo_preferido   ?? waConv?.service_vehicle ?? undefined
 
   return (
     <div className="p-6 max-w-4xl">
@@ -56,18 +71,18 @@ export default async function NuevaCotizacionPage({
         sellers={sellers ?? []}
         companies={companies ?? []}
         userId={session.id}
-        prefilledPhone={params.phone ?? waConv?.phone}
-        prefilledName={params.name ?? waConv?.contact_name ?? undefined}
-        prefilledRUT={waConv?.contact_rut ?? undefined}
-        prefilledEmail={waConv?.contact_email ?? undefined}
-        prefilledService={waConv?.service_type ?? undefined}
-        prefilledOrigin={waConv?.service_origin ?? undefined}
-        prefilledDestination={waConv?.service_destination ?? undefined}
-        prefilledDate={waConv?.service_date ?? undefined}
-        prefilledHoraSalida={waConv?.service_hour ?? undefined}
-        prefilledHoraRetorno={waConv?.service_hour_return ?? undefined}
-        prefilledPassengers={waConv?.service_passengers ?? undefined}
-        prefilledVehicle={waConv?.service_vehicle ?? undefined}
+        prefilledPhone={pPhone}
+        prefilledName={pName}
+        prefilledRUT={pRUT}
+        prefilledEmail={pEmail}
+        prefilledService={pService}
+        prefilledOrigin={pOrigin}
+        prefilledDestination={pDest}
+        prefilledDate={pDate}
+        prefilledHoraSalida={pHoraSal}
+        prefilledHoraRetorno={pHoraRet}
+        prefilledPassengers={pPassengers !== undefined ? Number(pPassengers) : undefined}
+        prefilledVehicle={pVehicle}
       />
     </div>
   )

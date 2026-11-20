@@ -289,7 +289,7 @@ function LeadCard({ lead, sellers }: { lead: Lead; sellers: Seller[] }) {
                     ? <strong>{formatHour(lead.service_hour)}</strong>
                     : <span className="text-gray-400 italic">Sin hora salida</span>}
                 </span>
-                {lead.service_date_return ? (
+                {lead.service_date_return && lead.service_date_return !== lead.fecha_inicio ? (
                   <>
                     <span className="text-gray-400">↩</span>
                     <span className="flex items-center gap-1">
@@ -303,6 +303,11 @@ function LeadCard({ lead, sellers }: { lead: Lead; sellers: Seller[] }) {
                       </span>
                     )}
                   </>
+                ) : lead.service_date_return === lead.fecha_inicio ? (
+                  <span className="text-xs font-medium self-center"
+                    style={{ color: '#1B8A4B', background: '#f0fdf4', padding: '1px 8px', borderRadius: 20 }}>
+                    Por el día
+                  </span>
                 ) : (
                   <span className="text-xs text-gray-400 italic self-center">Solo ida</span>
                 )}
@@ -424,7 +429,7 @@ function LeadCard({ lead, sellers }: { lead: Lead; sellers: Seller[] }) {
               style={{ background: accent }} className="text-white">
               {saving ? 'Guardando...' : 'Guardar'}
             </Button>
-            <a href="/cotizaciones/nueva" target="_blank">
+            <a href={`/cotizaciones/nueva?lead_id=${lead.id}`} target="_blank">
               <Button size="sm" variant="outline">
                 <ExternalLink className="w-3.5 h-3.5 mr-1.5" />Crear cotización
               </Button>

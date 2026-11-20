@@ -144,6 +144,11 @@ export async function fetchLeads() {
   return (r.data as LeadRequest[]) ?? []
 }
 
+export async function fetchLeadById(id: string) {
+  const r = await crmGet('leads_get', { id })
+  return r.data as LeadRequest | null
+}
+
 export async function fetchContracts(filters: Record<string, string> = {}) {
   const r = await crmGet('contracts_list', filters)
   return (r.data as Contract[]) ?? []
@@ -331,6 +336,8 @@ export interface LeadRequest {
   status: string
   target_company?: string
   tipo_servicio?: string
+  tipo_cliente?: string
+  utm_source?: string
   empresa_nombre?: string
   empresa_rut?: string
   contacto_nombre?: string
@@ -341,6 +348,12 @@ export interface LeadRequest {
   hasta?: string
   pasajeros_aprox?: string | number
   fecha_inicio?: string
+  service_hour?: string
+  service_date_return?: string
+  service_hour_return?: string
+  service_vehicle?: string
+  service_km?: number | string
+  fecha_implementacion?: string
   observaciones?: string
   frecuencia?: string
   dias_semana?: string[]

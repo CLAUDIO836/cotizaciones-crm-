@@ -3122,6 +3122,17 @@ if ($action === 'leads_list') {
     ok($stmt->fetchAll());
 }
 
+if ($action === 'leads_get') {
+    requireAuth();
+    $id   = $_GET['id'] ?? '';
+    if (!$id) { error(400, 'id requerido'); exit; }
+    $stmt = db()->prepare('SELECT * FROM lead_requests WHERE id = ?');
+    $stmt->execute([$id]);
+    $row  = $stmt->fetch();
+    if (!$row) { error(404, 'lead no encontrado'); exit; }
+    ok($row);
+}
+
 if ($action === 'leads_create') {
     $b = body();
     $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? null;
