@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 // ── Utilidades RUT ──────────────────────────────────────────────────────────
 function validateRut(raw: string): boolean {
@@ -352,6 +352,20 @@ export default function UnifiedLeadForm({ phone, company }: Props) {
       setSaving(false)
     }
   }
+
+  // ── Auto-resize para iframe: reporta altura real al padre vía postMessage ──
+  const postHeight = useCallback(() => {
+    const h = document.documentElement.scrollHeight
+    window.parent.postMessage({ type: 'resize', height: h }, '*')
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    postHeight()
+    const obs = new ResizeObserver(postHeight)
+    obs.observe(document.body)
+    return () => obs.disconnect()
+  }, [postHeight, step, clientType, servicioTipo])
 
   // ── Pantallas especiales ─────────────────────────────────────────────────
   if (step === 'loading') return (
