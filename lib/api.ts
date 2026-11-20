@@ -194,6 +194,13 @@ export async function fetchWaConv(convId: string, token?: string): Promise<WaCon
   } catch { return null }
 }
 
+export async function fetchWaConvByQuote(quoteId: string): Promise<{ id: string; phone: string; contact_name: string } | null> {
+  try {
+    const r = await crmGet('wa_conv_by_quote', { quote_id: quoteId })
+    return r.data as { id: string; phone: string; contact_name: string } ?? null
+  } catch { return null }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface Client {

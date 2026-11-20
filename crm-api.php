@@ -5449,6 +5449,17 @@ if ($action === 'autz_pending_count') {
 }
 
 // ── Detalle de una conversación WA por ID ─────────────────────────────────────
+if ($action === 'wa_conv_by_quote') {
+    requireAuth();
+    $quoteId = $_GET['quote_id'] ?? '';
+    if (!$quoteId) err('quote_id requerido');
+    $stmt = db()->prepare("SELECT id, phone, contact_name FROM wa_cloud_conversations WHERE wa_draft_quote_id = ? LIMIT 1");
+    $stmt->execute([$quoteId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) err('No encontrada', 404);
+    ok($row);
+}
+
 if ($action === 'wa_cloud_detail') {
     $user = requireAuth();
     $convId = $_GET['conv_id'] ?? ($body['conv_id'] ?? null);

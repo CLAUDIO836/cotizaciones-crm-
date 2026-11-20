@@ -1,5 +1,5 @@
 export const dynamic = 'force-dynamic'
-import { getSession, fetchQuotation, fetchActivities, fetchNotes, fetchPipelines, crmGet } from '@/lib/api'
+import { getSession, fetchQuotation, fetchActivities, fetchNotes, fetchPipelines, crmGet, fetchWaConvByQuote } from '@/lib/api'
 import AutoRefresh from '@/components/AutoRefresh'
 import { notFound } from 'next/navigation'
 import { formatCLP, formatDate, getStatusLabel } from '@/lib/utils'
@@ -55,6 +55,7 @@ export default async function CotizacionDetailPage({
     crmGet('emails_list', { quotation_id: id }).catch(() => ({ data: [] })),
     crmGet('quotation_comprobantes_list', { quotation_id: id }).catch(() => ({ data: [] })),
   ])
+  const waConvLink = q?.number?.startsWith('BWA') ? await fetchWaConvByQuote(id).catch(() => null) : null
   const emails = (emailsData?.data as { id: string }[]) ?? []
   const comprobantes = (Array.isArray(comprobantesData?.data) ? comprobantesData.data : []) as { validation_status: string }[]
   const isFullyPaid = comprobantes.length > 0 && comprobantes.every(c => c.validation_status === 'approved')
@@ -380,6 +381,13 @@ export default async function CotizacionDetailPage({
 
           {/* Action buttons topbar */}
           <div className="border-b px-4 py-2 flex items-center gap-1.5 flex-wrap flex-shrink-0" style={{ background: '#f9fafb' }}>
+            {waConvLink && (
+              <Link href={`/bandeja?exec=${waConvLink.id}`}>
+                <Button variant="outline" size="sm" className="text-xs h-7 px-2.5" style={{ borderColor: '#25D366', color: '#128C7E' }}>
+                  💬 Ver conversación WA
+                </Button>
+              </Link>
+            )}
             <a href={isDiario ? `/api/cotizaciones/${id}/propuesta` : `/api/cotizaciones/${id}/html`} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: 'outline', size: 'sm' }) + ' text-xs'}>
               <Globe className="w-3 h-3 mr-1" />
               Ver / Imprimir
@@ -585,7 +593,7 @@ export default async function CotizacionDetailPage({
 
             {tab === 'comprobantes' && q.status === 'won' && (
               <div className="max-w-2xl">
-                <ComprobantesPanel quotationId={id} userRole={user?.role ?? ''} />
+                <ComprobantesPanel quotationId={id} userRole={user?.role ?? ''} quotationStatus={q.status} />
               </div>
             )}
 

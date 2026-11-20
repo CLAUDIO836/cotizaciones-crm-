@@ -24,7 +24,7 @@ export default async function CotizacionesPage({
 }) {
   const params = await searchParams
   const user = await getSession()
-  const isAdmin = user?.role === 'admin'
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
   const isReadOnly = user?.role === 'coordinador'
   const view = params.view ?? 'timeline'
 
