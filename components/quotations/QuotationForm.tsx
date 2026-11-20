@@ -294,6 +294,19 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     if (prefilledDestinationLat)      setHastaLat(prefilledDestinationLat)
     if (prefilledDestinationLng)      setHastaLng(prefilledDestinationLng)
     if (prefilledKm)                  setDistanciaKm(prefilledKm)
+    // Si no hay place_ids pero sí texto de ruta, geocodificar desde aquí (evita race condition)
+    if (!prefilledOriginPlaceId && !prefilledDestinationPlaceId
+        && prefilledOrigin && prefilledDestination) {
+      Promise.all([
+        fetch(`/api/places?input=${encodeURIComponent(prefilledOrigin)}`).then(r => r.json()),
+        fetch(`/api/places?input=${encodeURIComponent(prefilledDestination)}`).then(r => r.json()),
+      ]).then(([resD, resH]) => {
+        const pidD = resD.predictions?.[0]?.place_id
+        const pidH = resH.predictions?.[0]?.place_id
+        if (pidD) setDesdePlaceId(pidD)
+        if (pidH) setHastaPlaceId(pidH)
+      }).catch(() => {})
+    }
     if (prefilledDate) setFechaSalida(prefilledDate + 'T08:00')
     if (prefilledVehicle) {
       // Normalizar: "Bus 45", "minibus", "taxibus", etc. → clave del selector
