@@ -1,8 +1,7 @@
 <?php
 /**
  * followup_cron.php — Seguimiento automático de formularios incompletos
- * Cron: cada 15 minutos
- * */30,0,15,45 * * * * php /home/transccl/public_html/followup_cron.php >> /dev/null 2>&1
+ * Cron: cada 15 minutos  (crontab: 0,15,30,45 * * * *)
  */
 
 $_s = '/home/transccl/crm-secrets.php';
@@ -19,8 +18,12 @@ define('_WA_PHONE', defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID
 define('_FLYER_URL', 'https://www.transccl.cl/img/wa_flyer.webp');
 
 // ── Secuencia de seguimiento ──────────────────────────────────────────────────
-// Cada entrada: [minutos_desde_link, tipo, contenido]
-// tipo: 'text' | 'image'
+// Cada entrada: [min_desde_ultimo_followup (o desde link si es paso 0), tipo, contenido]
+// Protecciones activas:
+//   1. Solo conversaciones con last_msg_at < 23h (ventana WA abierta)
+//   2. Pasos espaciados desde el ÚLTIMO followup, no desde el link original
+//      → si el cron estuvo parado semanas, no dispara todos los pasos juntos
+//   3. Paso 7 cierra la conversación y desactiva el bot
 const SCHEDULE = [
     0 => [
         'min'  => 30,
@@ -131,26 +134,43 @@ function fill(string $tpl, string $phone, ?string $nombre): string {
 
 // ── Procesar ──────────────────────────────────────────────────────────────────
 try {
+    // Agregar columna last_followup_at si no existe (idempotente)
+    try {
+        pdo()->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN last_followup_at DATETIME NULL");
+    } catch (PDOException $e) {}
+
     $rows = pdo()->prepare(
-        "SELECT id, phone, contact_name, followup_count,
-                TIMESTAMPDIFF(MINUTE, form_link_sent_at, NOW()) AS mins_since
+        "SELECT id, phone, contact_name, followup_count, last_followup_at,
+                TIMESTAMPDIFF(MINUTE, form_link_sent_at, NOW()) AS mins_desde_link
          FROM wa_cloud_conversations
          WHERE form_link_sent_at IS NOT NULL
            AND form_submitted_at IS NULL
            AND bot_active = 1
            AND handoff_requested_at IS NULL
+           AND stage NOT IN ('ganado','perdido','spam','cerrado')
            AND followup_count <= 7
+           AND last_msg_at >= NOW() - INTERVAL 23 HOUR
          ORDER BY form_link_sent_at ASC
-         LIMIT 100"
+         LIMIT 50"
     );
     $rows->execute();
 
     foreach ($rows->fetchAll() as $row) {
         $count = (int)$row['followup_count'];
-        $mins  = (int)$row['mins_since'];
 
         if (!isset(SCHEDULE[$count])) continue;
         $step = SCHEDULE[$count];
+
+        // Paso 0: esperar X min desde que se envió el link
+        // Pasos 1-7: esperar X min desde el ÚLTIMO followup enviado
+        //   → evita disparar pasos acumulados si el cron estuvo parado
+        if ($count === 0) {
+            $mins = (int)$row['mins_desde_link'];
+        } else {
+            $mins = $row['last_followup_at']
+                ? (int)(abs(strtotime('now') - strtotime($row['last_followup_at'])) / 60)
+                : (int)$row['mins_desde_link'];
+        }
 
         if ($mins < $step['min']) continue; // aún no es tiempo
 
@@ -173,17 +193,15 @@ try {
 
         error_log("[followup_cron] SENT phone={$phone} step={$count} mins={$mins}");
 
-        // Actualizar contador y cerrar si corresponde
-        $updates = ['followup_count = followup_count + 1'];
-        $vals    = [];
+        // Actualizar contador, timestamp y cerrar si corresponde
+        $updates = ['followup_count = followup_count + 1', 'last_followup_at = NOW()'];
         if (!empty($step['close'])) {
             $updates[] = 'bot_active = 0';
             $updates[] = "stage = 'cerrado'";
         }
-        $vals[] = $row['id'];
         pdo()->prepare(
             "UPDATE wa_cloud_conversations SET " . implode(', ', $updates) . " WHERE id = ?"
-        )->execute($vals);
+        )->execute([$row['id']]);
     }
 } catch (Throwable $e) {
     error_log('[followup_cron] ERROR: ' . $e->getMessage());
