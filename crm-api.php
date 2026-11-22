@@ -3125,7 +3125,9 @@ if ($action === 'backfill_wa_leads') {
         SELECT c.* FROM wa_cloud_conversations c
         WHERE c.form_submitted_at IS NOT NULL
           AND NOT EXISTS (
-            SELECT 1 FROM lead_requests lr WHERE lr.wa_conv_phone = c.phone
+            SELECT 1 FROM lead_requests lr
+            WHERE lr.utm_source = 'whatsapp'
+              AND (lr.contacto_telefono = c.phone OR lr.wa_conv_phone = c.phone)
           )
         ORDER BY c.form_submitted_at DESC
     ")->fetchAll();
@@ -3219,7 +3221,11 @@ if ($action === 'leads_list') {
         $pending = db()->query("
             SELECT c.* FROM wa_cloud_conversations c
             WHERE c.form_submitted_at IS NOT NULL
-              AND NOT EXISTS (SELECT 1 FROM lead_requests lr WHERE lr.wa_conv_phone = c.phone)
+              AND NOT EXISTS (
+                SELECT 1 FROM lead_requests lr
+                WHERE lr.utm_source = 'whatsapp'
+                  AND (lr.contacto_telefono = c.phone OR lr.wa_conv_phone = c.phone)
+              )
         ")->fetchAll();
         foreach ($pending as $wc) {
             $lid = uuid();
