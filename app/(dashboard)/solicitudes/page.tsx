@@ -1,6 +1,5 @@
 import { fetchLeads, fetchProfiles, fetchWaSolicitudes } from '@/lib/api'
-import LeadRequestsPanel from '@/components/leads/LeadRequestsPanel'
-import WaConversacionesSinFormulario from '@/components/leads/WaConversacionesSinFormulario'
+import SolicitudesTabs from '@/components/leads/SolicitudesTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,9 +27,11 @@ export default async function SolicitudesPage() {
         </div>
       </div>
 
-      <LeadRequestsPanel leads={leads ?? []} sellers={sellers ?? []} />
-
-      <WaConversacionesSinFormulario convs={waConvs ?? []} />
+      <SolicitudesTabs
+        leads={leads ?? []}
+        sellers={sellers ?? []}
+        waConvs={waConvs ?? []}
+      />
     </div>
   )
 }

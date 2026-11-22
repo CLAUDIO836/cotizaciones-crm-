@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Phone, MapPin, Users, Calendar, Clock, MessageCircle, ChevronDown, ChevronUp, Timer } from 'lucide-react'
+import { Phone, MapPin, Users, Calendar, Clock, MessageCircle, Timer } from 'lucide-react'
 import type { WaSolicitud } from '@/lib/api'
 
 function formatDate(d: string) {
@@ -222,11 +222,15 @@ function WaConvCard({ conv }: { conv: WaSolicitud }) {
 }
 
 export default function WaConversacionesSinFormulario({ convs }: { convs: WaSolicitud[] }) {
-  const [collapsed, setCollapsed] = useState(false)
+  if (convs.length === 0) {
+    return (
+      <div className="text-center py-16 text-gray-400">
+        <p className="text-lg font-medium">Sin conversaciones WA pendientes</p>
+        <p className="text-sm mt-1">Cuando llegue un contacto de WhatsApp sin formulario aparecerá aquí.</p>
+      </div>
+    )
+  }
 
-  if (convs.length === 0) return null
-
-  // Ordenar por last_msg_at DESC (más reciente primero)
   const sorted = [...convs].sort((a, b) => {
     const ta = new Date(a.last_msg_at || a.created_at).getTime()
     const tb = new Date(b.last_msg_at || b.created_at).getTime()
@@ -235,31 +239,9 @@ export default function WaConversacionesSinFormulario({ convs }: { convs: WaSoli
 
   return (
     <div className="space-y-3">
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="flex items-center gap-2 w-full text-left"
-      >
-        <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-700">
-          <MessageCircle className="w-4 h-4" style={{ color: '#25D366' }} />
-          Conversaciones WA sin formulario
-          <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white ml-1"
-            style={{ background: '#ef4444' }}>
-            {convs.length}
-          </span>
-        </span>
-        <div className="flex-1 border-t border-dashed" style={{ borderColor: '#d1d5db' }} />
-        {collapsed
-          ? <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
-          : <ChevronUp className="w-4 h-4 text-gray-400 flex-shrink-0" />}
-      </button>
-
-      {!collapsed && (
-        <div className="space-y-3">
-          {sorted.map(conv => (
-            <WaConvCard key={conv.id} conv={conv} />
-          ))}
-        </div>
-      )}
+      {sorted.map(conv => (
+        <WaConvCard key={conv.id} conv={conv} />
+      ))}
     </div>
   )
 }
