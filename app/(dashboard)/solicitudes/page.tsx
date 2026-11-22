@@ -1,10 +1,15 @@
-import { fetchLeads, fetchProfiles } from '@/lib/api'
+import { fetchLeads, fetchProfiles, fetchWaSolicitudes } from '@/lib/api'
 import LeadRequestsPanel from '@/components/leads/LeadRequestsPanel'
+import WaConversacionesSinFormulario from '@/components/leads/WaConversacionesSinFormulario'
 
 export const dynamic = 'force-dynamic'
 
 export default async function SolicitudesPage() {
-  const [leads, sellers] = await Promise.all([fetchLeads(), fetchProfiles()])
+  const [leads, sellers, waConvs] = await Promise.all([
+    fetchLeads(),
+    fetchProfiles(),
+    fetchWaSolicitudes(),
+  ])
 
   return (
     <div className="p-6 space-y-5">
@@ -24,6 +29,8 @@ export default async function SolicitudesPage() {
       </div>
 
       <LeadRequestsPanel leads={leads ?? []} sellers={sellers ?? []} />
+
+      <WaConversacionesSinFormulario convs={waConvs ?? []} />
     </div>
   )
 }

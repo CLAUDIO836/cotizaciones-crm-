@@ -3205,6 +3205,30 @@ if ($action === 'wa_forms_audit') {
     ok(['horas' => $horas, 'total_con_formulario' => $total, 'en_solicitudes' => $con_lead, 'sin_lead_request' => $sin_lead, 'detalle' => $data]);
 }
 
+if ($action === 'wa_solicitudes_list') {
+    // Conversaciones WA que NO tienen lead_request — datos del bot disponibles
+    requireAuth();
+    $rows = db()->query("
+        SELECT
+            c.id, c.phone, c.contact_name, c.stage, c.created_at, c.last_msg_at,
+            c.service_origin, c.service_destination, c.service_date, c.service_hour,
+            c.service_passengers, c.service_vehicle, c.service_type, c.client_type,
+            c.contact_email, c.contact_phone,
+            p.name AS assigned_name
+        FROM wa_cloud_conversations c
+        LEFT JOIN profiles p ON p.id = c.assigned_to
+        WHERE c.stage NOT IN ('ganado','perdido','spam')
+          AND NOT EXISTS (
+            SELECT 1 FROM lead_requests lr
+            WHERE lr.utm_source = 'whatsapp'
+              AND (lr.contacto_telefono = c.phone OR lr.wa_conv_phone = c.phone)
+          )
+        ORDER BY c.last_msg_at DESC
+        LIMIT 200
+    ")->fetchAll();
+    ok($rows);
+}
+
 if ($action === 'bwa_pending_list') {
     requireAuth();
     $stmt = db()->query("SELECT id, number, created_at, desde, hasta, distancia_km, vehicle_type FROM quotations WHERE number LIKE 'BWA%' AND (client_id IS NULL OR client_id = '') AND is_deleted = 0 ORDER BY created_at DESC");

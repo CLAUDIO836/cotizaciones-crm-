@@ -218,6 +218,33 @@ export async function fetchWaConvByQuote(quoteId: string): Promise<{ id: string;
   } catch { return null }
 }
 
+export interface WaSolicitud {
+  id: string
+  phone: string
+  contact_name: string | null
+  stage: string | null
+  created_at: string
+  last_msg_at: string | null
+  service_origin: string | null
+  service_destination: string | null
+  service_date: string | null
+  service_hour: string | null
+  service_passengers: number | null
+  service_vehicle: string | null
+  service_type: string | null
+  client_type: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  assigned_name: string | null
+}
+
+export async function fetchWaSolicitudes(): Promise<WaSolicitud[]> {
+  try {
+    const r = await crmGet('wa_solicitudes_list')
+    return (r.data as WaSolicitud[]) ?? []
+  } catch { return [] }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface Client {
