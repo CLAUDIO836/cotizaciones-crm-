@@ -57,6 +57,51 @@ function formatShortDate(d: string) {
   return d
 }
 
+/** Advertencia roja cuando la ventana de 24h está cerrada */
+function VentanaCerradaWarning({ desde, convId, phone }: { desde: string; convId: string; phone: string }) {
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    const base = new Date(desde).getTime()
+    const tick = () => setElapsed(Math.floor((Date.now() - base) / 1000))
+    tick()
+    const id = setInterval(tick, 10000) // actualizar cada 10s (suficiente para esta alerta)
+    return () => clearInterval(id)
+  }, [desde])
+
+  const hours = elapsed / 3600
+  if (hours < 24) return null
+
+  const extraHours = Math.floor(hours - 24)
+  const extraMins  = Math.floor(((hours - 24) % 1) * 60)
+
+  return (
+    <div className="rounded-lg border p-3 space-y-2"
+      style={{ background: '#fef2f2', borderColor: '#fca5a5' }}>
+      <div className="flex items-start gap-2">
+        <span className="text-lg flex-shrink-0">🔴</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-bold" style={{ color: '#991b1b' }}>
+            Ventana WhatsApp cerrada
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: '#b91c1c' }}>
+            Hace {extraHours > 0 ? `${extraHours}h ` : ''}{extraMins}m que venció la ventana de 24h.
+            Para retomar contacto debes enviar la plantilla <strong>ccl_saludo_reactivacion</strong>.
+          </p>
+        </div>
+      </div>
+      <a
+        href={`/bandeja?exec=todos&conv=${convId}`}
+        className="flex items-center justify-center gap-1.5 w-full text-xs font-bold py-2 rounded-lg text-white transition-opacity hover:opacity-90"
+        style={{ background: '#dc2626' }}
+      >
+        <MessageCircle className="w-3.5 h-3.5" />
+        Enviar mensaje de reactivación
+      </a>
+    </div>
+  )
+}
+
 function WaConvCard({ conv }: { conv: WaSolicitud }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -151,8 +196,11 @@ function WaConvCard({ conv }: { conv: WaSolicitud }) {
           </p>
         )}
 
+        {/* Advertencia ventana cerrada */}
+        <VentanaCerradaWarning desde={conv.last_msg_at || conv.created_at} convId={conv.id} phone={conv.contact_phone || conv.phone} />
+
         {/* Acciones */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <a
             href={`/bandeja?exec=todos&conv=${conv.id}`}
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-white transition-opacity hover:opacity-90"
@@ -167,14 +215,6 @@ function WaConvCard({ conv }: { conv: WaSolicitud }) {
               <Phone className="w-3.5 h-3.5" />Llamar
             </a>
           ) : null}
-          {conv.service_type && (
-            <span className="text-xs text-gray-400">
-              {conv.service_type === 'viaje_especial' ? 'Viaje especial'
-                : conv.service_type === 'traslado_diario' ? 'Traslado diario'
-                : conv.service_type === 'traslado_educativo' ? 'Traslado educativo'
-                : conv.service_type}
-            </span>
-          )}
         </div>
       </div>
     </div>
