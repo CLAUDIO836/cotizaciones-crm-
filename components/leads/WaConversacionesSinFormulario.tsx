@@ -226,6 +226,13 @@ export default function WaConversacionesSinFormulario({ convs }: { convs: WaSoli
 
   if (convs.length === 0) return null
 
+  // Ordenar por last_msg_at DESC (más reciente primero)
+  const sorted = [...convs].sort((a, b) => {
+    const ta = new Date(a.last_msg_at || a.created_at).getTime()
+    const tb = new Date(b.last_msg_at || b.created_at).getTime()
+    return tb - ta
+  })
+
   return (
     <div className="space-y-3">
       <button
@@ -236,7 +243,7 @@ export default function WaConversacionesSinFormulario({ convs }: { convs: WaSoli
           <MessageCircle className="w-4 h-4" style={{ color: '#25D366' }} />
           Conversaciones WA sin formulario
           <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white ml-1"
-            style={{ background: '#25D366' }}>
+            style={{ background: '#ef4444' }}>
             {convs.length}
           </span>
         </span>
@@ -248,7 +255,7 @@ export default function WaConversacionesSinFormulario({ convs }: { convs: WaSoli
 
       {!collapsed && (
         <div className="space-y-3">
-          {convs.map(conv => (
+          {sorted.map(conv => (
             <WaConvCard key={conv.id} conv={conv} />
           ))}
         </div>

@@ -3112,8 +3112,17 @@ if ($action === 'comprobante_reject') {
 // ── LEAD REQUESTS ─────────────────────────────────────────────────────────────
 if ($action === 'leads_pending_count') {
     requireAuth();
-    $count = (int)db()->query("SELECT COUNT(*) FROM lead_requests WHERE status = 'pendiente'")->fetchColumn();
-    ok(['count' => $count]);
+    $leads = (int)db()->query("SELECT COUNT(*) FROM lead_requests WHERE status = 'pendiente'")->fetchColumn();
+    $wa = (int)db()->query("
+        SELECT COUNT(*) FROM wa_cloud_conversations c
+        WHERE c.stage NOT IN ('ganado','perdido','spam')
+          AND NOT EXISTS (
+            SELECT 1 FROM lead_requests lr
+            WHERE lr.utm_source = 'whatsapp'
+              AND (lr.contacto_telefono = c.phone OR lr.wa_conv_phone = c.phone)
+          )
+    ")->fetchColumn();
+    ok(['count' => $leads + $wa, 'leads' => $leads, 'wa_sin_formulario' => $wa]);
 }
 
 if ($action === 'backfill_wa_leads') {

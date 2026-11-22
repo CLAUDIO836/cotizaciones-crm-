@@ -456,10 +456,12 @@ export default function LeadRequestsPanel({
   const [filterStatus,  setFilterStatus]  = useState('pendiente')
   const [filterCompany, setFilterCompany] = useState('')
 
-  const filtered = leads.filter(l =>
-    (filterStatus  === '' || l.status          === filterStatus) &&
-    (filterCompany === '' || l.target_company  === filterCompany)
-  )
+  const filtered = leads
+    .filter(l =>
+      (filterStatus  === '' || l.status         === filterStatus) &&
+      (filterCompany === '' || l.target_company === filterCompany)
+    )
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
   const pendientes = leads.filter(l => l.status === 'pendiente').length
 
