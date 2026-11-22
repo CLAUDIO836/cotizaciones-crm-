@@ -3189,6 +3189,58 @@ if ($action === 'bwa_pending_list') {
 
 if ($action === 'leads_list') {
     requireAuth();
+
+    // Auto-backfill: crear lead_requests para conversaciones WA que ya llenaron el formulario
+    // Corre en cada llamada pero es rápido (EXISTS check) y solo inserta los que faltan
+    try {
+        try { db()->exec("ALTER TABLE lead_requests ADD COLUMN wa_conv_phone VARCHAR(30) NULL"); } catch (PDOException $e) {}
+        $pending = db()->query("
+            SELECT c.* FROM wa_cloud_conversations c
+            WHERE c.form_submitted_at IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM lead_requests lr WHERE lr.wa_conv_phone = c.phone)
+            LIMIT 50
+        ")->fetchAll();
+        foreach ($pending as $wc) {
+            $lid = uuid();
+            db()->prepare('
+                INSERT INTO lead_requests
+                  (id, status, target_company, tipo_servicio, tipo_cliente, utm_source,
+                   empresa_nombre, contacto_nombre, contacto_email, contacto_telefono,
+                   desde, hasta,
+                   service_origin_place_id, service_origin_lat, service_origin_lng,
+                   service_destination_place_id, service_destination_lat, service_destination_lng,
+                   pasajeros_aprox, fecha_inicio, service_hour, service_date_return, service_hour_return,
+                   service_vehicle, service_km, observaciones, wa_conv_phone, ip_address, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ')->execute([
+                $lid, 'pendiente', 'transccl',
+                $wc['tipo_servicio'] ?? ($wc['service_type'] ?? null),
+                $wc['client_type'] ?? null, 'whatsapp',
+                $wc['company_name'] ?? null,
+                $wc['contact_name'] ?? null,
+                $wc['contact_email'] ?? ($wc['quote_send_email'] ?? null),
+                $wc['contact_phone'] ?? $wc['phone'],
+                $wc['service_origin'] ?? null, $wc['service_destination'] ?? null,
+                $wc['service_origin_place_id'] ?? null,
+                isset($wc['service_origin_lat'])      ? (float)$wc['service_origin_lat']      : null,
+                isset($wc['service_origin_lng'])      ? (float)$wc['service_origin_lng']      : null,
+                $wc['service_destination_place_id'] ?? null,
+                isset($wc['service_destination_lat']) ? (float)$wc['service_destination_lat'] : null,
+                isset($wc['service_destination_lng']) ? (float)$wc['service_destination_lng'] : null,
+                $wc['service_passengers'] ?? null,
+                $wc['service_date'] ?? null, $wc['service_hour'] ?? null,
+                $wc['service_date_return'] ?? null, $wc['service_hour_return'] ?? null,
+                $wc['service_vehicle'] ?? null,
+                isset($wc['service_km']) ? (float)$wc['service_km'] : null,
+                $wc['observaciones'] ?? null,
+                $wc['phone'], null,
+                $wc['form_submitted_at'] ?? date('Y-m-d H:i:s'),
+            ]);
+        }
+    } catch (PDOException $e) {
+        error_log('[leads_list backfill] ' . $e->getMessage());
+    }
+
     $stmt = db()->query('SELECT * FROM lead_requests ORDER BY created_at DESC');
     ok($stmt->fetchAll());
 }
