@@ -453,7 +453,7 @@ export default function LeadRequestsPanel({
   leads: Lead[]
   sellers: Seller[]
 }) {
-  const [filterStatus,  setFilterStatus]  = useState('pendiente')
+  const [filterStatus,  setFilterStatus]  = useState('')
   const [filterCompany, setFilterCompany] = useState('')
 
   const filtered = leads

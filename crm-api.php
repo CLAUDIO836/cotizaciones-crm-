@@ -3116,6 +3116,7 @@ if ($action === 'leads_pending_count') {
     $wa = (int)db()->query("
         SELECT COUNT(*) FROM wa_cloud_conversations c
         WHERE c.stage NOT IN ('ganado','perdido','spam')
+          AND c.last_msg_at >= NOW() - INTERVAL 30 DAY
           AND NOT EXISTS (
             SELECT 1 FROM lead_requests lr
             WHERE lr.utm_source = 'whatsapp'
@@ -3227,6 +3228,7 @@ if ($action === 'wa_solicitudes_list') {
         FROM wa_cloud_conversations c
         LEFT JOIN profiles p ON p.id = c.assigned_to
         WHERE c.stage NOT IN ('ganado','perdido','spam')
+          AND c.last_msg_at >= NOW() - INTERVAL 30 DAY
           AND NOT EXISTS (
             SELECT 1 FROM lead_requests lr
             WHERE lr.utm_source = 'whatsapp'
