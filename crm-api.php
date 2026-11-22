@@ -3181,6 +3181,28 @@ if ($action === 'backfill_wa_leads') {
     ok(['created' => $created, 'total_convs_with_form' => count($convs)]);
 }
 
+if ($action === 'wa_forms_audit') {
+    requireAdmin();
+    $horas = max(1, (int)($_GET['horas'] ?? 24));
+    $rows = db()->prepare("
+        SELECT
+            c.phone, c.contact_name, c.stage, c.form_submitted_at,
+            DATE_FORMAT(CONVERT_TZ(c.form_submitted_at, '+00:00', '-03:00'), '%d/%m %H:%i') AS hora_chile,
+            CASE WHEN lr.id IS NOT NULL THEN 'SI' ELSE 'NO' END AS en_solicitudes,
+            lr.status AS lead_status
+        FROM wa_cloud_conversations c
+        LEFT JOIN lead_requests lr ON lr.wa_conv_phone = c.phone
+        WHERE c.form_submitted_at >= NOW() - INTERVAL ? HOUR
+        ORDER BY c.form_submitted_at DESC
+    ");
+    $rows->execute([$horas]);
+    $data = $rows->fetchAll();
+    $total     = count($data);
+    $con_lead  = count(array_filter($data, fn($r) => $r['en_solicitudes'] === 'SI'));
+    $sin_lead  = $total - $con_lead;
+    ok(['horas' => $horas, 'total_con_formulario' => $total, 'en_solicitudes' => $con_lead, 'sin_lead_request' => $sin_lead, 'detalle' => $data]);
+}
+
 if ($action === 'bwa_pending_list') {
     requireAuth();
     $stmt = db()->query("SELECT id, number, created_at, desde, hasta, distancia_km, vehicle_type FROM quotations WHERE number LIKE 'BWA%' AND (client_id IS NULL OR client_id = '') AND is_deleted = 0 ORDER BY created_at DESC");
@@ -3198,7 +3220,6 @@ if ($action === 'leads_list') {
             SELECT c.* FROM wa_cloud_conversations c
             WHERE c.form_submitted_at IS NOT NULL
               AND NOT EXISTS (SELECT 1 FROM lead_requests lr WHERE lr.wa_conv_phone = c.phone)
-            LIMIT 50
         ")->fetchAll();
         foreach ($pending as $wc) {
             $lid = uuid();
