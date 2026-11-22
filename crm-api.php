@@ -3112,9 +3112,8 @@ if ($action === 'comprobante_reject') {
 // ── LEAD REQUESTS ─────────────────────────────────────────────────────────────
 if ($action === 'leads_pending_count') {
     requireAuth();
-    $leads = (int)db()->query("SELECT COUNT(*) FROM lead_requests WHERE status = 'pendiente'")->fetchColumn();
-    $bwa   = (int)db()->query("SELECT COUNT(*) FROM quotations WHERE number LIKE 'BWA%' AND (client_id IS NULL OR client_id = '') AND is_deleted = 0")->fetchColumn();
-    ok(['count' => $leads + $bwa]);
+    $count = (int)db()->query("SELECT COUNT(*) FROM lead_requests WHERE status = 'pendiente'")->fetchColumn();
+    ok(['count' => $count]);
 }
 
 if ($action === 'bwa_pending_list') {
@@ -5852,6 +5851,58 @@ if ($action === 'wa_form_save') {
             error_log('[wa_form_save] borrador_auto skip/fail: '
                       . ($bRes['error'] ?? ($bRes['motivo'] ?? 'unknown'))
                       . ' code=' . ($bRes['code'] ?? '-'));
+        }
+    }
+
+    // Crear lead_request solo la primera vez que se envía el formulario (esPrimeroEnvio)
+    // Así aparece en Solicitudes para que las ejecutivas lo trabajen desde ahí.
+    if ($esPrimeroEnvio && $prev) {
+        $conv2 = db()->prepare("SELECT * FROM wa_cloud_conversations WHERE id = ? LIMIT 1");
+        $conv2->execute([$prev['id']]);
+        $wc = $conv2->fetch();
+        if ($wc) {
+            try { db()->exec("ALTER TABLE lead_requests ADD COLUMN wa_conv_phone VARCHAR(30) NULL"); } catch (PDOException $e) {}
+            $lid = uuid();
+            db()->prepare('
+                INSERT INTO lead_requests
+                  (id, status, target_company, tipo_servicio, tipo_cliente, utm_source,
+                   empresa_nombre, contacto_nombre, contacto_email, contacto_telefono,
+                   desde, hasta,
+                   service_origin_place_id, service_origin_lat, service_origin_lng,
+                   service_destination_place_id, service_destination_lat, service_destination_lng,
+                   pasajeros_aprox, fecha_inicio, service_hour, service_date_return, service_hour_return,
+                   service_vehicle, service_km, observaciones, wa_conv_phone, ip_address)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ')->execute([
+                $lid, 'pendiente',
+                'transccl',
+                $wc['tipo_servicio'] ?? ($wc['service_type'] ?? null),
+                $wc['client_type'] ?? null,
+                'whatsapp',
+                $wc['company_name'] ?? null,
+                $wc['contact_name'] ?? null,
+                $wc['contact_email'] ?? ($wc['quote_send_email'] ?? null),
+                $wc['contact_phone'] ?? $wc['phone'],
+                $wc['service_origin'] ?? null,
+                $wc['service_destination'] ?? null,
+                $wc['service_origin_place_id'] ?? null,
+                isset($wc['service_origin_lat']) ? (float)$wc['service_origin_lat'] : null,
+                isset($wc['service_origin_lng']) ? (float)$wc['service_origin_lng'] : null,
+                $wc['service_destination_place_id'] ?? null,
+                isset($wc['service_destination_lat']) ? (float)$wc['service_destination_lat'] : null,
+                isset($wc['service_destination_lng']) ? (float)$wc['service_destination_lng'] : null,
+                $wc['service_passengers'] ?? null,
+                $wc['service_date'] ?? null,
+                $wc['service_hour'] ?? null,
+                $wc['service_date_return'] ?? null,
+                $wc['service_hour_return'] ?? null,
+                $wc['service_vehicle'] ?? null,
+                isset($wc['service_km']) ? (float)$wc['service_km'] : null,
+                $wc['observaciones'] ?? null,
+                $wc['phone'],
+                null,
+            ]);
+            error_log('[wa_form_save] lead_request creado id=' . $lid . ' phone=' . $wc['phone']);
         }
     }
 

@@ -77,6 +77,7 @@ const UTM_LABELS: Record<string, { label: string; color: string }> = {
   instagram: { label: 'Instagram', color: '#E1306C' },
   web:       { label: 'Web',       color: '#6b7280' },
   sofia:     { label: 'Sofía WA',  color: '#1B8A4B' },
+  whatsapp:  { label: 'WhatsApp', color: '#25D366' },
 }
 const STATUS_STYLES: Record<string, { label: string; bg: string; color: string }> = {
   pendiente:   { label: 'Pendiente',   bg: '#fef9c3', color: '#854d0e' },
