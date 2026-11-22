@@ -3116,6 +3116,71 @@ if ($action === 'leads_pending_count') {
     ok(['count' => $count]);
 }
 
+if ($action === 'backfill_wa_leads') {
+    requireAdmin();
+    // Crear lead_requests para conversaciones WA que ya completaron el formulario
+    // pero no tienen lead_request (ocurrió antes de implementar la creación automática)
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN wa_conv_phone VARCHAR(30) NULL"); } catch (PDOException $e) {}
+    $convs = db()->query("
+        SELECT c.* FROM wa_cloud_conversations c
+        WHERE c.form_submitted_at IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM lead_requests lr WHERE lr.wa_conv_phone = c.phone
+          )
+        ORDER BY c.form_submitted_at DESC
+    ")->fetchAll();
+    $created = 0;
+    foreach ($convs as $wc) {
+        $lid = uuid();
+        try {
+            db()->prepare('
+                INSERT INTO lead_requests
+                  (id, status, target_company, tipo_servicio, tipo_cliente, utm_source,
+                   empresa_nombre, contacto_nombre, contacto_email, contacto_telefono,
+                   desde, hasta,
+                   service_origin_place_id, service_origin_lat, service_origin_lng,
+                   service_destination_place_id, service_destination_lat, service_destination_lng,
+                   pasajeros_aprox, fecha_inicio, service_hour, service_date_return, service_hour_return,
+                   service_vehicle, service_km, observaciones, wa_conv_phone, ip_address, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ')->execute([
+                $lid, 'pendiente',
+                'transccl',
+                $wc['tipo_servicio'] ?? ($wc['service_type'] ?? null),
+                $wc['client_type'] ?? null,
+                'whatsapp',
+                $wc['company_name'] ?? null,
+                $wc['contact_name'] ?? null,
+                $wc['contact_email'] ?? ($wc['quote_send_email'] ?? null),
+                $wc['contact_phone'] ?? $wc['phone'],
+                $wc['service_origin'] ?? null,
+                $wc['service_destination'] ?? null,
+                $wc['service_origin_place_id'] ?? null,
+                isset($wc['service_origin_lat']) ? (float)$wc['service_origin_lat'] : null,
+                isset($wc['service_origin_lng']) ? (float)$wc['service_origin_lng'] : null,
+                $wc['service_destination_place_id'] ?? null,
+                isset($wc['service_destination_lat']) ? (float)$wc['service_destination_lat'] : null,
+                isset($wc['service_destination_lng']) ? (float)$wc['service_destination_lng'] : null,
+                $wc['service_passengers'] ?? null,
+                $wc['service_date'] ?? null,
+                $wc['service_hour'] ?? null,
+                $wc['service_date_return'] ?? null,
+                $wc['service_hour_return'] ?? null,
+                $wc['service_vehicle'] ?? null,
+                isset($wc['service_km']) ? (float)$wc['service_km'] : null,
+                $wc['observaciones'] ?? null,
+                $wc['phone'],
+                null,
+                $wc['form_submitted_at'] ?? date('Y-m-d H:i:s'),
+            ]);
+            $created++;
+        } catch (PDOException $e) {
+            error_log('[backfill_wa_leads] error conv=' . $wc['id'] . ': ' . $e->getMessage());
+        }
+    }
+    ok(['created' => $created, 'total_convs_with_form' => count($convs)]);
+}
+
 if ($action === 'bwa_pending_list') {
     requireAuth();
     $stmt = db()->query("SELECT id, number, created_at, desde, hasta, distancia_km, vehicle_type FROM quotations WHERE number LIKE 'BWA%' AND (client_id IS NULL OR client_id = '') AND is_deleted = 0 ORDER BY created_at DESC");
