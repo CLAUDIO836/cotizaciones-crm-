@@ -839,9 +839,6 @@ if ($action === 'quotations_summary') {
         $params[] = $like; $params[] = $like; $params[] = $like;
     }
 
-    // Excluir negocios BWA sin cliente: esos son borradores del bot y van a Solicitudes
-    $where[] = "NOT (number LIKE 'BWA%' AND (client_id IS NULL OR client_id = ''))";
-
     $sql = 'SELECT * FROM quotations_summary WHERE ' . implode(' AND ', $where) . ' ORDER BY created_at DESC';
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
@@ -3115,8 +3112,15 @@ if ($action === 'comprobante_reject') {
 // ── LEAD REQUESTS ─────────────────────────────────────────────────────────────
 if ($action === 'leads_pending_count') {
     requireAuth();
-    $stmt = db()->query("SELECT COUNT(*) AS count FROM lead_requests WHERE status = 'pendiente'");
-    ok($stmt->fetch());
+    $leads = (int)db()->query("SELECT COUNT(*) FROM lead_requests WHERE status = 'pendiente'")->fetchColumn();
+    $bwa   = (int)db()->query("SELECT COUNT(*) FROM quotations WHERE number LIKE 'BWA%' AND (client_id IS NULL OR client_id = '') AND is_deleted = 0")->fetchColumn();
+    ok(['count' => $leads + $bwa]);
+}
+
+if ($action === 'bwa_pending_list') {
+    requireAuth();
+    $stmt = db()->query("SELECT id, number, created_at, desde, hasta, distancia_km, vehicle_type FROM quotations WHERE number LIKE 'BWA%' AND (client_id IS NULL OR client_id = '') AND is_deleted = 0 ORDER BY created_at DESC");
+    ok($stmt->fetchAll());
 }
 
 if ($action === 'leads_list') {

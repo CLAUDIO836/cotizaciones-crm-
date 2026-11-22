@@ -194,6 +194,23 @@ export async function fetchWaConv(convId: string, token?: string): Promise<WaCon
   } catch { return null }
 }
 
+export interface BwaPending {
+  id: string
+  number: string
+  created_at: string
+  desde?: string
+  hasta?: string
+  distancia_km?: number
+  vehicle_type?: string
+}
+
+export async function fetchBwaPending(): Promise<BwaPending[]> {
+  try {
+    const r = await crmGet('bwa_pending_list')
+    return (r.data as BwaPending[]) ?? []
+  } catch { return [] }
+}
+
 export async function fetchWaConvByQuote(quoteId: string): Promise<{ id: string; phone: string; contact_name: string } | null> {
   try {
     const r = await crmGet('wa_conv_by_quote', { quote_id: quoteId })
