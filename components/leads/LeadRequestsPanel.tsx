@@ -461,7 +461,7 @@ export default function LeadRequestsPanel({
       (filterStatus  === '' || l.status         === filterStatus) &&
       (filterCompany === '' || l.target_company === filterCompany)
     )
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
 
   const pendientes = leads.filter(l => l.status === 'pendiente').length
 
