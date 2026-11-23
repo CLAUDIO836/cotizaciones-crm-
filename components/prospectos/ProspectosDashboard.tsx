@@ -47,6 +47,7 @@ interface CommuneProspect {
   call_count: number
   category: string
   best_recording: string | null
+  last_calls: string[]
 }
 
 interface CommuneRow {
@@ -623,6 +624,7 @@ export default function ProspectosDashboard({
                                       <th className="text-center pb-1.5">Categoría</th>
                                       <th className="text-center pb-1.5">Mejor llamada</th>
                                       <th className="text-center pb-1.5"># llamadas</th>
+                                      <th className="text-left pb-1.5 pl-3">Últimas 3 llamadas</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -642,6 +644,13 @@ export default function ProspectosDashboard({
                                         </td>
                                         <td className="py-1.5 text-center font-mono font-semibold text-gray-700">{fmtDur(p.best_duration)}</td>
                                         <td className="py-1.5 text-center tabular-nums text-gray-500">{p.call_count}</td>
+                                        <td className="py-1.5 pl-3">
+                                          <div className="flex gap-1 flex-wrap">
+                                            {(p.last_calls ?? []).map((d, i) => (
+                                              <span key={i} className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-xs font-mono">{d}</span>
+                                            ))}
+                                          </div>
+                                        </td>
                                       </tr>
                                     ))}
                                   </tbody>

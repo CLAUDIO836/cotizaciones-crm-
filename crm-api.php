@@ -4303,7 +4303,12 @@ if ($action === 'call_dashboard') {
                MAX(COALESCE(o.duration_sec, 0)) as best_duration,
                COUNT(*) as call_count,
                MAX(CASE WHEN o.recording_url IS NOT NULL AND COALESCE(o.duration_sec,0) >= 60
-                        THEN o.recording_url ELSE NULL END) as best_recording
+                        THEN o.recording_url ELSE NULL END) as best_recording,
+               GROUP_CONCAT(
+                   DATE_FORMAT(DATE_SUB(o.called_at, INTERVAL 3 HOUR), '%d/%m %H:%i')
+                   ORDER BY o.called_at DESC
+                   SEPARATOR '|'
+               ) as recent_dates_raw
         FROM outbound_calls o
         $phoneJoin
         JOIN prospects pr ON pr.id = c.prospect_id
@@ -4411,6 +4416,10 @@ if ($action === 'call_dashboard') {
         if (!isset($commMap[$c])) $commMap[$c] = ['con_intencion'=>0,'contactada'=>0,'fria'=>0,'sin_respuesta'=>0,'llamados'=>0,'prospects'=>[]];
         $commMap[$c][$p['category']]++;
         $commMap[$c]['llamados']++;
+        $recentDates = array_slice(
+            array_filter(explode('|', $p['recent_dates_raw'] ?? '')),
+            0, 3
+        );
         $commMap[$c]['prospects'][] = [
             'prospect_id'   => $p['prospect_id'],
             'prospect_name' => $p['prospect_name'],
@@ -4418,6 +4427,7 @@ if ($action === 'call_dashboard') {
             'call_count'    => $p['call_count'],
             'category'      => $p['category'],
             'best_recording'=> $p['best_recording'],
+            'last_calls'    => array_values($recentDates),
         ];
     }
 
