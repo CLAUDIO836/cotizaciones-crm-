@@ -128,42 +128,46 @@ function BigCard({ value, label, sub, dot }: {
 }
 
 function GoalBar({ exec, goal }: { exec: ExecRow; goal: number }) {
-  const avg          = exec.daily_avg_total ?? exec.daily_avg_intencion ?? 0
-  const pct          = Math.min(100, Math.round((avg / goal) * 100))
+  const realContact  = exec.con_intencion + exec.contactada
+  const dailyAvgReal = exec.days_active > 0 ? realContact / exec.days_active : realContact
+  const pct          = Math.min(100, Math.round((dailyAvgReal / goal) * 100))
   const color        = pct >= 100 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626'
-  const intentionPct = exec.intencion_rate ?? (
-    exec.total_colegios > 0 ? Math.round(exec.con_intencion / exec.total_colegios * 100) : 0
-  )
+  const intentionPct = exec.total_colegios > 0
+    ? Math.round(exec.con_intencion / exec.total_colegios * 100) : 0
   const intentionColor = intentionPct >= 30 ? '#16a34a' : intentionPct >= 15 ? '#d97706' : '#6b7280'
+  const realPct = exec.total_colegios > 0
+    ? Math.round(realContact / exec.total_colegios * 100) : 0
   return (
     <div>
       <div className="flex justify-between items-center mb-1.5">
         <span className="text-sm font-semibold text-gray-800">{exec.executive_name}</span>
         <div className="text-xs text-gray-500 tabular-nums text-right flex items-center gap-2">
-          <span className="text-gray-400">{exec.total_calls ?? exec.total_colegios} llamadas</span>
+          <span className="text-gray-400">{exec.total_calls ?? exec.total_colegios} intentos</span>
           <span className="text-gray-300">·</span>
-          <span className="font-bold" style={{ color }}>{avg.toFixed(1)}</span>
-          <span className="text-gray-400">/ {goal} colegios/día</span>
+          <span className="font-bold" style={{ color }}>{dailyAvgReal.toFixed(1)}</span>
+          <span className="text-gray-400">/ {goal} real/día</span>
           <span className="text-gray-300">·</span>
           <span className="font-bold" style={{ color: intentionColor }}>{intentionPct}% intención</span>
         </div>
       </div>
-      {/* Capa 1: cobertura (barra principal) */}
+      {/* Barra principal: contacto real (≥46s) vs meta */}
       <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
         <div className="h-full rounded-full transition-all duration-500"
           style={{ width: `${pct}%`, background: color }} />
       </div>
-      {/* Capa 2: tasa de intención (barra delgada superpuesta) */}
+      {/* Barra de intención */}
       <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-1">
         <div className="h-full rounded-full transition-all duration-500 bg-green-500"
           style={{ width: `${Math.min(100, intentionPct)}%` }} />
       </div>
       <div className="flex gap-4 mt-1.5 text-xs text-gray-400 tabular-nums">
-        <span><span className="font-medium text-blue-500">{exec.total_calls ?? exec.total_colegios}</span> llamadas</span>
-        <span><span className="font-medium text-gray-700">{exec.total_colegios}</span> colegios</span>
+        <span><span className="font-medium text-gray-500">{exec.total_calls ?? exec.total_colegios}</span> intentos</span>
+        <span><span className="font-medium text-gray-700">{exec.total_colegios}</span> marcados</span>
+        <span><span className="font-medium text-blue-600">{realContact}</span> contacto real
+          <span className="text-gray-300 ml-1">({realPct}%)</span>
+        </span>
         <span><span className="font-medium text-green-600">{exec.con_intencion}</span> con intención</span>
-        <span><span className="font-medium text-blue-600">{exec.contactada}</span> contactadas</span>
-        <span><span className="font-medium text-gray-400">{exec.sin_respuesta}</span> sin resp.</span>
+        <span><span className="font-medium text-gray-300">{exec.sin_respuesta}</span> sin resp.</span>
       </div>
     </div>
   )
@@ -280,7 +284,7 @@ export default function ProspectosDashboard({
           ) : (
             <>
               <span className="text-sm font-bold text-gray-900">{goal} colegios/día</span>
-              <span className="text-xs text-gray-400">llamados</span>
+              <span className="text-xs text-gray-400">contacto real</span>
               <button onClick={() => { setEditGoal(true); setGoalInput(String(goal)) }} className="text-gray-400 hover:text-gray-600">
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -351,8 +355,8 @@ export default function ProspectosDashboard({
                 <div className="w-2.5 h-8 rounded-full bg-blue-400 flex-shrink-0" />
                 <div>
                   <div className="text-2xl font-bold text-blue-700 tabular-nums leading-none">{s.total_calls ?? s.total_colegios}</div>
-                  <div className="text-xs font-semibold text-blue-600 mt-0.5">Llamadas totales</div>
-                  <div className="text-xs text-blue-400">Gestión / esfuerzo</div>
+                  <div className="text-xs font-semibold text-blue-600 mt-0.5">Intentos de marcado</div>
+                  <div className="text-xs text-blue-400">Incluye rellamadas al mismo colegio</div>
                 </div>
               </div>
               {(() => {
@@ -367,7 +371,7 @@ export default function ProspectosDashboard({
                         <span className="text-sm text-gray-400 font-medium">/ {goal}</span>
                         <span className="ml-auto text-lg font-bold tabular-nums" style={{ color: metaColor }}>{metaPct}%</span>
                       </div>
-                      <div className="text-xs font-semibold text-gray-700 mt-1">Colegios únicos · Meta diaria</div>
+                      <div className="text-xs font-semibold text-gray-700 mt-1">Colegios marcados · Meta diaria</div>
                       <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mt-1.5">
                         <div className="h-full rounded-full transition-all" style={{ width: `${metaPct}%`, background: metaColor }} />
                       </div>
@@ -375,16 +379,30 @@ export default function ProspectosDashboard({
                   </div>
                 )
               })()}
-              <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-3">
-                <div className="w-2.5 h-8 rounded-full bg-green-500 flex-shrink-0" />
-                <div>
-                  <div className="text-2xl font-bold text-green-700 tabular-nums leading-none">
-                    {s.total_colegios > 0 ? Math.round(s.con_intencion / s.total_colegios * 100) : 0}%
+              {(() => {
+                const realContact = s.con_intencion + s.contactada
+                const realPct = s.total_colegios > 0
+                  ? Math.round(realContact / s.total_colegios * 100) : 0
+                const realColor = realPct >= 50 ? 'green' : realPct >= 25 ? 'yellow' : 'red'
+                const colorMap: Record<string, { bg: string; border: string; dot: string; title: string; sub: string }> = {
+                  green:  { bg: 'bg-green-50',  border: 'border-green-200',  dot: 'bg-green-500',  title: 'text-green-700', sub: 'text-green-500' },
+                  yellow: { bg: 'bg-yellow-50', border: 'border-yellow-200', dot: 'bg-yellow-500', title: 'text-yellow-700', sub: 'text-yellow-500' },
+                  red:    { bg: 'bg-red-50',    border: 'border-red-200',    dot: 'bg-red-400',    title: 'text-red-700',   sub: 'text-red-400' },
+                }
+                const c = colorMap[realColor]
+                return (
+                  <div className={`${c.bg} border ${c.border} rounded-xl px-4 py-3 flex items-center gap-3`}>
+                    <div className={`w-2.5 h-8 rounded-full flex-shrink-0 ${c.dot}`} />
+                    <div>
+                      <div className={`text-2xl font-bold tabular-nums leading-none ${c.title}`}>
+                        {realPct}%
+                      </div>
+                      <div className={`text-xs font-semibold mt-0.5 ${c.title}`}>Tasa de intención</div>
+                      <div className={`text-xs mt-0.5 ${c.sub}`}>{s.con_intencion} colegios ≥1 min</div>
+                    </div>
                   </div>
-                  <div className="text-xs font-semibold text-green-700 mt-0.5">Tasa de intención</div>
-                  <div className="text-xs text-green-500">{s.con_intencion} colegios ≥1 min</div>
-                </div>
-              </div>
+                )
+              })()}
             </div>
           )}
 
@@ -409,38 +427,53 @@ export default function ProspectosDashboard({
           </div>
 
           {/* Cobertura global */}
-          {s && (
-            <div className="bg-white rounded-xl border px-5 py-4 flex items-center gap-6 flex-wrap">
-              <div>
-                <span className="text-2xl font-bold text-gray-900 tabular-nums">{s.total_colegios}</span>
-                <span className="text-gray-400 text-sm ml-1">/ {s.total_campaign} colegios llamados</span>
-              </div>
-              <div className="flex-1 min-w-48">
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
-                  <span>Cobertura total</span>
-                  <span className="font-semibold">{s.coverage_pct}%</span>
+          {s && (() => {
+            const realContact = s.con_intencion + s.contactada
+            const realPct = s.total_campaign > 0
+              ? Math.min(100, Math.round(realContact / s.total_campaign * 100)) : 0
+            return (
+              <div className="bg-white rounded-xl border px-5 py-4 space-y-3">
+                <div className="flex items-center gap-6 flex-wrap">
+                  <div>
+                    <span className="text-2xl font-bold text-gray-900 tabular-nums">{s.total_colegios}</span>
+                    <span className="text-gray-400 text-sm ml-1">/ {s.total_campaign} colegios en campaña</span>
+                  </div>
+                  <div className="flex gap-3 text-xs flex-wrap">
+                    {(['con_intencion','contactada','fria','sin_respuesta'] as const).map(cat => (
+                      <span key={cat} className={`px-2 py-1 rounded-full font-medium ${CAT_COLOR[cat]}`}>
+                        {s[cat]} {CAT_LABEL[cat].toLowerCase()}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full bg-blue-500 transition-all"
-                    style={{ width: `${s.coverage_pct}%` }} />
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Marcados (cualquier duración)</span>
+                    <span className="font-semibold">{s.coverage_pct}% · {s.total_colegios} colegios</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-gray-400 transition-all"
+                      style={{ width: `${s.coverage_pct}%` }} />
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span className="text-blue-600 font-medium">Contacto real (≥46s, alguien contestó)</span>
+                    <span className="font-semibold text-blue-700">{realPct}% · {realContact} colegios</span>
+                  </div>
+                  <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-blue-500 transition-all"
+                      style={{ width: `${realPct}%` }} />
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-3 text-xs flex-wrap">
-                {(['con_intencion','contactada','fria','sin_respuesta'] as const).map(cat => (
-                  <span key={cat} className={`px-2 py-1 rounded-full font-medium ${CAT_COLOR[cat]}`}>
-                    {s[cat]} {CAT_LABEL[cat].toLowerCase()}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+            )
+          })()}
 
           {/* ── Meta por ejecutivo ── */}
           {data.executive_stats.length > 0 && (
             <div className="bg-white rounded-xl border p-5 space-y-5">
               <h2 className="font-semibold text-gray-800 flex items-center gap-2">
                 <Target className="w-4 h-4 text-green-600" />
-                Progreso meta — colegios llamados por ejecutivo
+                Progreso meta — contacto real por ejecutivo
               </h2>
               {data.executive_stats.map(exec => (
                 <GoalBar key={exec.user_id} exec={exec} goal={goal} />
@@ -458,35 +491,39 @@ export default function ProspectosDashboard({
                 <thead className="bg-gray-50 border-b text-xs text-gray-500 font-medium">
                   <tr>
                     <th className="text-left px-5 py-3">Ejecutivo</th>
-                    <th className="text-center px-3 py-3 text-blue-500">Llamadas</th>
-                    <th className="text-center px-3 py-3">Colegios</th>
+                    <th className="text-center px-3 py-3 text-gray-400">Intentos</th>
+                    <th className="text-center px-3 py-3">Marcados</th>
+                    <th className="text-center px-3 py-3 text-blue-700 font-semibold">Contacto real</th>
                     <th className="text-center px-3 py-3 text-green-600">Intención</th>
-                    <th className="text-center px-3 py-3 text-blue-600">Contactada</th>
                     <th className="text-center px-3 py-3 text-gray-400">Sin resp.</th>
                     <th className="text-center px-3 py-3">Días</th>
-                    <th className="text-center px-3 py-3">Col./día</th>
-                    <th className="text-center px-3 py-3">Tasa</th>
+                    <th className="text-center px-3 py-3">Real/día</th>
+                    <th className="text-center px-3 py-3">Tasa int.</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.executive_stats.map(exec => {
-                    const onGoal = (exec.daily_avg_total ?? exec.daily_avg_intencion ?? 0) >= goal
+                    const realContact = exec.con_intencion + exec.contactada
+                    const dailyAvgReal = exec.days_active > 0 ? realContact / exec.days_active : realContact
+                    const onGoal = dailyAvgReal >= goal
+                    const intentionPct = exec.total_colegios > 0
+                      ? Math.round(exec.con_intencion / exec.total_colegios * 100) : 0
                     return (
                       <tr key={exec.user_id} className="border-b last:border-0 hover:bg-gray-50">
                         <td className="px-5 py-3 font-medium text-gray-800">{exec.executive_name}</td>
-                        <td className="px-3 py-3 text-center tabular-nums text-blue-500">{exec.total_calls ?? exec.total_colegios}</td>
-                        <td className="px-3 py-3 text-center tabular-nums font-medium">{exec.total_colegios}</td>
+                        <td className="px-3 py-3 text-center tabular-nums text-gray-400">{exec.total_calls ?? exec.total_colegios}</td>
+                        <td className="px-3 py-3 text-center tabular-nums text-gray-600">{exec.total_colegios}</td>
+                        <td className="px-3 py-3 text-center tabular-nums font-bold text-blue-700">{realContact}</td>
                         <td className="px-3 py-3 text-center tabular-nums font-bold text-green-600">{exec.con_intencion}</td>
-                        <td className="px-3 py-3 text-center tabular-nums text-blue-600">{exec.contactada}</td>
                         <td className="px-3 py-3 text-center tabular-nums text-gray-400">{exec.sin_respuesta}</td>
                         <td className="px-3 py-3 text-center tabular-nums text-gray-500">{exec.days_active}</td>
                         <td className={`px-3 py-3 text-center tabular-nums font-bold ${onGoal ? 'text-green-600' : 'text-red-500'}`}>
-                          {(exec.daily_avg_total ?? exec.daily_avg_intencion ?? 0).toFixed(1)}
+                          {dailyAvgReal.toFixed(1)}
                         </td>
                         <td className="px-3 py-3 text-center tabular-nums text-sm font-semibold" style={{
-                          color: (exec.intencion_rate ?? 0) >= 30 ? '#16a34a' : (exec.intencion_rate ?? 0) >= 15 ? '#d97706' : '#6b7280'
+                          color: intentionPct >= 30 ? '#16a34a' : intentionPct >= 15 ? '#d97706' : '#6b7280'
                         }}>
-                          {exec.intencion_rate ?? 0}%
+                          {intentionPct}%
                         </td>
                       </tr>
                     )
@@ -510,38 +547,42 @@ export default function ProspectosDashboard({
                     <tr>
                       <th className="text-left px-5 py-3">Comuna</th>
                       <th className="text-center px-3 py-3">Total</th>
-                      <th className="text-center px-3 py-3">Llamados</th>
+                      <th className="text-center px-3 py-3">Marcados</th>
                       <th className="text-center px-3 py-3 text-green-600">Intención</th>
                       <th className="text-center px-3 py-3 text-blue-600">Contactada</th>
                       <th className="text-center px-3 py-3 text-orange-500">Fría</th>
                       <th className="text-center px-3 py-3 text-gray-400">Sin resp.</th>
-                      <th className="text-center px-3 py-3">Sin contacto</th>
-                      <th className="text-center px-3 py-3">Cobertura</th>
+                      <th className="text-center px-3 py-3 text-blue-700 font-semibold">Contacto real</th>
+                      <th className="text-center px-3 py-3">Cobertura real</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.commune_stats.map(c => {
-                      const dot = c.intencion_pct >= 20 ? 'bg-green-500' : c.intencion_pct >= 5 ? 'bg-yellow-400' : c.llamados > 0 ? 'bg-orange-400' : 'bg-red-300'
+                      const realContact = c.con_intencion + c.contactada
+                      const realPct = c.total > 0 ? Math.round(realContact / c.total * 100) : 0
+                      const isComplete = realPct >= 90
+                      const dot = isComplete ? 'bg-green-500' : realPct >= 40 ? 'bg-blue-400' : c.llamados > 0 ? 'bg-orange-400' : 'bg-red-300'
                       return (
-                        <tr key={c.commune} className="border-b last:border-0 hover:bg-gray-50">
+                        <tr key={c.commune} className={`border-b last:border-0 hover:bg-gray-50 ${isComplete ? 'bg-green-50/40' : ''}`}>
                           <td className="px-5 py-2.5 font-medium text-gray-800 flex items-center gap-2">
                             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
                             {c.commune}
+                            {isComplete && <span className="text-xs text-green-600 font-normal ml-1">✓ cubierta</span>}
                           </td>
                           <td className="px-3 py-2.5 text-center tabular-nums text-gray-500">{c.total}</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums">{c.llamados}</td>
+                          <td className="px-3 py-2.5 text-center tabular-nums text-gray-600">{c.llamados}</td>
                           <td className="px-3 py-2.5 text-center tabular-nums font-bold text-green-600">{c.con_intencion}</td>
                           <td className="px-3 py-2.5 text-center tabular-nums text-blue-600">{c.contactada}</td>
                           <td className="px-3 py-2.5 text-center tabular-nums text-orange-500">{c.fria}</td>
                           <td className="px-3 py-2.5 text-center tabular-nums text-gray-400">{c.sin_respuesta}</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums text-gray-400">{c.sin_contacto}</td>
+                          <td className="px-3 py-2.5 text-center tabular-nums font-bold text-blue-700">{realContact}</td>
                           <td className="px-3 py-2.5 text-center">
                             <div className="flex items-center gap-1.5">
                               <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden w-16">
-                                <div className="h-full rounded-full bg-blue-400"
-                                  style={{ width: `${c.coverage_pct}%` }} />
+                                <div className="h-full rounded-full transition-all"
+                                  style={{ width: `${realPct}%`, background: isComplete ? '#16a34a' : '#3b82f6' }} />
                               </div>
-                              <span className="text-xs tabular-nums text-gray-500 w-8">{c.coverage_pct}%</span>
+                              <span className={`text-xs tabular-nums w-8 font-medium ${isComplete ? 'text-green-600' : 'text-gray-500'}`}>{realPct}%</span>
                             </div>
                           </td>
                         </tr>
