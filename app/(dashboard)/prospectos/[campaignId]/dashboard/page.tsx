@@ -22,7 +22,7 @@ export default async function DashboardPage({
   const campaign = campaigns.find(c => c.id === campaignId)
   if (!campaign) notFound()
 
-  const isAdmin = user.role === 'admin' || user.role === 'coordinador'
+  const isAdmin = user.role === 'admin' || user.role === 'coordinador' || user.role === 'superadmin'
   const executives = profiles
     .filter(p => p.role !== 'coordinador')
     .map(p => ({ id: p.id, name: p.name ?? p.email }))
