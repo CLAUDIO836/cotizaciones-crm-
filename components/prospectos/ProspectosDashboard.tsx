@@ -240,22 +240,26 @@ export default function ProspectosDashboard({
     else   { setDateFrom(`${yi}-01-01`); setDateTo(`${yi}-12-31`) }
   }
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (df = dateFrom, dt = dateTo, fu = filterUser, fc = filterComm) => {
     setLoading(true)
     try {
       const qs = new URLSearchParams({ campaign_id: campaign.id })
-      if (dateFrom)   qs.set('date_from', dateFrom)
-      if (dateTo)     qs.set('date_to', dateTo)
-      if (filterUser) qs.set('user_id', filterUser)
-      if (filterComm) qs.set('commune', filterComm)
+      if (df) qs.set('date_from', df)
+      if (dt) qs.set('date_to', dt)
+      if (fu) qs.set('user_id', fu)
+      if (fc) qs.set('commune', fc)
       const res  = await fetch(`/api/prospectos/${campaign.id}/dashboard?${qs}`)
       const json = await res.json()
       setData(json.data ?? null)
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
-  }, [campaign.id, dateFrom, dateTo, filterUser, filterComm])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaign.id])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  // Carga inicial automática
+  useEffect(() => { fetchData(dateFrom, dateTo, filterUser, filterComm) }, []) // eslint-disable-line
+
+  function buscar() { fetchData(dateFrom, dateTo, filterUser, filterComm) }
 
   const s = data?.summary
 
@@ -308,7 +312,7 @@ export default function ProspectosDashboard({
       {/* Filtros */}
       <div className="bg-white rounded-xl border p-4 flex flex-wrap gap-2 items-center">
         <button
-          onClick={() => { setDateFrom(todayStr()); setDateTo(todayStr()); setQuickYear(''); setQuickMonth('') }}
+          onClick={() => { const t = todayStr(); setDateFrom(t); setDateTo(t); setQuickYear(''); setQuickMonth(''); fetchData(t, t, filterUser, filterComm) }}
           className={`px-3 py-1.5 text-xs rounded-lg border font-medium transition-colors ${
             dateFrom === todayStr() && dateTo === todayStr()
               ? 'bg-green-600 text-white border-green-600'
@@ -321,7 +325,7 @@ export default function ProspectosDashboard({
         </select>
         <select value={quickMonth} onChange={e => applyQuick(quickYear, e.target.value)}
           className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none">
-          <option value="">Mes</option>
+          <option value="">{quickYear ? 'Todo el año' : 'Mes'}</option>
           {MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
         </select>
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
@@ -343,6 +347,10 @@ export default function ProspectosDashboard({
             <option key={c.commune} value={c.commune}>{c.commune}</option>
           ))}
         </select>
+        <button onClick={buscar}
+          className="px-4 py-1.5 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+          Buscar
+        </button>
         {(filterUser || filterComm) && (
           <button onClick={() => { setFilterUser(''); setFilterComm('') }}
             className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">
