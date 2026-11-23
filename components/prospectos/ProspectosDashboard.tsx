@@ -534,11 +534,18 @@ export default function ProspectosDashboard({
           )}
 
           {/* ── Comunas ── */}
-          {data.commune_stats.length > 0 && (
+          {data.commune_stats.length > 0 && (() => {
+            const visibleCommunes = filterUser
+              ? data.commune_stats.filter(c => c.llamados > 0)
+              : data.commune_stats
+            return (
             <div className="bg-white rounded-xl border overflow-hidden">
               <button className="w-full px-5 py-4 flex items-center justify-between"
                 onClick={() => setShowComm(v => !v)}>
-                <h2 className="font-semibold text-gray-800">Rendimiento por comuna</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-semibold text-gray-800">Rendimiento por comuna</h2>
+                  {filterUser && <span className="text-xs text-blue-500 font-normal">({visibleCommunes.length} comunas con actividad)</span>}
+                </div>
                 {showComm ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
               </button>
               {showComm && (
@@ -558,7 +565,7 @@ export default function ProspectosDashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {data.commune_stats.map(c => {
+                    {visibleCommunes.map(c => {
                       const realContact = c.con_intencion + c.contactada
                       const realPct = c.total > 0 ? Math.round(realContact / c.total * 100) : 0
                       const isComplete = realPct >= 90
@@ -594,7 +601,8 @@ export default function ProspectosDashboard({
                 </table>
               )}
             </div>
-          )}
+            )
+          })()}
 
           {/* ── Top prospectos ── */}
           {data.top_prospects.length > 0 && (
