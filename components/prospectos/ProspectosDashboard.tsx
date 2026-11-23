@@ -548,6 +548,7 @@ export default function ProspectosDashboard({
                       <th className="text-left px-5 py-3">Comuna</th>
                       <th className="text-center px-3 py-3">Total</th>
                       <th className="text-center px-3 py-3">Marcados</th>
+                      <th className="text-center px-3 py-3 text-red-400">Sin llamar</th>
                       <th className="text-center px-3 py-3 text-green-600">Intención</th>
                       <th className="text-center px-3 py-3 text-blue-600">Contactada</th>
                       <th className="text-center px-3 py-3 text-orange-500">Fría</th>
@@ -571,6 +572,7 @@ export default function ProspectosDashboard({
                           </td>
                           <td className="px-3 py-2.5 text-center tabular-nums text-gray-500">{c.total}</td>
                           <td className="px-3 py-2.5 text-center tabular-nums text-gray-600">{c.llamados}</td>
+                          <td className="px-3 py-2.5 text-center tabular-nums font-semibold text-red-400">{Math.max(0, c.total - c.llamados)}</td>
                           <td className="px-3 py-2.5 text-center tabular-nums font-bold text-green-600">{c.con_intencion}</td>
                           <td className="px-3 py-2.5 text-center tabular-nums text-blue-600">{c.contactada}</td>
                           <td className="px-3 py-2.5 text-center tabular-nums text-orange-500">{c.fria}</td>
