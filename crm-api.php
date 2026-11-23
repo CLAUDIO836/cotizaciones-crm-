@@ -4408,14 +4408,24 @@ if ($action === 'call_dashboard') {
     $commMap = [];
     foreach ($prospectRows as $p) {
         $c = $p['commune'] ?? 'Sin asignar';
-        if (!isset($commMap[$c])) $commMap[$c] = ['con_intencion'=>0,'contactada'=>0,'fria'=>0,'sin_respuesta'=>0,'llamados'=>0];
+        if (!isset($commMap[$c])) $commMap[$c] = ['con_intencion'=>0,'contactada'=>0,'fria'=>0,'sin_respuesta'=>0,'llamados'=>0,'prospects'=>[]];
         $commMap[$c][$p['category']]++;
         $commMap[$c]['llamados']++;
+        $commMap[$c]['prospects'][] = [
+            'prospect_id'   => $p['prospect_id'],
+            'prospect_name' => $p['prospect_name'],
+            'best_duration' => $p['best_duration'],
+            'call_count'    => $p['call_count'],
+            'category'      => $p['category'],
+            'best_recording'=> $p['best_recording'],
+        ];
     }
 
     $communeStats = [];
     foreach ($commMap as $comm => $d) {
         $total = $commTotals[$comm] ?? 0;
+        $prospects = $d['prospects'];
+        usort($prospects, fn($a,$b) => $b['best_duration'] - $a['best_duration']);
         $communeStats[] = [
             'commune'       => $comm,
             'total'         => $total,
@@ -4427,6 +4437,7 @@ if ($action === 'call_dashboard') {
             'sin_contacto'  => max(0, $total - $d['llamados']),
             'coverage_pct'  => $total > 0 ? round($d['llamados']       / $total * 100) : 0,
             'intencion_pct' => $total > 0 ? round($d['con_intencion']  / $total * 100) : 0,
+            'prospects'     => $prospects,
         ];
     }
     // Añadir comunas sin ninguna llamada

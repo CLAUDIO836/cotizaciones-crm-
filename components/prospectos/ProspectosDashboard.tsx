@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import {
   TrendingUp, ArrowLeft, Target, Pencil, Check, X,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, ChevronRight,
 } from 'lucide-react'
 import { Campaign } from '@/lib/prospectos-types'
 import { UserSession } from '@/lib/api'
@@ -40,6 +40,15 @@ interface ExecRow {
   intencion_rate: number
 }
 
+interface CommuneProspect {
+  prospect_id: string
+  prospect_name: string
+  best_duration: number
+  call_count: number
+  category: string
+  best_recording: string | null
+}
+
 interface CommuneRow {
   commune: string
   total: number
@@ -51,6 +60,7 @@ interface CommuneRow {
   sin_contacto: number
   coverage_pct: number
   intencion_pct: number
+  prospects: CommuneProspect[]
 }
 
 interface TopProspect {
@@ -196,8 +206,9 @@ export default function ProspectosDashboard({
   const [quickMonth, setQuickMonth] = useState(String(month))
   const [loading,    setLoading]    = useState(false)
   const [data,       setData]       = useState<DashboardData | null>(null)
-  const [showComm,   setShowComm]   = useState(true)
-  const [showTop,    setShowTop]    = useState(true)
+  const [showComm,      setShowComm]      = useState(true)
+  const [showTop,       setShowTop]       = useState(true)
+  const [expandedComm,  setExpandedComm]  = useState<string | null>(null)
 
   // Meta editable
   const [goal,      setGoal]      = useState(DEFAULT_GOAL)
@@ -569,32 +580,76 @@ export default function ProspectosDashboard({
                       const realContact = c.con_intencion + c.contactada
                       const realPct = c.total > 0 ? Math.round(realContact / c.total * 100) : 0
                       const isComplete = realPct >= 90
+                      const isExpanded = expandedComm === c.commune
                       const dot = isComplete ? 'bg-green-500' : realPct >= 40 ? 'bg-blue-400' : c.llamados > 0 ? 'bg-orange-400' : 'bg-red-300'
                       return (
-                        <tr key={c.commune} className={`border-b last:border-0 hover:bg-gray-50 ${isComplete ? 'bg-green-50/40' : ''}`}>
-                          <td className="px-5 py-2.5 font-medium text-gray-800 flex items-center gap-2">
-                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
-                            {c.commune}
-                            {isComplete && <span className="text-xs text-green-600 font-normal ml-1">✓ cubierta</span>}
-                          </td>
-                          <td className="px-3 py-2.5 text-center tabular-nums text-gray-500">{c.total}</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums text-gray-600">{c.llamados}</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums font-semibold text-red-400">{Math.max(0, c.total - c.llamados)}</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums font-bold text-green-600">{c.con_intencion}</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums text-blue-600">{c.contactada}</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums text-orange-500">{c.fria}</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums text-gray-400">{c.sin_respuesta}</td>
-                          <td className="px-3 py-2.5 text-center tabular-nums font-bold text-blue-700">{realContact}</td>
-                          <td className="px-3 py-2.5 text-center">
-                            <div className="flex items-center gap-1.5">
-                              <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden w-16">
-                                <div className="h-full rounded-full transition-all"
-                                  style={{ width: `${realPct}%`, background: isComplete ? '#16a34a' : '#3b82f6' }} />
+                        <>
+                          <tr key={c.commune}
+                            className={`border-b hover:bg-gray-50 cursor-pointer select-none ${isComplete ? 'bg-green-50/40' : ''} ${isExpanded ? 'bg-blue-50/30' : ''}`}
+                            onClick={() => setExpandedComm(isExpanded ? null : c.commune)}>
+                            <td className="px-5 py-2.5 font-medium text-gray-800">
+                              <div className="flex items-center gap-2">
+                                <ChevronRight className={`w-3.5 h-3.5 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`} />
+                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
+                                {c.commune}
+                                {isComplete && <span className="text-xs text-green-600 font-normal">✓ cubierta</span>}
                               </div>
-                              <span className={`text-xs tabular-nums w-8 font-medium ${isComplete ? 'text-green-600' : 'text-gray-500'}`}>{realPct}%</span>
-                            </div>
-                          </td>
-                        </tr>
+                            </td>
+                            <td className="px-3 py-2.5 text-center tabular-nums text-gray-500">{c.total}</td>
+                            <td className="px-3 py-2.5 text-center tabular-nums text-gray-600">{c.llamados}</td>
+                            <td className="px-3 py-2.5 text-center tabular-nums font-semibold text-red-400">{Math.max(0, c.total - c.llamados)}</td>
+                            <td className="px-3 py-2.5 text-center tabular-nums font-bold text-green-600">{c.con_intencion}</td>
+                            <td className="px-3 py-2.5 text-center tabular-nums text-blue-600">{c.contactada}</td>
+                            <td className="px-3 py-2.5 text-center tabular-nums text-orange-500">{c.fria}</td>
+                            <td className="px-3 py-2.5 text-center tabular-nums text-gray-400">{c.sin_respuesta}</td>
+                            <td className="px-3 py-2.5 text-center tabular-nums font-bold text-blue-700">{realContact}</td>
+                            <td className="px-3 py-2.5 text-center">
+                              <div className="flex items-center gap-1.5">
+                                <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden w-16">
+                                  <div className="h-full rounded-full transition-all"
+                                    style={{ width: `${realPct}%`, background: isComplete ? '#16a34a' : '#3b82f6' }} />
+                                </div>
+                                <span className={`text-xs tabular-nums w-8 font-medium ${isComplete ? 'text-green-600' : 'text-gray-500'}`}>{realPct}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr key={`${c.commune}-detail`} className="border-b bg-blue-50/20">
+                              <td colSpan={10} className="px-6 py-3">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="text-gray-400 font-medium border-b border-blue-100">
+                                      <th className="text-left pb-1.5">Colegio</th>
+                                      <th className="text-center pb-1.5">Categoría</th>
+                                      <th className="text-center pb-1.5">Mejor llamada</th>
+                                      <th className="text-center pb-1.5"># llamadas</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(c.prospects ?? []).map(p => (
+                                      <tr key={p.prospect_id} className="border-b border-blue-50 last:border-0">
+                                        <td className="py-1.5">
+                                          <Link href={`/prospectos/${p.prospect_id}`}
+                                            className="font-medium text-gray-800 hover:text-green-700 hover:underline"
+                                            onClick={e => e.stopPropagation()}>
+                                            {p.prospect_name}
+                                          </Link>
+                                        </td>
+                                        <td className="py-1.5 text-center">
+                                          <span className={`px-2 py-0.5 rounded-full font-medium ${CAT_COLOR[p.category]}`}>
+                                            {CAT_LABEL[p.category]}
+                                          </span>
+                                        </td>
+                                        <td className="py-1.5 text-center font-mono font-semibold text-gray-700">{fmtDur(p.best_duration)}</td>
+                                        <td className="py-1.5 text-center tabular-nums text-gray-500">{p.call_count}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                          )}
+                        </>
                       )
                     })}
                   </tbody>
