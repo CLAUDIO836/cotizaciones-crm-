@@ -3718,7 +3718,7 @@ if ($action === 'prospects_list') {
     if ($call_cat === 'sin_llamar') {
         $where .= ' AND NOT EXISTS (SELECT 1 FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call" AND a.duration_sec IS NOT NULL)';
     } elseif ($call_cat === 'con_intencion') {
-        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") >= 91';
+        $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") >= 90';
     } elseif ($call_cat === 'contactada') {
         $where .= ' AND (SELECT MAX(a.duration_sec) FROM prospect_activities a WHERE a.prospect_id = p.id AND a.type = "call") BETWEEN 46 AND 90';
     } elseif ($call_cat === 'fria') {
@@ -4196,7 +4196,7 @@ if ($action === 'call_status_update') {
                 $contact->execute([$phone9, $phone9]);
                 $cRow = $contact->fetch();
                 if ($cRow) {
-                    $result = $duration >= 91 ? 'interested'
+                    $result = $duration >= 90 ? 'interested'
                             : ($duration >= 46 ? 'contacted'
                             : ($duration >= 31 ? 'cold' : 'no_answer'));
                     db()->prepare("INSERT INTO prospect_activities
@@ -4315,7 +4315,7 @@ if ($action === 'call_dashboard') {
 
     // Clasificar cada colegio por su mejor llamada
     function classifyDuration(int $d): string {
-        if ($d >= 91) return 'con_intencion';
+        if ($d >= 90) return 'con_intencion';
         if ($d >= 46) return 'contactada';
         if ($d >= 31) return 'fria';
         return 'sin_respuesta';
@@ -6837,26 +6837,19 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
         $rut = trim($conv['contact_rut'] ?? '');
         $client_type = $conv['client_type'] ?? null;
 
+        // Fallback: si faltan RUT o email, crear borrador igual pero sin vincular cliente
         if (!$rut || !validateRut($rut)) {
-            // Sin RUT válido: marcar datos incompletos, no crear cotización
-            try {
-                $pdo->prepare("UPDATE wa_cloud_conversations SET stage='datos_incompletos' WHERE id=?")
-                    ->execute([$conv_id]);
-            } catch (PDOException $e) {}
-            return ['error'=>'RUT no recopilado o inválido. Sofía debe solicitar el RUT antes de cotizar.',
-                    'code'=>422,'missing'=>'contact_rut','stage'=>'datos_incompletos'];
+            $use_client_lookup = false;
         }
 
-        $email = trim($conv['quote_send_email'] ?? $conv['contact_email'] ?? '');
-        if (!$email) {
-            try {
-                $pdo->prepare("UPDATE wa_cloud_conversations SET stage='datos_incompletos' WHERE id=?")
-                    ->execute([$conv_id]);
-            } catch (PDOException $e) {}
-            return ['error'=>'Email no recopilado. Sofía debe solicitar el correo del cliente antes de cotizar.',
-                    'code'=>422,'missing'=>'contact_email','stage'=>'datos_incompletos'];
+        if ($use_client_lookup) {
+            $email = trim($conv['quote_send_email'] ?? $conv['contact_email'] ?? '');
+            if (!$email) {
+                $use_client_lookup = false;
+            }
         }
 
+        if ($use_client_lookup) {
         $rut_norm = normalizeRut($rut);
         $rut_key  = rutKey($rut);
 
@@ -6939,6 +6932,7 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
                 }
             }
         }
+        } // end if ($use_client_lookup) — bloque completo de lookup/creación de cliente
     }
 
     // ── Idempotencia y bloqueo por aprobación existente ──────────────────────
@@ -7118,7 +7112,7 @@ function crear_borrador_wa(PDO $pdo, string $conv_id, array $opts = []): array {
 if ($action === 'wa_create_borrador') {
     $conv_id = body()['conv_id'] ?? ($_GET['conv_id'] ?? '');
     if (!$conv_id) err('conv_id requerido');
-    $result = crear_borrador_wa(db(), $conv_id);
+    $result = crear_borrador_wa(db(), $conv_id, ['use_client_lookup' => true]);
     if (isset($result['error'])) err($result['error'], $result['code'] ?? 422);
     ok($result);
 }

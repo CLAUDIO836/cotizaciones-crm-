@@ -267,7 +267,7 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         $pdo = db();
 
         // Upsert conversación (incluye ficha para pasarla al bot)
-        $stmt = $pdo->prepare("SELECT id, bot_active, stage, assigned_to, contact_name, contact_email, contact_rut, service_origin, service_destination, service_date, service_passengers, service_type, service_vehicle, form_link_sent_at, form_submitted_at, followup_count, handoff_requested_at, wa_draft_quote_id FROM wa_cloud_conversations WHERE phone = ?");
+        $stmt = $pdo->prepare("SELECT id, bot_active, stage, assigned_to, contact_name, contact_email, contact_rut, service_origin, service_destination, service_date, service_passengers, service_type, service_vehicle, form_link_sent_at, form_submitted_at, followup_count, handoff_requested_at, wa_draft_quote_id, reactivacion_at FROM wa_cloud_conversations WHERE phone = ?");
         $stmt->execute([$phone]);
         $conv = $stmt->fetch();
 
@@ -329,6 +329,22 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             error_log("[wa_webhook] REACTIVATE phone={$phone} conv={$convId}");
         }
 
+        // ── Quick reply "No me interesa" del template de reactivación ────────────
+        // Cuando el cliente toca ese botón la ventana ya está cerrada:
+        // cerramos la conversación con un despido amable y NO llamamos al bot.
+        $textNorm = mb_strtolower(trim($text));
+        if ($textNorm === 'no me interesa') {
+            $pdo->prepare(
+                "UPDATE wa_cloud_conversations SET bot_active = 0, stage = 'perdido' WHERE id = ?"
+            )->execute([$convId]);
+            sendWA($phone,
+                "¡Sin problema! 😊 Si en algún momento necesitas transporte, aquí estaremos en TransCCL.\n" .
+                "¡Que todo te vaya muy bien! 🚌"
+            );
+            error_log("[wa_webhook] NO_INTERESA phone={$phone} conv={$convId}");
+            return;
+        }
+
         error_log("[wa_webhook] PROC phone={$phone} wamid={$wamid} ai=" . (bool)_AI_KEY . " wa=" . (bool)_WA_TOKEN);
 
         // Obtener nombre de la ejecutiva asignada para personalizar respuestas
@@ -388,7 +404,8 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             } catch (Throwable $e) {}
         }
 
-        $botReply = runBot($phone, $text, $history, $name, $fichaActual, $execName);
+        $reactivacionAt = $conv['reactivacion_at'] ?? null;
+        $botReply = runBot($phone, $text, $history, $name, $fichaActual, $execName, $reactivacionAt);
         if (!$botReply) { error_log("[wa_webhook] EMPTY_REPLY phone={$phone}"); return; }
 
         // Detectar y extraer etiquetas de control
@@ -627,7 +644,7 @@ function sendWA(string $phone, string $text): ?string {
     return $data['messages'][0]['id'] ?? null;
 }
 
-function runBot(string $phone, string $latestMsg, array $history, ?string $name, array $ficha = [], ?string $execName = null): ?string {
+function runBot(string $phone, string $latestMsg, array $history, ?string $name, array $ficha = [], ?string $execName = null, ?string $reactivacionAt = null): ?string {
     if (!_AI_KEY) return null;
 
     // Construir array de mensajes para Claude (alternando user/assistant)
@@ -655,7 +672,7 @@ function runBot(string $phone, string $latestMsg, array $history, ?string $name,
     $payload = [
         'model'      => 'claude-sonnet-5-5',
         'max_tokens' => 4096,
-        'system'     => buildSystemPrompt($phone, $name, $ficha, $execName),
+        'system'     => buildSystemPrompt($phone, $name, $ficha, $execName, $reactivacionAt),
         'messages'   => $messages,
     ];
 
@@ -822,7 +839,7 @@ function buildFichaContext(array $ficha): string {
     return $out;
 }
 
-function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?string $execName = null): string {
+function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?string $execName = null, ?string $reactivacionAt = null): string {
     $tz   = new DateTimeZone('America/Santiago');
     $now  = new DateTime('now', $tz);
     $dow  = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'][(int)$now->format('w')];
@@ -922,6 +939,13 @@ function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?str
            "Si el cliente ya conversó contigo y te fue dando origen, destino, fecha, pax y tipo, ya tienes todo lo del formulario. Pasa directamente al PASO 2 sin insistir en el formulario.\n\n" .
            "EXCEPCIÓN — Van o minibús con chofer:\n" .
            "Si el cliente pide específicamente una van o minibús para traslado ejecutivo, aeropuerto o grupo pequeño, responde: '¡Con gusto! Para este tipo de servicio una ejecutiva te cotiza personalizado 😊 Llena el formulario y te contactamos al tiro:\nhttps://crm.transccl.cl/form/{$phone}' y agrega [ESCALAR_A_HUMANO] al final de tu respuesta.\n\n" .
+           ($reactivacionAt
+               ? "## CONTEXTO DE REACTIVACIÓN\n" .
+                 "Esta persona inició una consulta pero no completó su cotización. Le enviamos un mensaje de seguimiento y decidió retomar contacto.\n" .
+                 "IMPORTANTE: No te presentes como si fuera el primer contacto. Recuerda que ya hablaron antes.\n" .
+                 "Retoma con calidez, por ejemplo: '¡Hola de nuevo {$name}! 😊 Me alegra que sigas interesado/a. ¿Seguimos con la cotización?'\n" .
+                 "No menciones que fue un 'mensaje automático' ni que 'pasaron X días'. Solo retoma de forma natural.\n\n"
+               : "") .
            "REGLA CONTINUIDAD — No te presentes de nuevo:\n" .
            "Si ya hay mensajes previos en la conversación, NUNCA vuelvas a decir 'Hola soy Sofía' ni te presentes como si fuera el primer contacto. Continúa la conversación de forma natural desde donde quedó.\n\n" .
            buildFichaContext($ficha) .

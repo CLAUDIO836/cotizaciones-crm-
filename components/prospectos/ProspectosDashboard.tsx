@@ -9,7 +9,7 @@ import { Campaign } from '@/lib/prospectos-types'
 import { UserSession } from '@/lib/api'
 
 const STORAGE_KEY = 'crm_daily_coverage_goal'
-const DEFAULT_GOAL = 36
+const DEFAULT_GOAL = 40
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -81,8 +81,8 @@ function fmtDur(sec: number): string {
 }
 
 const CAT_LABEL: Record<string, string> = {
-  con_intencion: 'Con intención (+91s)',
-  contactada:    'Contactada (46–90s)',
+  con_intencion: 'Con intención (+90s)',
+  contactada:    'Contactada (46–89s)',
   fria:          'Fría (31–45s)',
   sin_respuesta: 'Sin respuesta (0–30s)',
 }
@@ -392,11 +392,11 @@ export default function ProspectosDashboard({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <BigCard value={s?.con_intencion ?? 0}
               label="Con intención"
-              sub={`≥1:31 min · ${s?.intencion_pct ?? 0}% del total campaña`}
+              sub={`≥1:30 min · ${s?.intencion_pct ?? 0}% del total campaña`}
               dot="bg-green-500" />
             <BigCard value={s?.contactada ?? 0}
               label="Contactada"
-              sub="46 – 90 segundos"
+              sub="46 – 89 segundos"
               dot="bg-blue-400" />
             <BigCard value={s?.fria ?? 0}
               label="Fría"
