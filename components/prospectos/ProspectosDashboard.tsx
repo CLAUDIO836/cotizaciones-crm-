@@ -259,6 +259,15 @@ export default function ProspectosDashboard({
   // Carga inicial automática
   useEffect(() => { fetchData(dateFrom, dateTo, filterUser, filterComm) }, []) // eslint-disable-line
 
+  // Auto-fetch al cambiar ejecutivo (para que las comunas se actualicen de inmediato)
+  const prevUserRef = useRef(filterUser)
+  useEffect(() => {
+    if (prevUserRef.current !== filterUser) {
+      prevUserRef.current = filterUser
+      fetchData(dateFrom, dateTo, filterUser, filterComm)
+    }
+  }, [filterUser]) // eslint-disable-line
+
   function buscar() { fetchData(dateFrom, dateTo, filterUser, filterComm) }
 
   const s = data?.summary
