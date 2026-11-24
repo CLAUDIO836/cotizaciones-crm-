@@ -413,8 +413,8 @@ export default function ComprobantesPanel({ quotationId, userRole, quotationStat
         )
       })}
 
-      {/* ── Sección Factura (solo contabilidad, en negocios ganados) ── */}
-      {isSuperAdmin && quotationStatus === 'won' && (
+      {/* ── Sección Factura — todos la ven; solo admins suben ── */}
+      {quotationStatus === 'won' && (isSuperAdmin || facturas.length > 0) && (
         <div className="mt-2 rounded-xl border-2 overflow-hidden" style={{ borderColor: '#6366f1' }}>
           <div className="px-4 py-3 flex items-center justify-between gap-2"
             style={{ background: '#eef2ff' }}>
@@ -422,7 +422,7 @@ export default function ComprobantesPanel({ quotationId, userRole, quotationStat
               <p className="text-xs font-bold text-indigo-800 uppercase tracking-wide">🧾 Factura</p>
               <p className="text-xs text-indigo-600">Documento emitido por contabilidad</p>
             </div>
-            {!showFacturaUpload && (
+            {isSuperAdmin && !showFacturaUpload && (
               <button
                 onClick={() => setShowFacturaUpload(true)}
                 className="px-3 py-1.5 text-xs rounded-lg font-semibold text-white transition-colors"
@@ -494,7 +494,7 @@ export default function ComprobantesPanel({ quotationId, userRole, quotationStat
             </div>
           )}
 
-          {facturas.length === 0 && !showFacturaUpload && (
+          {facturas.length === 0 && !showFacturaUpload && isSuperAdmin && (
             <div className="px-4 py-3 bg-white">
               <p className="text-xs text-gray-400 italic">Sin factura subida aún.</p>
             </div>
