@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Campaign, Prospect, CallCategory, classifyCall, CALL_LABELS, CALL_LABELS_SHORT, CALL_COLORS, daysSince, daysUntil, Clasificacion, CLASIFICACION_LABELS, CLASIFICACION_COLORS } from '@/lib/prospectos-types'
+import { Campaign, Prospect, CallCategory, classifyCall, CALL_LABELS, CALL_LABELS_SHORT, CALL_COLORS, daysSince, daysUntil, Clasificacion, CLASIFICACION_LABELS, CLASIFICACION_COLORS, STATUS_LABELS, STATUS_COLORS } from '@/lib/prospectos-types'
 import { UserSession } from '@/lib/api'
 
 const DAILY_GOAL = 36
@@ -191,6 +191,11 @@ export default function ProspectosCola({
                 {p.clasificacion && (
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${CLASIFICACION_COLORS[p.clasificacion]}`}>
                     {CLASIFICACION_LABELS[p.clasificacion]}
+                  </span>
+                )}
+                {p.status !== 'new' && (
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[p.status]}`}>
+                    {STATUS_LABELS[p.status]}
                   </span>
                 )}
               </div>
