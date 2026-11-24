@@ -160,9 +160,9 @@ export default async function CotizacionDetailPage({
             <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">
               {isDiario ? 'Valor mensual' : 'Valor total'}
             </p>
-            <p className="text-xl font-bold" style={{ color: '#1B8A4B' }}>{formatCLP(isDiario ? totalMensual : q.total)}</p>
+            <p className="text-xl font-bold" style={{ color: '#1B8A4B' }}>{formatCLP(isDiario ? q.subtotal : q.total)}</p>
             {isDiario && (
-              <p className="text-xs text-gray-400">Anual · {formatCLP(totalMensual * 12)}</p>
+              <p className="text-xs text-gray-400">Anual · {formatCLP(q.subtotal * 12)}</p>
             )}
           </div>
 
