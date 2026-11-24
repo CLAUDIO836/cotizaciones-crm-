@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   Prospect, Campaign, ProspectStatus, STATUS_LABELS, STATUS_COLORS,
   ACTIVITY_LABELS, ACTIVITY_ICONS, RESULT_LABELS, ActivityType, ActivityResult,
+  Clasificacion, CLASIFICACION_LABELS, CLASIFICACION_COLORS,
 } from '@/lib/prospectos-types'
 import { UserSession } from '@/lib/api'
 import BotonLlamada from './BotonLlamada'
@@ -51,9 +52,27 @@ export default function ProspectoFicha({
   const [actNotes, setActNotes] = useState('')
   const [actNext, setActNext] = useState('')
   const [saving, setSaving] = useState(false)
+  const [clasificacion, setClasificacion] = useState<Clasificacion | null>(prospect.clasificacion ?? null)
+  const [savingClasificacion, setSavingClasificacion] = useState(false)
   const [, startTransition] = useTransition()
 
   const isAdmin = user.role === 'admin'
+
+  async function saveClasificacion(value: string) {
+    const val = value as Clasificacion | ''
+    const newVal = val || null
+    setClasificacion(newVal)
+    setSavingClasificacion(true)
+    try {
+      await fetch('/api/prospectos/prospect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _action: 'update', id: prospect.id, clasificacion: newVal }),
+      })
+    } finally {
+      setSavingClasificacion(false)
+    }
+  }
 
   // Add contact modal
   const [showAddContact, setShowAddContact] = useState(false)
@@ -156,7 +175,27 @@ export default function ProspectoFicha({
             ← Volver a {campaign?.name ?? 'la campaña'}
           </Link>
           <h1 className="text-xl font-bold text-gray-900">{prospect.name}</h1>
-          <p className="text-sm text-gray-500">{prospect.commune} · {campaign?.name}</p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-sm text-gray-500">{prospect.commune} · {campaign?.name}</p>
+            {clasificacion && (
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CLASIFICACION_COLORS[clasificacion]}`}>
+                {CLASIFICACION_LABELS[clasificacion]}
+              </span>
+            )}
+          </div>
+          <div className="mt-2">
+            <select
+              value={clasificacion ?? ''}
+              onChange={e => saveClasificacion(e.target.value)}
+              disabled={savingClasificacion}
+              className="text-xs px-2 py-1 border border-gray-200 rounded-lg text-gray-600 focus:outline-none focus:border-blue-400 disabled:opacity-50">
+              <option value="">Sin clasificación</option>
+              <option value="cliente">Cliente</option>
+              <option value="futuro_cliente">Futuro cliente</option>
+              <option value="interesado">Interesado</option>
+              <option value="no_interesado">No interesado</option>
+            </select>
+          </div>
         </div>
         <div className="flex gap-2">
           <span className={`text-sm font-semibold px-3 py-1.5 rounded-full ${STATUS_COLORS[prospect.status]}`}>

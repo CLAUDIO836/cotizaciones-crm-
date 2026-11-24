@@ -3602,6 +3602,7 @@ if ($action === 'prospectos_init') {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
         "ALTER TABLE prospect_contacts ADD COLUMN IF NOT EXISTS anexo VARCHAR(20) NULL",
         "ALTER TABLE prospect_contacts ADD COLUMN IF NOT EXISTS call_instructions VARCHAR(255) NULL",
+        "ALTER TABLE prospects ADD COLUMN IF NOT EXISTS clasificacion ENUM('cliente','futuro_cliente','interesado','no_interesado') NULL",
 
         "CREATE TABLE IF NOT EXISTS prospect_activities (
             id            CHAR(36)     NOT NULL PRIMARY KEY,
@@ -3712,6 +3713,9 @@ if ($action === 'prospects_list') {
 
     $search = $_GET['q'] ?? null;
     if ($search) { $where .= ' AND p.name LIKE ?'; $vals[] = "%$search%"; }
+
+    $clasificacion = $_GET['clasificacion'] ?? null;
+    if ($clasificacion) { $where .= ' AND p.clasificacion = ?'; $vals[] = $clasificacion; }
 
     // Filtro por categoría de llamada (basado en mejor duración)
     $call_cat = $_GET['call_cat'] ?? null;
@@ -3841,7 +3845,7 @@ if ($action === 'prospects_update') {
     }
 
     $fields = []; $vals = [];
-    foreach (['name','segment','commune','region','rut','rbd','address','status','next_contact','notes','assigned_to'] as $f) {
+    foreach (['name','segment','commune','region','rut','rbd','address','status','next_contact','notes','assigned_to','clasificacion'] as $f) {
         if (array_key_exists($f, $b)) { $fields[] = "$f = ?"; $vals[] = $b[$f]; }
     }
     if (!$fields) err('Nada que actualizar');

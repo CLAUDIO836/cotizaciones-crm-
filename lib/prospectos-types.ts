@@ -2,6 +2,20 @@
 
 export type CampaignStatus = 'draft' | 'active' | 'paused' | 'closed'
 export type ProspectStatus = 'new' | 'contacted' | 'following' | 'quoting' | 'closed_won' | 'closed_lost'
+export type Clasificacion = 'cliente' | 'futuro_cliente' | 'interesado' | 'no_interesado'
+
+export const CLASIFICACION_LABELS: Record<Clasificacion, string> = {
+  cliente:        'Cliente',
+  futuro_cliente: 'Futuro cliente',
+  interesado:     'Interesado',
+  no_interesado:  'No interesado',
+}
+export const CLASIFICACION_COLORS: Record<Clasificacion, string> = {
+  cliente:        'bg-green-100 text-green-700',
+  futuro_cliente: 'bg-blue-100 text-blue-700',
+  interesado:     'bg-yellow-100 text-yellow-700',
+  no_interesado:  'bg-gray-100 text-gray-500',
+}
 export type ActivityType   = 'call' | 'email' | 'whatsapp' | 'note' | 'visit'
 export type ActivityResult = 'contacted' | 'no_answer' | 'interested' | 'not_interested' | 'follow_up' | 'quote_requested'
 
@@ -75,6 +89,7 @@ export type Prospect = {
   activities?: ProspectActivity[]
   exception_user_id?: string | null
   exception_reason?: string | null
+  clasificacion?: Clasificacion | null
 }
 
 export type CommuneAssignment = {

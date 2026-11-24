@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Campaign, Prospect, CallCategory, classifyCall, CALL_LABELS, CALL_LABELS_SHORT, CALL_COLORS, daysSince, daysUntil } from '@/lib/prospectos-types'
+import { Campaign, Prospect, CallCategory, classifyCall, CALL_LABELS, CALL_LABELS_SHORT, CALL_COLORS, daysSince, daysUntil, Clasificacion, CLASIFICACION_LABELS, CLASIFICACION_COLORS } from '@/lib/prospectos-types'
 import { UserSession } from '@/lib/api'
 
 const DAILY_GOAL = 36
@@ -36,7 +36,7 @@ export default function ProspectosCola({
   prospects: Prospect[]
   communes: string[]
   user: UserSession
-  filters: { status?: string; commune?: string; q?: string; call_cat?: string }
+  filters: { status?: string; commune?: string; q?: string; call_cat?: string; clasificacion?: string }
 }) {
   const router = useRouter()
   const [search, setSearch] = useState(filters.q ?? '')
@@ -53,10 +53,11 @@ export default function ProspectosCola({
 
   function applyFilter(key: string, value: string) {
     const sp = new URLSearchParams()
-    if (key !== 'status'   && filters.status)   sp.set('status',   filters.status)
-    if (key !== 'commune'  && filters.commune)  sp.set('commune',  filters.commune)
-    if (key !== 'q'        && filters.q)        sp.set('q',        filters.q)
-    if (key !== 'call_cat' && filters.call_cat) sp.set('call_cat', filters.call_cat)
+    if (key !== 'status'        && filters.status)        sp.set('status',        filters.status)
+    if (key !== 'commune'       && filters.commune)       sp.set('commune',       filters.commune)
+    if (key !== 'q'             && filters.q)             sp.set('q',             filters.q)
+    if (key !== 'call_cat'      && filters.call_cat)      sp.set('call_cat',      filters.call_cat)
+    if (key !== 'clasificacion' && filters.clasificacion) sp.set('clasificacion', filters.clasificacion)
     if (value) sp.set(key, value)
     startTransition(() => router.push(`/prospectos/${campaign.id}?${sp.toString()}`))
   }
@@ -146,6 +147,17 @@ export default function ProspectosCola({
           {communes.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
+        <select
+          value={filters.clasificacion ?? ''}
+          onChange={e => applyFilter('clasificacion', e.target.value)}
+          className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none">
+          <option value="">Todas las clasificaciones</option>
+          <option value="cliente">Cliente</option>
+          <option value="futuro_cliente">Futuro cliente</option>
+          <option value="interesado">Interesado</option>
+          <option value="no_interesado">No interesado</option>
+        </select>
+
         <div className="flex gap-1 flex-wrap">
           {callCategories.map(cat => (
             <button key={cat}
@@ -174,7 +186,14 @@ export default function ProspectosCola({
             className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-3 hover:shadow-sm hover:border-blue-300 transition-all">
             <span className="text-sm font-bold text-gray-300 min-w-[24px] text-center">{i + 1}</span>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-gray-900 truncate">{p.name}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-semibold text-gray-900 truncate">{p.name}</p>
+                {p.clasificacion && (
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${CLASIFICACION_COLORS[p.clasificacion]}`}>
+                    {CLASIFICACION_LABELS[p.clasificacion]}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-gray-500 mt-0.5">
                 {p.commune && <span>{p.commune} · </span>}
                 {p.contacts && p.contacts[0] && (
