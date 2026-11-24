@@ -29,7 +29,7 @@ export default function QuotationApprovalButton({ quotationId, wonMode = false, 
       .catch(() => setApproval(null))
   }, [quotationId])
 
-  const baseOrigin = isTKS ? 'https://aprobaciones.transportestks.com' : window.location.origin
+  const baseOrigin = isTKS ? 'https://aprobaciones.transportestks.com' : (typeof window !== 'undefined' ? window.location.origin : 'https://crm.transccl.cl')
   const url = approval ? `${baseOrigin}/aprobar/${approval.token}` : ''
 
   async function generate() {
