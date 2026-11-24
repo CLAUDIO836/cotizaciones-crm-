@@ -1960,13 +1960,6 @@ if ($action === 'pipedrive_webhook') {
         $params[]  = (int)$pdStageId;
     }
 
-    // Valor total
-    $pdValue = $current['value'] ?? null;
-    if ($pdValue !== null && $pdValue !== $previous['value']) {
-        $updates[] = 'total = ?';    $params[] = (float)$pdValue;
-        $updates[] = 'subtotal = ?'; $params[] = (float)$pdValue;
-    }
-
     // Siempre actualizar last_sync_source y pd_updated_at
     // Convertir ISO 8601 "2026-07-22T03:15:44Z" → "2026-07-22 03:15:44" para MySQL DATETIME
     $pdUpdateTime = $current['update_time'] ?? null;

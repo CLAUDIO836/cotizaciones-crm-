@@ -16,6 +16,7 @@ interface Approval {
 
 export default function QuotationApprovalButton({ quotationId, wonMode = false, isTKS = false }: { quotationId: string; wonMode?: boolean; isTKS?: boolean }) {
   const [approval, setApproval] = useState<Approval | null | undefined>(undefined)
+  const [letterSigned, setLetterSigned] = useState<boolean | undefined>(undefined)
   const [generating, setGenerating] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -27,7 +28,13 @@ export default function QuotationApprovalButton({ quotationId, wonMode = false, 
       .then(r => r.json())
       .then(d => setApproval(d.approval ?? null))
       .catch(() => setApproval(null))
-  }, [quotationId])
+    if (wonMode) {
+      fetch(`/api/approval-letters/by-quotation?quotation_id=${quotationId}`)
+        .then(r => r.json())
+        .then(d => setLetterSigned(!!(d.letters ?? []).some((l: { signed_at: string | null }) => l.signed_at)))
+        .catch(() => setLetterSigned(false))
+    }
+  }, [quotationId, wonMode])
 
   const baseOrigin = isTKS ? 'https://aprobaciones.transportestks.com' : (typeof window !== 'undefined' ? window.location.origin : 'https://crm.transccl.cl')
   const url = approval ? `${baseOrigin}/aprobar/${approval.token}` : ''
@@ -74,37 +81,37 @@ export default function QuotationApprovalButton({ quotationId, wonMode = false, 
 
   if (approval === undefined) return <div className="h-8 w-48 bg-gray-100 animate-pulse rounded-lg" />
 
-  // Modo wonMode: cotización ya ganada, solo mostrar estado de aprobación
+  // Modo wonMode: cotización ya ganada, solo mostrar estado si hay una aprobación digital pendiente/rechazada
   if (wonMode) {
-    if (!approval || approval.response !== 'accepted') {
-      return (
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Sin aprobación digital del cliente</p>
-          </div>
-          <p className="text-xs text-amber-600 mb-3">
-            {!approval
-              ? 'Esta cotización fue ganada manualmente. El cliente no ha firmado su aprobación digital.'
-              : 'El cliente tiene una solicitud de aprobación pendiente de responder.'}
-          </p>
-          {approval && (
-            <div className="flex items-center gap-2">
-              <a href={url} target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" size="sm" className="border-amber-300 text-amber-700">
-                  <ExternalLink className="w-3.5 h-3.5 mr-1.5" />Ver link del cliente
-                </Button>
-              </a>
-              <Button variant="outline" size="sm" className="border-amber-300 text-amber-700" onClick={copy}>
-                {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
-              </Button>
-            </div>
-          )}
+    if (letterSigned === undefined) return <div className="h-8 w-48 bg-gray-100 animate-pulse rounded-lg" />
+    // Sin link enviado = ganada manualmente, no necesita warning
+    if (!approval) return null
+    // Aprobada digitalmente — no mostrar nada
+    if (approval.response === 'accepted') return null
+    // Carta de aprobación firmada — tampoco mostrar warning
+    if (letterSigned) return null
+    // Hay link enviado pero aún no respondido o rechazado
+    return (
+      <div className="bg-amber-50 border border-amber-300 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-1">
+          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Aprobación digital pendiente</p>
         </div>
-      )
-    }
-    // Aprobada digitalmente — no mostrar nada (flujo correcto)
-    return null
+        <p className="text-xs text-amber-600 mb-3">
+          El cliente tiene una solicitud de aprobación pendiente de responder.
+        </p>
+        <div className="flex items-center gap-2">
+          <a href={url} target="_blank" rel="noopener noreferrer">
+            <Button variant="outline" size="sm" className="border-amber-300 text-amber-700">
+              <ExternalLink className="w-3.5 h-3.5 mr-1.5" />Ver link del cliente
+            </Button>
+          </a>
+          <Button variant="outline" size="sm" className="border-amber-300 text-amber-700" onClick={copy}>
+            {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   if (!approval) {
