@@ -20,7 +20,7 @@ export default function SolicitudesTabs({
   const [tab, setTab] = useState<'completas' | 'wa'>('completas')
 
   const pendingLeads = leads.filter(l => l.status === 'pendiente').length
-  const waCount      = waConvs.filter(c => !c.has_lead).length
+  const waCount      = waConvs.filter(c => Number(c.has_lead) !== 1).length
 
   return (
     <div className="space-y-4">

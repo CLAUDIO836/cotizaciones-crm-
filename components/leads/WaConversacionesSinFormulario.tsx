@@ -280,11 +280,11 @@ export default function WaConversacionesSinFormulario({ convs }: { convs: WaSoli
   // Enriquecer convs con promociones locales
   const enriched = convs.map(c => ({
     ...c,
-    has_lead: (c.has_lead || promotedIds.has(c.id)) ? 1 : 0,
+    has_lead: (Number(c.has_lead) === 1 || promotedIds.has(c.id)) ? 1 : 0,
   } as WaSolicitud))
 
-  const sinLead = enriched.filter(c => !c.has_lead)
-  const conLead = enriched.filter(c => c.has_lead)
+  const sinLead = enriched.filter(c => Number(c.has_lead) !== 1)
+  const conLead = enriched.filter(c => Number(c.has_lead) === 1)
 
   const baseList = subTab === 'espera' ? sinLead : subTab === 'pipeline' ? conLead : enriched
 
