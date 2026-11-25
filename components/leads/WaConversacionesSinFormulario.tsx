@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Phone, MapPin, Users, Calendar, Clock, MessageCircle, Timer, UserCheck } from 'lucide-react'
+import { Phone, MapPin, Users, Calendar, Clock, MessageCircle, Timer, UserCheck, ArrowRightCircle, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import type { WaSolicitud } from '@/lib/api'
 
 function formatDate(d: string) {
@@ -102,11 +103,38 @@ function VentanaCerradaWarning({ desde, convId, phone }: { desde: string; convId
   )
 }
 
-function WaConvCard({ conv }: { conv: WaSolicitud }) {
+async function promoteToLead(convId: string): Promise<{ lead_id?: string; error?: string }> {
+  try {
+    const r = await fetch('/api/crm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'wa_promote_to_lead', conv_id: convId }),
+    })
+    return r.ok ? r.json() : { error: 'Error del servidor' }
+  } catch { return { error: 'Error de red' } }
+}
+
+function WaConvCard({ conv, onPromoted }: { conv: WaSolicitud; onPromoted: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false)
+  const [promoting, setPromoting] = useState(false)
+  const [promoteError, setPromoteError] = useState('')
+  const router = useRouter()
 
   const hasData = conv.service_origin || conv.service_destination || conv.service_date || conv.service_passengers
   const phone = conv.contact_phone || conv.phone
+
+  async function handlePromote() {
+    setPromoting(true)
+    setPromoteError('')
+    const res = await promoteToLead(conv.id)
+    if (res.lead_id) {
+      onPromoted(conv.id)
+      router.refresh()
+    } else {
+      setPromoteError(res.error || 'Error desconocido')
+      setPromoting(false)
+    }
+  }
 
   return (
     <div className="bg-white rounded-xl border overflow-hidden">
@@ -215,7 +243,23 @@ function WaConvCard({ conv }: { conv: WaSolicitud }) {
               <Phone className="w-3.5 h-3.5" />Llamar
             </a>
           ) : null}
+          <button
+            onClick={handlePromote}
+            disabled={promoting}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50"
+            style={{ background: '#eff6ff', color: '#1e40af', borderColor: '#bfdbfe' }}
+            title="Crear solicitud formal en el pipeline para asignar ejecutivo"
+          >
+            <ArrowRightCircle className="w-3.5 h-3.5" />
+            {promoting ? 'Moviendo…' : 'Mover al pipeline'}
+          </button>
         </div>
+
+        {promoteError && (
+          <p className="text-xs font-medium flex items-center gap-1" style={{ color: '#dc2626' }}>
+            <X className="w-3 h-3" />{promoteError}
+          </p>
+        )}
       </div>
     </div>
   )
@@ -223,17 +267,24 @@ function WaConvCard({ conv }: { conv: WaSolicitud }) {
 
 export default function WaConversacionesSinFormulario({ convs }: { convs: WaSolicitud[] }) {
   const [filterEjecutivo, setFilterEjecutivo] = useState('')
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set())
+
+  function handlePromoted(id: string) {
+    setRemovedIds(prev => new Set([...prev, id]))
+  }
+
+  const activeConvs = convs.filter(c => !removedIds.has(c.id))
 
   // Ejecutivos únicos que tienen al menos una conversación
   const ejecutivosConConvs = Array.from(
     new Map(
-      convs
+      activeConvs
         .filter(c => c.assigned_name)
         .map(c => [c.assigned_name!, c.assigned_name!])
     ).entries()
   ).map(([name]) => name).sort()
 
-  const filtered = convs
+  const filtered = activeConvs
     .filter(c => filterEjecutivo === '' || c.assigned_name === filterEjecutivo)
     .sort((a, b) => {
       const ta = new Date(a.last_msg_at || a.created_at).getTime()
@@ -256,7 +307,7 @@ export default function WaConversacionesSinFormulario({ convs }: { convs: WaSoli
               ? { background: '#1e40af', color: 'white', borderColor: '#1e40af' }
               : { background: '#eff6ff', color: '#1e40af', borderColor: '#bfdbfe' }}
           >
-            Todos <span className="ml-1 opacity-80">{convs.length}</span>
+            Todos <span className="ml-1 opacity-80">{activeConvs.length}</span>
           </button>
           {ejecutivosConConvs.map(name => {
             const count = convs.filter(c => c.assigned_name === name).length
@@ -289,7 +340,7 @@ export default function WaConversacionesSinFormulario({ convs }: { convs: WaSoli
         </div>
       ) : (
         filtered.map(conv => (
-          <WaConvCard key={conv.id} conv={conv} />
+          <WaConvCard key={conv.id} conv={conv} onPromoted={handlePromoted} />
         ))
       )}
     </div>
