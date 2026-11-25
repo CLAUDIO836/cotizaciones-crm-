@@ -3234,79 +3234,82 @@ if ($action === 'wa_solicitudes_list') {
 }
 
 if ($action === 'cruce_solicitudes_vs_negocios') {
-    requireAdmin();
+    requireAuth();
     $pdo = db();
 
     // --- 1. lead_requests vs clientes/cotizaciones ---
     $leads_match = $pdo->query("
         SELECT
             lr.id            AS lead_id,
-            lr.contacto_nombre,
-            lr.empresa_nombre,
-            lr.contacto_telefono,
-            lr.contacto_email,
+            COALESCE(lr.contacto_nombre,'') AS contacto_nombre,
+            COALESCE(lr.empresa_nombre,'')  AS empresa_nombre,
+            COALESCE(lr.contacto_telefono,'') AS contacto_telefono,
+            COALESCE(lr.contacto_email,'')  AS contacto_email,
             lr.status        AS lead_status,
-            lr.utm_source,
+            COALESCE(lr.utm_source,'') AS utm_source,
             lr.created_at    AS lead_fecha,
             c.id             AS client_id,
             c.name           AS client_name,
-            c.rut            AS client_rut,
-            c.phone          AS client_phone,
-            c.email          AS client_email,
-            (SELECT COUNT(*) FROM quotations q WHERE q.client_id = c.id AND q.is_deleted != 1) AS cotizaciones_count,
-            (SELECT GROUP_CONCAT(q.number ORDER BY q.created_at DESC SEPARATOR ', ') FROM quotations q WHERE q.client_id = c.id AND q.is_deleted != 1 LIMIT 1) AS cotizaciones_nums,
+            COALESCE(c.rut,'')   AS client_rut,
+            COALESCE(c.phone,'') AS client_phone,
+            COALESCE(c.email,'') AS client_email,
+            (SELECT COUNT(*) FROM quotations q2 WHERE q2.client_id = c.id AND COALESCE(q2.is_deleted,0) != 1) AS cotizaciones_count,
+            (SELECT GROUP_CONCAT(q2.number ORDER BY q2.created_at DESC SEPARATOR ', ') FROM quotations q2 WHERE q2.client_id = c.id AND COALESCE(q2.is_deleted,0) != 1) AS cotizaciones_nums,
             CASE
-                WHEN REPLACE(REPLACE(lr.contacto_telefono,'+',''),' ','') != '' AND REPLACE(REPLACE(c.phone,'+',''),' ','') != ''
-                     AND REPLACE(REPLACE(lr.contacto_telefono,'+',''),' ','') = REPLACE(REPLACE(c.phone,'+',''),' ','') THEN 'teléfono'
-                WHEN lr.contacto_email != '' AND c.email != '' AND LOWER(lr.contacto_email) = LOWER(c.email) THEN 'email'
+                WHEN REPLACE(REPLACE(COALESCE(lr.contacto_telefono,''),'+',''),' ','') != ''
+                     AND REPLACE(REPLACE(COALESCE(c.phone,''),'+',''),' ','') != ''
+                     AND REPLACE(REPLACE(COALESCE(lr.contacto_telefono,''),'+',''),' ','') = REPLACE(REPLACE(COALESCE(c.phone,''),'+',''),' ','') THEN 'telefono'
+                WHEN COALESCE(lr.contacto_email,'') != '' AND COALESCE(c.email,'') != ''
+                     AND LOWER(COALESCE(lr.contacto_email,'')) = LOWER(COALESCE(c.email,'')) THEN 'email'
                 ELSE 'nombre'
             END AS match_type
         FROM lead_requests lr
         JOIN clients c ON (
-            (REPLACE(REPLACE(lr.contacto_telefono,'+',''),' ','') != ''
-             AND REPLACE(REPLACE(lr.contacto_telefono,'+',''),' ','') = REPLACE(REPLACE(c.phone,'+',''),' ',''))
-            OR (lr.contacto_email != '' AND LOWER(lr.contacto_email) = LOWER(c.email))
-            OR (lr.empresa_nombre != '' AND LOWER(lr.empresa_nombre) = LOWER(c.name))
-            OR (lr.contacto_nombre != '' AND LOWER(lr.contacto_nombre) = LOWER(c.name))
+            (REPLACE(REPLACE(COALESCE(lr.contacto_telefono,''),'+',''),' ','') != ''
+             AND REPLACE(REPLACE(COALESCE(lr.contacto_telefono,''),'+',''),' ','') = REPLACE(REPLACE(COALESCE(c.phone,''),'+',''),' ',''))
+            OR (COALESCE(lr.contacto_email,'') != '' AND LOWER(COALESCE(lr.contacto_email,'')) = LOWER(COALESCE(c.email,'')))
+            OR (COALESCE(lr.empresa_nombre,'') != '' AND LOWER(COALESCE(lr.empresa_nombre,'')) = LOWER(c.name))
+            OR (COALESCE(lr.contacto_nombre,'') != '' AND LOWER(COALESCE(lr.contacto_nombre,'')) = LOWER(c.name))
         )
-        WHERE lr.status NOT IN ('ganado','cerrado','rechazado')
+        WHERE COALESCE(lr.status,'') NOT IN ('ganado','cerrado','rechazado')
         ORDER BY lr.created_at DESC
     ")->fetchAll();
 
     // --- 2. wa_cloud_conversations vs clientes/cotizaciones ---
     $wa_match = $pdo->query("
         SELECT
-            c.id             AS conv_id,
-            c.phone          AS wa_phone,
-            c.contact_name   AS wa_nombre,
-            c.contact_email  AS wa_email,
-            c.contact_rut    AS wa_rut,
-            c.stage          AS wa_stage,
-            c.last_msg_at    AS wa_ultima,
+            wc.id            AS conv_id,
+            wc.phone         AS wa_phone,
+            COALESCE(wc.contact_name,'')  AS wa_nombre,
+            COALESCE(wc.contact_email,'') AS wa_email,
+            COALESCE(wc.contact_rut,'')   AS wa_rut,
+            wc.stage         AS wa_stage,
+            wc.last_msg_at   AS wa_ultima,
             cl.id            AS client_id,
             cl.name          AS client_name,
-            cl.rut           AS client_rut,
-            cl.phone         AS client_phone,
-            cl.email         AS client_email,
-            (SELECT COUNT(*) FROM quotations q WHERE q.client_id = cl.id AND q.is_deleted != 1) AS cotizaciones_count,
-            (SELECT GROUP_CONCAT(q.number ORDER BY q.created_at DESC SEPARATOR ', ') FROM quotations q WHERE q.client_id = cl.id AND q.is_deleted != 1) AS cotizaciones_nums,
+            COALESCE(cl.rut,'')   AS client_rut,
+            COALESCE(cl.phone,'') AS client_phone,
+            COALESCE(cl.email,'') AS client_email,
+            (SELECT COUNT(*) FROM quotations q2 WHERE q2.client_id = cl.id AND COALESCE(q2.is_deleted,0) != 1) AS cotizaciones_count,
+            (SELECT GROUP_CONCAT(q2.number ORDER BY q2.created_at DESC SEPARATOR ', ') FROM quotations q2 WHERE q2.client_id = cl.id AND COALESCE(q2.is_deleted,0) != 1) AS cotizaciones_nums,
             CASE
-                WHEN REPLACE(REPLACE(c.phone,'+',''),' ','') = REPLACE(REPLACE(cl.phone,'+',''),' ','') THEN 'teléfono'
-                WHEN c.contact_email != '' AND LOWER(c.contact_email) = LOWER(cl.email) THEN 'email'
-                WHEN c.contact_rut IS NOT NULL AND REPLACE(REPLACE(c.contact_rut,'.',''),'-','') = REPLACE(REPLACE(cl.rut,'.',''),'-','') THEN 'rut'
+                WHEN REPLACE(REPLACE(wc.phone,'+',''),' ','') = REPLACE(REPLACE(COALESCE(cl.phone,''),'+',''),' ','') THEN 'telefono'
+                WHEN COALESCE(wc.contact_email,'') != '' AND LOWER(COALESCE(wc.contact_email,'')) = LOWER(COALESCE(cl.email,'')) THEN 'email'
+                WHEN COALESCE(wc.contact_rut,'') != ''
+                     AND REPLACE(REPLACE(wc.contact_rut,'.',''),'-','') = REPLACE(REPLACE(COALESCE(cl.rut,''),'.',''),'-','') THEN 'rut'
                 ELSE 'nombre'
             END AS match_type
-        FROM wa_cloud_conversations c
+        FROM wa_cloud_conversations wc
         JOIN clients cl ON (
-            (REPLACE(REPLACE(c.phone,'+',''),' ','') = REPLACE(REPLACE(cl.phone,'+',''),' ',''))
-            OR (c.contact_email IS NOT NULL AND c.contact_email != '' AND LOWER(c.contact_email) = LOWER(cl.email))
-            OR (c.contact_rut IS NOT NULL AND c.contact_rut != ''
-                AND REPLACE(REPLACE(c.contact_rut,'.',''),'-','') = REPLACE(REPLACE(cl.rut,'.',''),'-',''))
-            OR (c.contact_name IS NOT NULL AND LOWER(c.contact_name) = LOWER(cl.name))
+            (REPLACE(REPLACE(wc.phone,'+',''),' ','') = REPLACE(REPLACE(COALESCE(cl.phone,''),'+',''),' ',''))
+            OR (COALESCE(wc.contact_email,'') != '' AND LOWER(COALESCE(wc.contact_email,'')) = LOWER(COALESCE(cl.email,'')))
+            OR (COALESCE(wc.contact_rut,'') != ''
+                AND REPLACE(REPLACE(wc.contact_rut,'.',''),'-','') = REPLACE(REPLACE(COALESCE(cl.rut,''),'.',''),'-',''))
+            OR (COALESCE(wc.contact_name,'') != '' AND LOWER(COALESCE(wc.contact_name,'')) = LOWER(cl.name))
         )
-        WHERE c.stage NOT IN ('ganado','perdido','spam')
-          AND c.last_msg_at >= NOW() - INTERVAL 60 DAY
-        ORDER BY c.last_msg_at DESC
+        WHERE wc.stage NOT IN ('ganado','perdido','spam')
+          AND wc.last_msg_at >= NOW() - INTERVAL 60 DAY
+        ORDER BY wc.last_msg_at DESC
     ")->fetchAll();
 
     ok(['leads_con_cliente' => $leads_match, 'wa_con_cliente' => $wa_match]);
