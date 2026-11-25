@@ -483,15 +483,20 @@ export default function LeadRequestsPanel({
     descartado:   companyFiltered.filter(l => l.status === 'descartado').length,
   }
 
+  // Etapas del pipeline — sin "Todos" mezclado; "Ver todo" al final
+  const STAGE_TABS = [
+    'pendiente', 'en_revision', 'convertido', 'descartado',
+  ] as const
+
   const filtered = companyFiltered
     .filter(l => filterStatus === '' || l.status === filterStatus)
     .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
 
   return (
     <div className="space-y-4">
-      {/* Filtros */}
+      {/* Filtros — pipeline por etapa */}
       <div className="flex gap-2 flex-wrap items-center">
-        {(['', 'pendiente', 'en_revision', 'convertido', 'descartado'] as const).map(s => {
+        {STAGE_TABS.map(s => {
           const count = countByStatus[s] ?? 0
           const isActive = filterStatus === s
           return (
@@ -501,7 +506,7 @@ export default function LeadRequestsPanel({
                 ? { background: '#1B8A4B', color: 'white', borderColor: '#1B8A4B' }
                 : { background: 'white', color: '#6b7280', borderColor: '#e5e7eb' }}
             >
-              {s === '' ? 'Todos' : STATUS_STYLES[s].label}
+              {STATUS_STYLES[s].label}
               <span className={`ml-1.5 text-xs rounded-full px-1.5 ${
                 isActive
                   ? 'bg-white/25 text-white'
@@ -512,6 +517,18 @@ export default function LeadRequestsPanel({
             </button>
           )
         })}
+        {/* Ver todo — separado para que no confunda el pipeline */}
+        <button onClick={() => setFilterStatus('')}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
+          style={filterStatus === ''
+            ? { background: '#374151', color: 'white', borderColor: '#374151' }
+            : { background: 'white', color: '#9ca3af', borderColor: '#e5e7eb' }}
+        >
+          Ver todo
+          <span className={`ml-1.5 text-xs rounded-full px-1.5 ${
+            filterStatus === '' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400'
+          }`}>{countByStatus['']}</span>
+        </button>
         <div className="ml-auto flex gap-2">
           {(['', 'transccl', 'tks', 'trackingccl'] as const).map(c => (
             <button key={c} onClick={() => setFilterCompany(c)}
@@ -535,7 +552,7 @@ export default function LeadRequestsPanel({
           <p className="text-sm mt-1">
             {filterStatus === 'pendiente'
               ? 'No hay solicitudes pendientes por atender.'
-              : 'Usa el botón "Todos" para ver el pipeline completo.'}
+              : 'Sin registros en esta etapa.'}
           </p>
         </div>
       ) : (
