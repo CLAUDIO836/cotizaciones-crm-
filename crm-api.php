@@ -3233,6 +3233,85 @@ if ($action === 'wa_solicitudes_list') {
     ok($rows);
 }
 
+if ($action === 'cruce_solicitudes_vs_negocios') {
+    requireAdmin();
+    $pdo = db();
+
+    // --- 1. lead_requests vs clientes/cotizaciones ---
+    $leads_match = $pdo->query("
+        SELECT
+            lr.id            AS lead_id,
+            lr.contacto_nombre,
+            lr.empresa_nombre,
+            lr.contacto_telefono,
+            lr.contacto_email,
+            lr.status        AS lead_status,
+            lr.utm_source,
+            lr.created_at    AS lead_fecha,
+            c.id             AS client_id,
+            c.name           AS client_name,
+            c.rut            AS client_rut,
+            c.phone          AS client_phone,
+            c.email          AS client_email,
+            (SELECT COUNT(*) FROM quotations q WHERE q.client_id = c.id AND q.is_deleted != 1) AS cotizaciones_count,
+            (SELECT GROUP_CONCAT(q.number ORDER BY q.created_at DESC SEPARATOR ', ') FROM quotations q WHERE q.client_id = c.id AND q.is_deleted != 1 LIMIT 1) AS cotizaciones_nums,
+            CASE
+                WHEN REPLACE(REPLACE(lr.contacto_telefono,'+',''),' ','') != '' AND REPLACE(REPLACE(c.phone,'+',''),' ','') != ''
+                     AND REPLACE(REPLACE(lr.contacto_telefono,'+',''),' ','') = REPLACE(REPLACE(c.phone,'+',''),' ','') THEN 'teléfono'
+                WHEN lr.contacto_email != '' AND c.email != '' AND LOWER(lr.contacto_email) = LOWER(c.email) THEN 'email'
+                ELSE 'nombre'
+            END AS match_type
+        FROM lead_requests lr
+        JOIN clients c ON (
+            (REPLACE(REPLACE(lr.contacto_telefono,'+',''),' ','') != ''
+             AND REPLACE(REPLACE(lr.contacto_telefono,'+',''),' ','') = REPLACE(REPLACE(c.phone,'+',''),' ',''))
+            OR (lr.contacto_email != '' AND LOWER(lr.contacto_email) = LOWER(c.email))
+            OR (lr.empresa_nombre != '' AND LOWER(lr.empresa_nombre) = LOWER(c.name))
+            OR (lr.contacto_nombre != '' AND LOWER(lr.contacto_nombre) = LOWER(c.name))
+        )
+        WHERE lr.status NOT IN ('ganado','cerrado','rechazado')
+        ORDER BY lr.created_at DESC
+    ")->fetchAll();
+
+    // --- 2. wa_cloud_conversations vs clientes/cotizaciones ---
+    $wa_match = $pdo->query("
+        SELECT
+            c.id             AS conv_id,
+            c.phone          AS wa_phone,
+            c.contact_name   AS wa_nombre,
+            c.contact_email  AS wa_email,
+            c.contact_rut    AS wa_rut,
+            c.stage          AS wa_stage,
+            c.last_msg_at    AS wa_ultima,
+            cl.id            AS client_id,
+            cl.name          AS client_name,
+            cl.rut           AS client_rut,
+            cl.phone         AS client_phone,
+            cl.email         AS client_email,
+            (SELECT COUNT(*) FROM quotations q WHERE q.client_id = cl.id AND q.is_deleted != 1) AS cotizaciones_count,
+            (SELECT GROUP_CONCAT(q.number ORDER BY q.created_at DESC SEPARATOR ', ') FROM quotations q WHERE q.client_id = cl.id AND q.is_deleted != 1) AS cotizaciones_nums,
+            CASE
+                WHEN REPLACE(REPLACE(c.phone,'+',''),' ','') = REPLACE(REPLACE(cl.phone,'+',''),' ','') THEN 'teléfono'
+                WHEN c.contact_email != '' AND LOWER(c.contact_email) = LOWER(cl.email) THEN 'email'
+                WHEN c.contact_rut IS NOT NULL AND REPLACE(REPLACE(c.contact_rut,'.',''),'-','') = REPLACE(REPLACE(cl.rut,'.',''),'-','') THEN 'rut'
+                ELSE 'nombre'
+            END AS match_type
+        FROM wa_cloud_conversations c
+        JOIN clients cl ON (
+            (REPLACE(REPLACE(c.phone,'+',''),' ','') = REPLACE(REPLACE(cl.phone,'+',''),' ',''))
+            OR (c.contact_email IS NOT NULL AND c.contact_email != '' AND LOWER(c.contact_email) = LOWER(cl.email))
+            OR (c.contact_rut IS NOT NULL AND c.contact_rut != ''
+                AND REPLACE(REPLACE(c.contact_rut,'.',''),'-','') = REPLACE(REPLACE(cl.rut,'.',''),'-',''))
+            OR (c.contact_name IS NOT NULL AND LOWER(c.contact_name) = LOWER(cl.name))
+        )
+        WHERE c.stage NOT IN ('ganado','perdido','spam')
+          AND c.last_msg_at >= NOW() - INTERVAL 60 DAY
+        ORDER BY c.last_msg_at DESC
+    ")->fetchAll();
+
+    ok(['leads_con_cliente' => $leads_match, 'wa_con_cliente' => $wa_match]);
+}
+
 if ($action === 'bwa_pending_list') {
     requireAuth();
     $stmt = db()->query("SELECT id, number, created_at, desde, hasta, distancia_km, vehicle_type FROM quotations WHERE number LIKE 'BWA%' AND (client_id IS NULL OR client_id = '') AND is_deleted = 0 ORDER BY created_at DESC");
