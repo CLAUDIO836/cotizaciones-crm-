@@ -59,14 +59,17 @@ function formatShortDate(d: string) {
 }
 
 /** Advertencia roja cuando la ventana de 24h está cerrada */
-function VentanaCerradaWarning({ desde, convId, phone }: { desde: string; convId: string; phone: string }) {
+function VentanaCerradaWarning({ desde, convId, contactName }: { desde: string; convId: string; contactName: string }) {
   const [elapsed, setElapsed] = useState(0)
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [sendError, setSendError] = useState('')
 
   useEffect(() => {
     const base = new Date(desde).getTime()
     const tick = () => setElapsed(Math.floor((Date.now() - base) / 1000))
     tick()
-    const id = setInterval(tick, 10000) // actualizar cada 10s (suficiente para esta alerta)
+    const id = setInterval(tick, 10000)
     return () => clearInterval(id)
   }, [desde])
 
@@ -75,6 +78,38 @@ function VentanaCerradaWarning({ desde, convId, phone }: { desde: string; convId
 
   const extraHours = Math.floor(hours - 24)
   const extraMins  = Math.floor(((hours - 24) % 1) * 60)
+
+  async function handleSendTemplate() {
+    setSending(true)
+    setSendError('')
+    try {
+      const r = await fetch('/api/whatsapp/cloud/send-template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conv_id: convId }),
+      })
+      const data = await r.json()
+      if (r.ok && data?.data?.message_id) {
+        setSent(true)
+      } else {
+        setSendError(data?.error || data?.data?.error || 'Error al enviar')
+      }
+    } catch {
+      setSendError('Error de red')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  if (sent) {
+    return (
+      <div className="rounded-lg border p-3" style={{ background: '#f0fdf4', borderColor: '#86efac' }}>
+        <p className="text-xs font-bold" style={{ color: '#166534' }}>
+          ✅ Plantilla de reactivación enviada a {contactName}. Cuando responda, la conversación se activará.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="rounded-lg border p-3 space-y-2"
@@ -87,18 +122,22 @@ function VentanaCerradaWarning({ desde, convId, phone }: { desde: string; convId
           </p>
           <p className="text-xs mt-0.5" style={{ color: '#b91c1c' }}>
             Hace {extraHours > 0 ? `${extraHours}h ` : ''}{extraMins}m que venció la ventana de 24h.
-            Para retomar contacto debes enviar la plantilla <strong>ccl_saludo_reactivacion</strong>.
+            Para retomar contacto debes enviar la plantilla <strong>ccl_reactivacion_formulario</strong>.
           </p>
         </div>
       </div>
-      <a
-        href={`/bandeja?exec=todos&conv=${convId}`}
-        className="flex items-center justify-center gap-1.5 w-full text-xs font-bold py-2 rounded-lg text-white transition-opacity hover:opacity-90"
+      {sendError && (
+        <p className="text-xs font-medium" style={{ color: '#dc2626' }}>⚠️ {sendError}</p>
+      )}
+      <button
+        onClick={handleSendTemplate}
+        disabled={sending}
+        className="flex items-center justify-center gap-1.5 w-full text-xs font-bold py-2 rounded-lg text-white transition-opacity hover:opacity-90 disabled:opacity-60"
         style={{ background: '#dc2626' }}
       >
         <MessageCircle className="w-3.5 h-3.5" />
-        Enviar mensaje de reactivación
-      </a>
+        {sending ? 'Enviando…' : 'Enviar mensaje de reactivación'}
+      </button>
     </div>
   )
 }
@@ -135,6 +174,7 @@ function WaConvCard({ conv, sellers, onPromoted, onAssigned }: {
   const [promoting, setPromoting] = useState(false)
   const [promoteError, setPromoteError] = useState('')
   const [assigning, setAssigning] = useState(false)
+  const [assignError, setAssignError] = useState('')
   const router = useRouter()
 
   const hasData = conv.service_origin || conv.service_destination || conv.service_date || conv.service_passengers
@@ -157,8 +197,13 @@ function WaConvCard({ conv, sellers, onPromoted, onAssigned }: {
     const userId = e.target.value || null
     const seller = sellers.find(s => s.id === userId)
     setAssigning(true)
+    setAssignError('')
     const res = await assignConv(conv.id, userId)
-    if (res.ok) onAssigned(conv.id, userId, seller?.name ?? null)
+    if (res.ok) {
+      onAssigned(conv.id, userId, seller?.name ?? null)
+    } else {
+      setAssignError(res.error || 'Error al asignar')
+    }
     setAssigning(false)
   }
 
@@ -260,7 +305,14 @@ function WaConvCard({ conv, sellers, onPromoted, onAssigned }: {
         )}
 
         {/* Advertencia ventana cerrada */}
-        <VentanaCerradaWarning desde={conv.last_msg_at || conv.created_at} convId={conv.id} phone={conv.contact_phone || conv.phone} />
+        <VentanaCerradaWarning desde={conv.last_msg_at || conv.created_at} convId={conv.id} contactName={conv.contact_name || conv.phone} />
+
+        {/* Error asignación */}
+        {assignError && (
+          <p className="text-xs font-medium flex items-center gap-1" style={{ color: '#dc2626' }}>
+            <X className="w-3 h-3" />{assignError}
+          </p>
+        )}
 
         {/* Acciones */}
         <div className="flex items-center gap-3 flex-wrap">

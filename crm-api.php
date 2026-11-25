@@ -3217,19 +3217,20 @@ if ($action === 'wa_solicitudes_list') {
             c.service_origin, c.service_destination, c.service_date, c.service_hour,
             c.service_passengers, c.service_vehicle, c.service_type, c.client_type,
             c.contact_email, c.contact_phone,
-            p.name AS assigned_name
+            p.name AS assigned_name,
+            IF(lr.id IS NOT NULL, 1, 0) AS has_lead,
+            lr.status AS lead_status,
+            lr.id AS lead_id
         FROM wa_cloud_conversations c
         LEFT JOIN profiles p ON p.id = c.assigned_to
+        LEFT JOIN lead_requests lr ON lr.wa_conv_phone IS NOT NULL
+            AND REPLACE(lr.wa_conv_phone,'+','') = REPLACE(c.phone,'+','')
         WHERE c.stage NOT IN ('ganado','perdido','spam')
           AND c.last_msg_at >= NOW() - INTERVAL 30 DAY
-          AND NOT EXISTS (
-            SELECT 1 FROM lead_requests lr
-            WHERE lr.utm_source = 'whatsapp'
-              AND (lr.contacto_telefono = c.phone OR lr.wa_conv_phone = c.phone)
-          )
         ORDER BY c.last_msg_at DESC
-        LIMIT 200
+        LIMIT 1000
     ")->fetchAll();
+    foreach ($rows as &$r) { $r['has_lead'] = (int)$r['has_lead']; }
     ok($rows);
 }
 
@@ -5417,6 +5418,59 @@ if ($action === 'wa_cloud_stage') {
     ok(['stage' => $stage]);
 }
 
+// ── WA → Pipeline: convertir conversación WA en lead_request formal ─────────
+if ($action === 'wa_promote_to_lead') {
+    $me = requireAuth();
+    $b = body();
+    $convId = $b['conv_id'] ?? null;
+    if (!$convId) err('conv_id requerido');
+
+    $conv = db()->prepare("SELECT * FROM wa_cloud_conversations WHERE id = ?")->execute([$convId]) ? null : null;
+    $stmt = db()->prepare("SELECT * FROM wa_cloud_conversations WHERE id = ?");
+    $stmt->execute([$convId]);
+    $conv = $stmt->fetch();
+    if (!$conv) err('Conversación no encontrada');
+
+    // Verificar que no existe ya un lead para este teléfono
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN wa_conv_phone VARCHAR(30) NULL"); } catch (PDOException $e) {}
+    $existing = db()->prepare("SELECT id FROM lead_requests WHERE wa_conv_phone = ? OR contacto_telefono = ? LIMIT 1");
+    $existing->execute([$conv['phone'], $conv['phone']]);
+    if ($existing->fetch()) err('Ya existe una solicitud para este número');
+
+    $lid = uuid();
+    $assignedTo = $b['assigned_user_id'] ?? $conv['assigned_to'] ?? null;
+
+    $validTypes = ['empresa','natural','colegio'];
+    $tipoCliente = in_array($conv['client_type'] ?? '', $validTypes) ? $conv['client_type'] : null;
+    $nombreLimpio = preg_replace('/[\x{10000}-\x{10FFFF}]/u', '', $conv['contact_name'] ?? '');
+
+    db()->prepare("
+        INSERT INTO lead_requests
+          (id, status, utm_source, wa_conv_phone,
+           contacto_nombre, contacto_telefono, contacto_email,
+           empresa_nombre, tipo_cliente,
+           desde, hasta,
+           assigned_user_id, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+    ")->execute([
+        $lid, 'pendiente', 'whatsapp', $conv['phone'],
+        $nombreLimpio,
+        $conv['contact_phone'] ?? $conv['phone'],
+        $conv['contact_email'] ?? null,
+        $conv['company_name'] ?? null,
+        $tipoCliente,
+        $conv['service_origin'] ?? null,
+        $conv['service_destination'] ?? null,
+        $assignedTo,
+    ]);
+
+    // Marcar WA como cotizando para sacarla de la cola
+    db()->prepare("UPDATE wa_cloud_conversations SET stage = 'cotizando' WHERE id = ?")
+        ->execute([$convId]);
+
+    ok(['lead_id' => $lid]);
+}
+
 // ── Bandeja WhatsApp: marcar conversación como leída ────────────────────────
 if ($action === 'wa_cloud_read') {
     requireAuth();
@@ -5553,6 +5607,63 @@ if ($action === 'wa_cloud_assign') {
     db()->prepare("UPDATE wa_cloud_conversations SET assigned_to = ? WHERE id = ?")
         ->execute([$assignTo ?: null, $convId]);
     ok(['assigned_to' => $assignTo ?: null]);
+}
+
+// ── WA: enviar plantilla de reactivación ──────────────────────────────────────
+if ($action === 'wa_send_template') {
+    requireAuth();
+    $b = body();
+    $convId = $b['conv_id'] ?? null;
+    if (!$convId) err('conv_id requerido');
+
+    $conv = db()->prepare("SELECT phone, contact_name FROM wa_cloud_conversations WHERE id=?")->execute([$convId]) ? null : null;
+    $stmt = db()->prepare("SELECT phone, contact_name FROM wa_cloud_conversations WHERE id=?");
+    $stmt->execute([$convId]);
+    $conv = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$conv) err('Conversación no encontrada');
+
+    $phone = ltrim($conv['phone'] ?? '', '+');
+    $nombre = $conv['contact_name'] ?: 'Cliente';
+    // Limpiar emojis y caracteres no-BMP del nombre
+    $nombre = preg_replace('/[\x{10000}-\x{10FFFF}]/u', '', $nombre);
+    $nombre = trim($nombre) ?: 'Cliente';
+
+    $token       = getenv('META_WA_TOKEN') ?: (defined('META_WA_TOKEN') ? META_WA_TOKEN : '');
+    $phoneNumId  = '1354527324415134';
+
+    if (!$token) err('META_WA_TOKEN no configurado');
+
+    $payload = json_encode([
+        'messaging_product' => 'whatsapp',
+        'to'   => $phone,
+        'type' => 'template',
+        'template' => [
+            'name'     => 'ccl_reactivacion_formulario',
+            'language' => ['code' => 'es'],
+            'components' => [[
+                'type'       => 'body',
+                'parameters' => [['type' => 'text', 'text' => $nombre]],
+            ]],
+        ],
+    ]);
+
+    $ch = curl_init("https://graph.facebook.com/v19.0/{$phoneNumId}/messages");
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => [
+            'Authorization: Bearer ' . $token,
+            'Content-Type: application/json',
+        ],
+    ]);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+
+    $data = json_decode($resp, true);
+    if (isset($data['error'])) err($data['error']['message'] ?? 'Error Meta API');
+
+    ok(['message_id' => $data['messages'][0]['id'] ?? null, 'phone' => $phone]);
 }
 
 // ── Bot: historial de conversación (autenticado con X-Internal-Secret) ───────
