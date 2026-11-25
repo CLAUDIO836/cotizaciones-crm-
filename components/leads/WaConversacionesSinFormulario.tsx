@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Phone, MapPin, Users, Calendar, Clock, MessageCircle, Timer } from 'lucide-react'
+import { Phone, MapPin, Users, Calendar, Clock, MessageCircle, Timer, UserCheck } from 'lucide-react'
 import type { WaSolicitud } from '@/lib/api'
 
 function formatDate(d: string) {
@@ -222,26 +222,76 @@ function WaConvCard({ conv }: { conv: WaSolicitud }) {
 }
 
 export default function WaConversacionesSinFormulario({ convs }: { convs: WaSolicitud[] }) {
-  if (convs.length === 0) {
-    return (
-      <div className="text-center py-16 text-gray-400">
-        <p className="text-lg font-medium">Sin conversaciones WA pendientes</p>
-        <p className="text-sm mt-1">Cuando llegue un contacto de WhatsApp sin formulario aparecerá aquí.</p>
-      </div>
-    )
-  }
+  const [filterEjecutivo, setFilterEjecutivo] = useState('')
 
-  const sorted = [...convs].sort((a, b) => {
-    const ta = new Date(a.last_msg_at || a.created_at).getTime()
-    const tb = new Date(b.last_msg_at || b.created_at).getTime()
-    return tb - ta
-  })
+  // Ejecutivos únicos que tienen al menos una conversación
+  const ejecutivosConConvs = Array.from(
+    new Map(
+      convs
+        .filter(c => c.assigned_name)
+        .map(c => [c.assigned_name!, c.assigned_name!])
+    ).entries()
+  ).map(([name]) => name).sort()
+
+  const filtered = convs
+    .filter(c => filterEjecutivo === '' || c.assigned_name === filterEjecutivo)
+    .sort((a, b) => {
+      const ta = new Date(a.last_msg_at || a.created_at).getTime()
+      const tb = new Date(b.last_msg_at || b.created_at).getTime()
+      return tb - ta
+    })
 
   return (
     <div className="space-y-3">
-      {sorted.map(conv => (
-        <WaConvCard key={conv.id} conv={conv} />
-      ))}
+      {/* Filtro por ejecutivo */}
+      {ejecutivosConConvs.length > 0 && (
+        <div className="flex gap-2 flex-wrap items-center pb-1">
+          <span className="text-xs text-gray-400 font-medium flex items-center gap-1">
+            <UserCheck className="w-3.5 h-3.5" />Ejecutivo:
+          </span>
+          <button
+            onClick={() => setFilterEjecutivo('')}
+            className="text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors"
+            style={filterEjecutivo === ''
+              ? { background: '#1e40af', color: 'white', borderColor: '#1e40af' }
+              : { background: '#eff6ff', color: '#1e40af', borderColor: '#bfdbfe' }}
+          >
+            Todos <span className="ml-1 opacity-80">{convs.length}</span>
+          </button>
+          {ejecutivosConConvs.map(name => {
+            const count = convs.filter(c => c.assigned_name === name).length
+            const isActive = filterEjecutivo === name
+            const firstName = name.split(' ')[0]
+            return (
+              <button
+                key={name}
+                onClick={() => setFilterEjecutivo(isActive ? '' : name)}
+                className="text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors"
+                style={isActive
+                  ? { background: '#1e40af', color: 'white', borderColor: '#1e40af' }
+                  : { background: '#eff6ff', color: '#1e40af', borderColor: '#bfdbfe' }}
+              >
+                {firstName} <span className="opacity-80">{count}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {filtered.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">
+          <p className="text-lg font-medium">Sin conversaciones WA pendientes</p>
+          <p className="text-sm mt-1">
+            {filterEjecutivo
+              ? `${filterEjecutivo} no tiene conversaciones activas.`
+              : 'Cuando llegue un contacto de WhatsApp sin formulario aparecerá aquí.'}
+          </p>
+        </div>
+      ) : (
+        filtered.map(conv => (
+          <WaConvCard key={conv.id} conv={conv} />
+        ))
+      )}
     </div>
   )
 }
