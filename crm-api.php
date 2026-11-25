@@ -6037,19 +6037,8 @@ if ($action === 'wa_form_save') {
         }
     }
 
-    // Auto-crear borrador (idempotente — crear_borrador_wa verifica wa_draft_quote_id internamente)
-    // No depende de que el cliente envíe otro WA; se dispara automáticamente al guardar el formulario.
-    if ($prev) {
-        $bRes = crear_borrador_wa(db(), $prev['id']);
-        if (!empty($bRes['ok'])) {
-            error_log('[wa_form_save] borrador_auto created quotation_id=' . ($bRes['quotation_id'] ?? '?')
-                      . (($bRes['idempotent'] ?? false) ? ' (idempotent)' : ''));
-        } else {
-            error_log('[wa_form_save] borrador_auto skip/fail: '
-                      . ($bRes['error'] ?? ($bRes['motivo'] ?? 'unknown'))
-                      . ' code=' . ($bRes['code'] ?? '-'));
-        }
-    }
+    // DESHABILITADO: wa_form_save ya no crea cotizaciones BWA automáticamente.
+    // Los leads WA quedan solo como solicitudes en Consultas WA para que las ejecutivas los trabajen.
 
     // Crear lead_request solo la primera vez que se envía el formulario (esPrimeroEnvio)
     // Así aparece en Solicitudes para que las ejecutivas lo trabajen desde ahí.
@@ -7133,6 +7122,19 @@ if ($action === 'wa_create_borrador') {
     $result = crear_borrador_wa(db(), $conv_id, ['use_client_lookup' => true]);
     if (isset($result['error'])) err($result['error'], $result['code'] ?? 422);
     ok($result);
+}
+
+// ── Limpieza de cotizaciones BWA (one-shot, requiere admin) ──────────────────
+if ($action === 'delete_bwa_quotations') {
+    requireAdmin();
+    $pdo = db();
+    // Soft-delete todas las cotizaciones con número BWA
+    $stmt = $pdo->prepare("UPDATE quotations SET is_deleted = 1 WHERE number LIKE 'BWA-%' AND (is_deleted IS NULL OR is_deleted = 0)");
+    $stmt->execute();
+    $deleted = $stmt->rowCount();
+    // Limpiar wa_draft_quote_id en conversaciones que apuntaban a esas cotizaciones
+    $pdo->exec("UPDATE wa_cloud_conversations SET wa_draft_quote_id = NULL WHERE wa_draft_quote_id IN (SELECT id FROM quotations WHERE number LIKE 'BWA-%')");
+    ok(['deleted' => $deleted, 'msg' => "Se eliminaron $deleted cotizaciones BWA"]);
 }
 
 // ── E2E Staging Tests (TEMPORAL — eliminar después de pruebas) ────────────────
