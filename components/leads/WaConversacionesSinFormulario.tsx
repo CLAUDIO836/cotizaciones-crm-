@@ -294,9 +294,13 @@ export default function WaConversacionesSinFormulario({ convs }: { convs: WaSoli
       baseList.filter(c => c.assigned_name).map(c => [c.assigned_name!, c.assigned_name!])
     ).entries()
   ).map(([name]) => name).sort()
+  const sinAsignarCount = baseList.filter(c => !c.assigned_name).length
 
   const filtered = baseList
-    .filter(c => filterEjecutivo === '' || c.assigned_name === filterEjecutivo)
+    .filter(c => {
+      if (filterEjecutivo === 'sin_asignar') return !c.assigned_name
+      return filterEjecutivo === '' || c.assigned_name === filterEjecutivo
+    })
     .sort((a, b) => new Date(b.last_msg_at || b.created_at).getTime() - new Date(a.last_msg_at || a.created_at).getTime())
 
   function SubTabBtn({ value, label, count, color }: { value: WaSubTab; label: string; count: number; color: string }) {
@@ -364,6 +368,17 @@ export default function WaConversacionesSinFormulario({ convs }: { convs: WaSoli
               </button>
             )
           })}
+          {sinAsignarCount > 0 && (
+            <button
+              onClick={() => setFilterEjecutivo(filterEjecutivo === 'sin_asignar' ? '' : 'sin_asignar')}
+              className="text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors"
+              style={filterEjecutivo === 'sin_asignar'
+                ? { background: '#6b7280', color: 'white', borderColor: '#6b7280' }
+                : { background: '#f9fafb', color: '#9ca3af', borderColor: '#e5e7eb' }}
+            >
+              Sin asignar <span className="opacity-80">{sinAsignarCount}</span>
+            </button>
+          )}
         </div>
       )}
 
