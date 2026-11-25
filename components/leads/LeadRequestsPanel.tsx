@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Building2, Phone, Mail, MapPin, Users, Calendar, ChevronDown, ChevronUp,
-  ExternalLink, Bot, Clock, Car, AlertTriangle, Globe, Truck,
+  ExternalLink, Bot, Clock, Car, AlertTriangle, Globe, Truck, UserCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -44,6 +44,10 @@ type Lead = {
   status: string
   crm_notes?: string
   assigned_user_id?: string
+  assigned_name?: string
+  updated_by_name?: string
+  updated_by_email?: string
+  status_changed_at?: string
   profiles?: { name: string } | null
 }
 
@@ -213,12 +217,23 @@ function LeadCard({ lead, sellers }: { lead: Lead; sellers: Seller[] }) {
               </span>
             )}
           </div>
-          <div className="text-right flex-shrink-0">
+          <div className="text-right flex-shrink-0 space-y-1">
             <p className="text-xs text-gray-400 whitespace-nowrap">
               {lead.created_at ? formatDate(lead.created_at) : ''}
             </p>
-            {lead.profiles?.name && (
-              <p className="text-xs text-gray-500 mt-0.5">→ {lead.profiles.name}</p>
+            {lead.assigned_name && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
+                style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
+                <UserCheck className="w-3 h-3" />{lead.assigned_name}
+              </span>
+            )}
+            {lead.updated_by_name && (
+              <p className="text-[10px] text-gray-400 leading-tight">
+                Editado por {lead.updated_by_name}
+                {lead.status_changed_at && (
+                  <span className="ml-1">· {formatDate(lead.status_changed_at)}</span>
+                )}
+              </p>
             )}
           </div>
         </div>

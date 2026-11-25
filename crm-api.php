@@ -3280,6 +3280,11 @@ if ($action === 'cruce_solicitudes_vs_negocios') {
             $row['cotizaciones_count'] = (int)$r['cnt'];
             $row['cotizaciones_nums']  = $r['nums'] ?? '';
         } catch (PDOException $e) { $row['cotizaciones_count'] = 0; $row['cotizaciones_nums'] = ''; }
+        try {
+            $se = $pdo->prepare("SELECT p.name FROM quotations q LEFT JOIN profiles p ON p.id = q.user_id WHERE q.client_id = ? AND COALESCE(q.is_deleted,0) != 1 ORDER BY q.created_at DESC LIMIT 1");
+            $se->execute([$row['client_id']]);
+            $row['ejecutivo_name'] = $se->fetchColumn() ?: 'Sin asignar';
+        } catch (PDOException $e) { $row['ejecutivo_name'] = 'Sin asignar'; }
     }
     unset($row);
 
@@ -3327,6 +3332,11 @@ if ($action === 'cruce_solicitudes_vs_negocios') {
             $row['cotizaciones_count'] = (int)$r['cnt'];
             $row['cotizaciones_nums']  = $r['nums'] ?? '';
         } catch (PDOException $e) { $row['cotizaciones_count'] = 0; $row['cotizaciones_nums'] = ''; }
+        try {
+            $se = $pdo->prepare("SELECT p.name FROM quotations q LEFT JOIN profiles p ON p.id = q.user_id WHERE q.client_id = ? AND COALESCE(q.is_deleted,0) != 1 ORDER BY q.created_at DESC LIMIT 1");
+            $se->execute([$row['client_id']]);
+            $row['ejecutivo_name'] = $se->fetchColumn() ?: 'Sin asignar';
+        } catch (PDOException $e) { $row['ejecutivo_name'] = 'Sin asignar'; }
     }
     unset($row);
 
@@ -3396,7 +3406,19 @@ if ($action === 'leads_list') {
         error_log('[leads_list backfill] ' . $e->getMessage());
     }
 
-    $stmt = db()->query('SELECT * FROM lead_requests ORDER BY created_at DESC');
+    // Migraciones silenciosas por si aún no existen en esta instalación
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN updated_by_id VARCHAR(36) NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN status_changed_at DATETIME NULL"); } catch (PDOException $e) {}
+    $stmt = db()->query("
+        SELECT lr.*,
+               pa.name  AS assigned_name,
+               pu.name  AS updated_by_name,
+               pu.email AS updated_by_email
+        FROM lead_requests lr
+        LEFT JOIN profiles pa ON pa.id = lr.assigned_user_id
+        LEFT JOIN profiles pu ON pu.id = lr.updated_by_id
+        ORDER BY lr.created_at DESC
+    ");
     ok($stmt->fetchAll());
 }
 
@@ -3466,13 +3488,21 @@ if ($action === 'leads_create') {
 }
 
 if ($action === 'leads_update_status') {
-    requireAuth();
+    $me = requireAuth();
+    // Migraciones automáticas — solo corren si la columna no existe
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN assigned_user_id VARCHAR(36) NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN crm_notes TEXT NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN updated_by_id VARCHAR(36) NULL"); } catch (PDOException $e) {}
+    try { db()->exec("ALTER TABLE lead_requests ADD COLUMN status_changed_at DATETIME NULL"); } catch (PDOException $e) {}
     $b = body();
     $sets  = [];
     $vals  = [];
     if (isset($b['status']))           { $sets[] = 'status = ?';           $vals[] = $b['status']; }
     if (array_key_exists('assigned_user_id', $b)) { $sets[] = 'assigned_user_id = ?'; $vals[] = $b['assigned_user_id'] ?: null; }
     if (array_key_exists('crm_notes', $b))        { $sets[] = 'crm_notes = ?';        $vals[] = $b['crm_notes'] ?: null; }
+    // Siempre registrar quién editó y cuándo
+    $sets[] = 'updated_by_id = ?'; $vals[] = $me['id'];
+    if (isset($b['status'])) { $sets[] = 'status_changed_at = NOW()'; }
     if (!empty($sets)) {
         $vals[] = $b['id'];
         db()->prepare('UPDATE lead_requests SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($vals);
