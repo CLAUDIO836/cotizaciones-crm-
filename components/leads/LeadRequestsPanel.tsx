@@ -456,32 +456,47 @@ export default function LeadRequestsPanel({
   const [filterStatus,  setFilterStatus]  = useState('')
   const [filterCompany, setFilterCompany] = useState('')
 
-  const filtered = leads
-    .filter(l =>
-      (filterStatus  === '' || l.status         === filterStatus) &&
-      (filterCompany === '' || l.target_company === filterCompany)
-    )
-    .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
+  const companyFiltered = leads.filter(l =>
+    filterCompany === '' || l.target_company === filterCompany
+  )
 
-  const pendientes = leads.filter(l => l.status === 'pendiente').length
+  const countByStatus: Record<string, number> = {
+    '':           companyFiltered.length,
+    pendiente:    companyFiltered.filter(l => l.status === 'pendiente').length,
+    en_revision:  companyFiltered.filter(l => l.status === 'en_revision').length,
+    convertido:   companyFiltered.filter(l => l.status === 'convertido').length,
+    descartado:   companyFiltered.filter(l => l.status === 'descartado').length,
+  }
+
+  const filtered = companyFiltered
+    .filter(l => filterStatus === '' || l.status === filterStatus)
+    .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
 
   return (
     <div className="space-y-4">
       {/* Filtros */}
       <div className="flex gap-2 flex-wrap items-center">
-        {(['', 'pendiente', 'en_revision', 'convertido', 'descartado'] as const).map(s => (
-          <button key={s} onClick={() => setFilterStatus(s)}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium border transition-all"
-            style={filterStatus === s
-              ? { background: '#1B8A4B', color: 'white', borderColor: '#1B8A4B' }
-              : { background: 'white', color: '#6b7280', borderColor: '#e5e7eb' }}
-          >
-            {s === '' ? `Todos (${leads.length})` : STATUS_STYLES[s].label}
-            {s === 'pendiente' && pendientes > 0 && (
-              <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5">{pendientes}</span>
-            )}
-          </button>
-        ))}
+        {(['', 'pendiente', 'en_revision', 'convertido', 'descartado'] as const).map(s => {
+          const count = countByStatus[s] ?? 0
+          const isActive = filterStatus === s
+          return (
+            <button key={s} onClick={() => setFilterStatus(s)}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium border transition-all"
+              style={isActive
+                ? { background: '#1B8A4B', color: 'white', borderColor: '#1B8A4B' }
+                : { background: 'white', color: '#6b7280', borderColor: '#e5e7eb' }}
+            >
+              {s === '' ? 'Todos' : STATUS_STYLES[s].label}
+              <span className={`ml-1.5 text-xs rounded-full px-1.5 ${
+                isActive
+                  ? 'bg-white/25 text-white'
+                  : s === 'pendiente' && count > 0
+                    ? 'bg-red-500 text-white'
+                    : 'bg-gray-100 text-gray-500'
+              }`}>{count}</span>
+            </button>
+          )
+        })}
         <div className="ml-auto flex gap-2">
           {(['', 'transccl', 'tks', 'trackingccl'] as const).map(c => (
             <button key={c} onClick={() => setFilterCompany(c)}
