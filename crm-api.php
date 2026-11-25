@@ -3266,16 +3266,15 @@ if ($action === 'cruce_solicitudes_vs_negocios') {
                 OR (COALESCE(lr.contacto_nombre,'') != ''
                     AND LOWER(lr.contacto_nombre) = LOWER(cl.name))
             )
-            WHERE COALESCE(lr.status,'pendiente') NOT IN ('ganado','cerrado','rechazado')
             ORDER BY lr.created_at DESC
-            LIMIT 200
+            LIMIT 500
         ")->fetchAll();
     } catch (PDOException $e) { $errors[] = 'leads: ' . $e->getMessage(); }
 
     // Agregar cotizaciones count por separado
     foreach ($leads_match as &$row) {
         try {
-            $st = $pdo->prepare("SELECT COUNT(*) as cnt, GROUP_CONCAT(number ORDER BY created_at DESC SEPARATOR ', ') as nums FROM quotations WHERE client_id = ? AND COALESCE(is_deleted,0) != 1");
+            $st = $pdo->prepare("SELECT COUNT(*) as cnt, GROUP_CONCAT(CONCAT(number,'[',COALESCE(status,'?'),']') ORDER BY created_at DESC SEPARATOR ', ') as nums FROM quotations WHERE client_id = ? AND COALESCE(is_deleted,0) != 1");
             $st->execute([$row['client_id']]);
             $r = $st->fetch();
             $row['cotizaciones_count'] = (int)$r['cnt'];
@@ -3314,16 +3313,15 @@ if ($action === 'cruce_solicitudes_vs_negocios') {
                 OR (COALESCE(wc.contact_name COLLATE utf8mb4_general_ci,'') != ''
                     AND LOWER(wc.contact_name COLLATE utf8mb4_general_ci) = LOWER(cl.name))
             )
-            WHERE wc.stage NOT IN ('ganado','perdido','spam')
-              AND wc.last_msg_at >= NOW() - INTERVAL 60 DAY
+            WHERE wc.stage NOT IN ('spam')
             ORDER BY wc.last_msg_at DESC
-            LIMIT 200
+            LIMIT 500
         ")->fetchAll();
     } catch (PDOException $e) { $errors[] = 'wa: ' . $e->getMessage(); }
 
     foreach ($wa_match as &$row) {
         try {
-            $st = $pdo->prepare("SELECT COUNT(*) as cnt, GROUP_CONCAT(number ORDER BY created_at DESC SEPARATOR ', ') as nums FROM quotations WHERE client_id = ? AND COALESCE(is_deleted,0) != 1");
+            $st = $pdo->prepare("SELECT COUNT(*) as cnt, GROUP_CONCAT(CONCAT(number,'[',COALESCE(status,'?'),']') ORDER BY created_at DESC SEPARATOR ', ') as nums FROM quotations WHERE client_id = ? AND COALESCE(is_deleted,0) != 1");
             $st->execute([$row['client_id']]);
             $r = $st->fetch();
             $row['cotizaciones_count'] = (int)$r['cnt'];
