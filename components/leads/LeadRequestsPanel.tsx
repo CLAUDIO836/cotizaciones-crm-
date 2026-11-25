@@ -468,32 +468,74 @@ export default function LeadRequestsPanel({
   leads: Lead[]
   sellers: Seller[]
 }) {
-  const [filterStatus,  setFilterStatus]  = useState('pendiente')
-  const [filterCompany, setFilterCompany] = useState('')
+  const [filterStatus,   setFilterStatus]   = useState('pendiente')
+  const [filterCompany,  setFilterCompany]  = useState('')
+  const [filterEjecutivo, setFilterEjecutivo] = useState('')
 
-  const companyFiltered = leads.filter(l =>
-    filterCompany === '' || l.target_company === filterCompany
+  const baseFiltered = leads.filter(l =>
+    (filterCompany   === '' || l.target_company === filterCompany) &&
+    (filterEjecutivo === '' || l.assigned_user_id === filterEjecutivo)
   )
 
   const countByStatus: Record<string, number> = {
-    '':           companyFiltered.length,
-    pendiente:    companyFiltered.filter(l => l.status === 'pendiente').length,
-    en_revision:  companyFiltered.filter(l => l.status === 'en_revision').length,
-    convertido:   companyFiltered.filter(l => l.status === 'convertido').length,
-    descartado:   companyFiltered.filter(l => l.status === 'descartado').length,
+    '':           baseFiltered.length,
+    pendiente:    baseFiltered.filter(l => l.status === 'pendiente').length,
+    en_revision:  baseFiltered.filter(l => l.status === 'en_revision').length,
+    convertido:   baseFiltered.filter(l => l.status === 'convertido').length,
+    descartado:   baseFiltered.filter(l => l.status === 'descartado').length,
   }
+
+  // Ejecutivos que tienen al menos 1 lead asignado (con nombre disponible)
+  const ejecutivosConLeads = sellers.filter(s =>
+    leads.some(l => l.assigned_user_id === s.id)
+  )
 
   // Etapas del pipeline — sin "Todos" mezclado; "Ver todo" al final
   const STAGE_TABS = [
     'pendiente', 'en_revision', 'convertido', 'descartado',
   ] as const
 
-  const filtered = companyFiltered
+  const filtered = baseFiltered
     .filter(l => filterStatus === '' || l.status === filterStatus)
     .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
 
   return (
     <div className="space-y-4">
+      {/* Filtro por ejecutivo — fila superior */}
+      {ejecutivosConLeads.length > 0 && (
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-xs text-gray-400 font-medium">Ejecutivo:</span>
+          <button
+            onClick={() => setFilterEjecutivo('')}
+            className="px-3 py-1 rounded-full text-xs font-medium border transition-all"
+            style={filterEjecutivo === ''
+              ? { background: '#1B8A4B', color: 'white', borderColor: '#1B8A4B' }
+              : { background: 'white', color: '#6b7280', borderColor: '#e5e7eb' }}
+          >
+            Todos
+          </button>
+          {ejecutivosConLeads.map(s => {
+            const count = leads.filter(l => l.assigned_user_id === s.id).length
+            const isActive = filterEjecutivo === s.id
+            const firstName = s.name.split(' ')[0]
+            return (
+              <button key={s.id}
+                onClick={() => setFilterEjecutivo(isActive ? '' : s.id)}
+                className="px-3 py-1 rounded-full text-xs font-medium border transition-all"
+                style={isActive
+                  ? { background: '#1e40af', color: 'white', borderColor: '#1e40af' }
+                  : { background: '#eff6ff', color: '#1e40af', borderColor: '#bfdbfe' }}
+              >
+                {firstName}
+                <span className={`ml-1.5 text-xs rounded-full px-1.5 ${
+                  isActive ? 'bg-white/25 text-white' : 'bg-blue-100 text-blue-600'
+                }`}>{count}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* Filtros — pipeline por etapa */}
       <div className="flex gap-2 flex-wrap items-center">
         {STAGE_TABS.map(s => {
