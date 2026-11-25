@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { UserSession } from '@/lib/api'
 
@@ -127,6 +127,21 @@ function fmtTime(dt: string | null): string {
 
 function fmtFull(dt: string): string {
   return new Date(dt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+}
+
+function fmtDateSep(dt: string): string {
+  const d = new Date(dt)
+  const today = new Date(); today.setHours(0,0,0,0)
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1)
+  d.setHours(0,0,0,0)
+  if (d.getTime() === today.getTime()) return 'Hoy'
+  if (d.getTime() === yesterday.getTime()) return 'Ayer'
+  return new Date(dt).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
+}
+
+function msgDateKey(dt: string): string {
+  const d = new Date(dt)
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
 function convCompleteness(c: Conversation): number {
@@ -881,31 +896,44 @@ export default function Bandeja({ user }: { user: UserSession }) {
               {loadingMsgs && messages.length === 0 && (
                 <div style={{ textAlign: 'center', color: '#9ca3af', marginTop: 40 }}>Cargando...</div>
               )}
-              {messages.map(msg => {
+              {messages.map((msg, idx) => {
                 const isBot = msg.direction === 'out' && msg.sender_type === 'bot'
                 const isHuman = msg.direction === 'out' && msg.sender_type === 'human'
+                const prevMsg = idx > 0 ? messages[idx - 1] : null
+                const showDateSep = !prevMsg || msgDateKey(msg.created_at) !== msgDateKey(prevMsg.created_at)
                 return (
-                  <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.direction === 'out' ? 'flex-end' : 'flex-start' }}>
-                    {msg.direction === 'out' && (
-                      <span style={{ fontSize: 10, color: '#9ca3af', marginBottom: 2, marginRight: 4 }}>
-                        {isBot ? '🤖 Bot' : isHuman ? '👤 Ejecutivo' : ''}
-                      </span>
+                  <React.Fragment key={msg.id}>
+                    {showDateSep && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0' }}>
+                        <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
+                        <span style={{ fontSize: 11, color: '#9ca3af', background: '#f9fafb', padding: '2px 10px', borderRadius: 10, border: '1px solid #e5e7eb', flexShrink: 0 }}>
+                          {fmtDateSep(msg.created_at)}
+                        </span>
+                        <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
+                      </div>
                     )}
-                    <div style={{
-                      maxWidth: '70%', padding: '8px 12px', borderRadius: 12,
-                      background: msg.direction === 'out' ? (isBot ? '#7c3aed' : '#2563eb') : '#fff',
-                      color: msg.direction === 'out' ? '#fff' : '#111',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
-                      borderBottomRightRadius: msg.direction === 'out' ? 2 : 12,
-                      borderBottomLeftRadius:  msg.direction === 'in'  ? 2 : 12,
-                    }}>
-                      <div style={{ wordBreak: 'break-word' }}>{msg.content}</div>
-                      <div style={{ fontSize: 10, marginTop: 4, opacity: 0.7, textAlign: msg.direction === 'out' ? 'right' : 'left', display: 'flex', justifyContent: msg.direction === 'out' ? 'flex-end' : 'flex-start', alignItems: 'center', gap: 2 }}>
-                        {fmtFull(msg.created_at)}
-                        <StatusIcon status={msg.status} direction={msg.direction} />
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: msg.direction === 'out' ? 'flex-end' : 'flex-start' }}>
+                      {msg.direction === 'out' && (
+                        <span style={{ fontSize: 10, color: '#9ca3af', marginBottom: 2, marginRight: 4 }}>
+                          {isBot ? '🤖 Bot' : isHuman ? '👤 Ejecutivo' : ''}
+                        </span>
+                      )}
+                      <div style={{
+                        maxWidth: '70%', padding: '8px 12px', borderRadius: 12,
+                        background: msg.direction === 'out' ? (isBot ? '#7c3aed' : '#2563eb') : '#fff',
+                        color: msg.direction === 'out' ? '#fff' : '#111',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                        borderBottomRightRadius: msg.direction === 'out' ? 2 : 12,
+                        borderBottomLeftRadius:  msg.direction === 'in'  ? 2 : 12,
+                      }}>
+                        <div style={{ wordBreak: 'break-word' }}>{msg.content}</div>
+                        <div style={{ fontSize: 10, marginTop: 4, opacity: 0.7, textAlign: msg.direction === 'out' ? 'right' : 'left', display: 'flex', justifyContent: msg.direction === 'out' ? 'flex-end' : 'flex-start', alignItems: 'center', gap: 2 }}>
+                          {fmtFull(msg.created_at)}
+                          <StatusIcon status={msg.status} direction={msg.direction} />
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </React.Fragment>
                 )
               })}
             </div>
@@ -1280,8 +1308,8 @@ function KanbanPanel({ conversations, activeId, onSelect }: {
                   onClick={() => onSelect(c)}
                   style={{
                     padding: '9px 16px', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'flex-start',
-                    background: active ? '#eff6ff' : c.unread_count > 0 ? '#fefce8' : 'transparent',
-                    borderLeft: active ? '3px solid #2563eb' : '3px solid transparent',
+                    background: active ? '#eff6ff' : c.unread_count > 0 ? '#dcfce7' : 'transparent',
+                    borderLeft: active ? '3px solid #2563eb' : c.unread_count > 0 ? '3px solid #16a34a' : '3px solid transparent',
                   }}
                 >
                   <div style={{ marginTop: 5 }}><SemDot color={color} /></div>
@@ -1296,7 +1324,7 @@ function KanbanPanel({ conversations, activeId, onSelect }: {
                       <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>→ {c.assigned_name}</div>
                     )}
                     {c.unread_count > 0 && (
-                      <span style={{ display: 'inline-block', marginTop: 2, fontSize: 10, fontWeight: 700, background: '#eab308', color: '#fff', borderRadius: 10, padding: '1px 6px' }}>
+                      <span style={{ display: 'inline-block', marginTop: 2, fontSize: 10, fontWeight: 700, background: '#16a34a', color: '#fff', borderRadius: 10, padding: '1px 6px' }}>
                         {c.unread_count}
                       </span>
                     )}
@@ -1334,8 +1362,8 @@ function ConvSection({ title, items, activeId, onSelect, userId }: {
             onClick={() => onSelect(c)}
             style={{
               padding: '9px 16px', cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'flex-start',
-              background: active ? '#eff6ff' : unread ? '#fefce8' : 'transparent',
-              borderLeft: active ? '3px solid #2563eb' : unread ? '3px solid #eab308' : '3px solid transparent',
+              background: active ? '#eff6ff' : unread ? '#dcfce7' : 'transparent',
+              borderLeft: active ? '3px solid #2563eb' : unread ? '3px solid #16a34a' : '3px solid transparent',
             }}
           >
             <div style={{ marginTop: 5 }}><SemDot color={color} /></div>
@@ -1361,7 +1389,7 @@ function ConvSection({ title, items, activeId, onSelect, userId }: {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, marginLeft: 8 }}>
                   {unread && (
-                    <span style={{ fontSize: 10, fontWeight: 700, background: '#eab308', color: '#fff', borderRadius: 10, padding: '1px 5px' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, background: '#16a34a', color: '#fff', borderRadius: 10, padding: '1px 5px' }}>
                       {c.unread_count}
                     </span>
                   )}
