@@ -3236,83 +3236,101 @@ if ($action === 'wa_solicitudes_list') {
 if ($action === 'cruce_solicitudes_vs_negocios') {
     requireAuth();
     $pdo = db();
+    $errors = [];
 
-    // --- 1. lead_requests vs clientes/cotizaciones ---
-    $leads_match = $pdo->query("
-        SELECT
-            lr.id            AS lead_id,
-            COALESCE(lr.contacto_nombre,'') AS contacto_nombre,
-            COALESCE(lr.empresa_nombre,'')  AS empresa_nombre,
-            COALESCE(lr.contacto_telefono,'') AS contacto_telefono,
-            COALESCE(lr.contacto_email,'')  AS contacto_email,
-            lr.status        AS lead_status,
-            COALESCE(lr.utm_source,'') AS utm_source,
-            lr.created_at    AS lead_fecha,
-            c.id             AS client_id,
-            c.name           AS client_name,
-            COALESCE(c.rut,'')   AS client_rut,
-            COALESCE(c.phone,'') AS client_phone,
-            COALESCE(c.email,'') AS client_email,
-            (SELECT COUNT(*) FROM quotations q2 WHERE q2.client_id = c.id AND COALESCE(q2.is_deleted,0) != 1) AS cotizaciones_count,
-            (SELECT GROUP_CONCAT(q2.number ORDER BY q2.created_at DESC SEPARATOR ', ') FROM quotations q2 WHERE q2.client_id = c.id AND COALESCE(q2.is_deleted,0) != 1) AS cotizaciones_nums,
-            CASE
-                WHEN REPLACE(REPLACE(COALESCE(lr.contacto_telefono,''),'+',''),' ','') != ''
-                     AND REPLACE(REPLACE(COALESCE(c.phone,''),'+',''),' ','') != ''
-                     AND REPLACE(REPLACE(COALESCE(lr.contacto_telefono,''),'+',''),' ','') = REPLACE(REPLACE(COALESCE(c.phone,''),'+',''),' ','') THEN 'telefono'
-                WHEN COALESCE(lr.contacto_email,'') != '' AND COALESCE(c.email,'') != ''
-                     AND LOWER(COALESCE(lr.contacto_email,'')) = LOWER(COALESCE(c.email,'')) THEN 'email'
-                ELSE 'nombre'
-            END AS match_type
-        FROM lead_requests lr
-        JOIN clients c ON (
-            (REPLACE(REPLACE(COALESCE(lr.contacto_telefono,''),'+',''),' ','') != ''
-             AND REPLACE(REPLACE(COALESCE(lr.contacto_telefono,''),'+',''),' ','') = REPLACE(REPLACE(COALESCE(c.phone,''),'+',''),' ',''))
-            OR (COALESCE(lr.contacto_email,'') != '' AND LOWER(COALESCE(lr.contacto_email,'')) = LOWER(COALESCE(c.email,'')))
-            OR (COALESCE(lr.empresa_nombre,'') != '' AND LOWER(COALESCE(lr.empresa_nombre,'')) = LOWER(c.name))
-            OR (COALESCE(lr.contacto_nombre,'') != '' AND LOWER(COALESCE(lr.contacto_nombre,'')) = LOWER(c.name))
-        )
-        WHERE COALESCE(lr.status,'') NOT IN ('ganado','cerrado','rechazado')
-        ORDER BY lr.created_at DESC
-    ")->fetchAll();
+    // --- 1. lead_requests vs clientes ---
+    $leads_match = [];
+    try {
+        $leads_match = $pdo->query("
+            SELECT
+                lr.id            AS lead_id,
+                COALESCE(lr.contacto_nombre,'') AS contacto_nombre,
+                COALESCE(lr.empresa_nombre,'')  AS empresa_nombre,
+                COALESCE(lr.contacto_telefono,'') AS contacto_telefono,
+                COALESCE(lr.contacto_email,'')  AS contacto_email,
+                COALESCE(lr.status,'')          AS lead_status,
+                lr.created_at                   AS lead_fecha,
+                cl.id                           AS client_id,
+                cl.name                         AS client_name,
+                COALESCE(cl.rut,'')             AS client_rut,
+                COALESCE(cl.phone,'')           AS client_phone,
+                COALESCE(cl.email,'')           AS client_email
+            FROM lead_requests lr
+            JOIN clients cl ON (
+                (COALESCE(lr.contacto_telefono,'') != '' AND COALESCE(cl.phone,'') != ''
+                 AND REPLACE(REPLACE(lr.contacto_telefono,'+',''),' ','') = REPLACE(REPLACE(cl.phone,'+',''),' ',''))
+                OR (COALESCE(lr.contacto_email,'') != '' AND COALESCE(cl.email,'') != ''
+                    AND LOWER(lr.contacto_email) = LOWER(cl.email))
+                OR (COALESCE(lr.empresa_nombre,'') != ''
+                    AND LOWER(lr.empresa_nombre) = LOWER(cl.name))
+                OR (COALESCE(lr.contacto_nombre,'') != ''
+                    AND LOWER(lr.contacto_nombre) = LOWER(cl.name))
+            )
+            WHERE COALESCE(lr.status,'pendiente') NOT IN ('ganado','cerrado','rechazado')
+            ORDER BY lr.created_at DESC
+            LIMIT 200
+        ")->fetchAll();
+    } catch (PDOException $e) { $errors[] = 'leads: ' . $e->getMessage(); }
 
-    // --- 2. wa_cloud_conversations vs clientes/cotizaciones ---
-    $wa_match = $pdo->query("
-        SELECT
-            wc.id            AS conv_id,
-            wc.phone         AS wa_phone,
-            COALESCE(wc.contact_name,'')  AS wa_nombre,
-            COALESCE(wc.contact_email,'') AS wa_email,
-            COALESCE(wc.contact_rut,'')   AS wa_rut,
-            wc.stage         AS wa_stage,
-            wc.last_msg_at   AS wa_ultima,
-            cl.id            AS client_id,
-            cl.name          AS client_name,
-            COALESCE(cl.rut,'')   AS client_rut,
-            COALESCE(cl.phone,'') AS client_phone,
-            COALESCE(cl.email,'') AS client_email,
-            (SELECT COUNT(*) FROM quotations q2 WHERE q2.client_id = cl.id AND COALESCE(q2.is_deleted,0) != 1) AS cotizaciones_count,
-            (SELECT GROUP_CONCAT(q2.number ORDER BY q2.created_at DESC SEPARATOR ', ') FROM quotations q2 WHERE q2.client_id = cl.id AND COALESCE(q2.is_deleted,0) != 1) AS cotizaciones_nums,
-            CASE
-                WHEN REPLACE(REPLACE(wc.phone,'+',''),' ','') = REPLACE(REPLACE(COALESCE(cl.phone,''),'+',''),' ','') THEN 'telefono'
-                WHEN COALESCE(wc.contact_email,'') != '' AND LOWER(COALESCE(wc.contact_email,'')) = LOWER(COALESCE(cl.email,'')) THEN 'email'
-                WHEN COALESCE(wc.contact_rut,'') != ''
-                     AND REPLACE(REPLACE(wc.contact_rut,'.',''),'-','') = REPLACE(REPLACE(COALESCE(cl.rut,''),'.',''),'-','') THEN 'rut'
-                ELSE 'nombre'
-            END AS match_type
-        FROM wa_cloud_conversations wc
-        JOIN clients cl ON (
-            (REPLACE(REPLACE(wc.phone,'+',''),' ','') = REPLACE(REPLACE(COALESCE(cl.phone,''),'+',''),' ',''))
-            OR (COALESCE(wc.contact_email,'') != '' AND LOWER(COALESCE(wc.contact_email,'')) = LOWER(COALESCE(cl.email,'')))
-            OR (COALESCE(wc.contact_rut,'') != ''
-                AND REPLACE(REPLACE(wc.contact_rut,'.',''),'-','') = REPLACE(REPLACE(COALESCE(cl.rut,''),'.',''),'-',''))
-            OR (COALESCE(wc.contact_name,'') != '' AND LOWER(COALESCE(wc.contact_name,'')) = LOWER(cl.name))
-        )
-        WHERE wc.stage NOT IN ('ganado','perdido','spam')
-          AND wc.last_msg_at >= NOW() - INTERVAL 60 DAY
-        ORDER BY wc.last_msg_at DESC
-    ")->fetchAll();
+    // Agregar cotizaciones count por separado
+    foreach ($leads_match as &$row) {
+        try {
+            $st = $pdo->prepare("SELECT COUNT(*) as cnt, GROUP_CONCAT(number ORDER BY created_at DESC SEPARATOR ', ') as nums FROM quotations WHERE client_id = ? AND COALESCE(is_deleted,0) != 1");
+            $st->execute([$row['client_id']]);
+            $r = $st->fetch();
+            $row['cotizaciones_count'] = (int)$r['cnt'];
+            $row['cotizaciones_nums']  = $r['nums'] ?? '';
+        } catch (PDOException $e) { $row['cotizaciones_count'] = 0; $row['cotizaciones_nums'] = ''; }
+    }
+    unset($row);
 
-    ok(['leads_con_cliente' => $leads_match, 'wa_con_cliente' => $wa_match]);
+    // --- 2. wa_cloud_conversations vs clientes ---
+    $wa_match = [];
+    try {
+        $wa_match = $pdo->query("
+            SELECT
+                wc.id                           AS conv_id,
+                wc.phone                        AS wa_phone,
+                COALESCE(wc.contact_name,'')    AS wa_nombre,
+                COALESCE(wc.contact_email,'')   AS wa_email,
+                COALESCE(wc.contact_rut,'')     AS wa_rut,
+                wc.stage                        AS wa_stage,
+                wc.last_msg_at                  AS wa_ultima,
+                cl.id                           AS client_id,
+                cl.name                         AS client_name,
+                COALESCE(cl.rut,'')             AS client_rut,
+                COALESCE(cl.phone,'')           AS client_phone,
+                COALESCE(cl.email,'')           AS client_email
+            FROM wa_cloud_conversations wc
+            JOIN clients cl ON (
+                (COALESCE(cl.phone,'') != ''
+                 AND REPLACE(REPLACE(wc.phone,'+',''),' ','') = REPLACE(REPLACE(cl.phone,'+',''),' ',''))
+                OR (COALESCE(wc.contact_email,'') != '' AND COALESCE(cl.email,'') != ''
+                    AND LOWER(wc.contact_email) = LOWER(cl.email))
+                OR (COALESCE(wc.contact_rut,'') != '' AND COALESCE(cl.rut,'') != ''
+                    AND REPLACE(REPLACE(wc.contact_rut,'.',''),'-','') = REPLACE(REPLACE(cl.rut,'.',''),'-',''))
+                OR (COALESCE(wc.contact_name,'') != ''
+                    AND LOWER(wc.contact_name) = LOWER(cl.name))
+            )
+            WHERE wc.stage NOT IN ('ganado','perdido','spam')
+              AND wc.last_msg_at >= NOW() - INTERVAL 60 DAY
+            ORDER BY wc.last_msg_at DESC
+            LIMIT 200
+        ")->fetchAll();
+    } catch (PDOException $e) { $errors[] = 'wa: ' . $e->getMessage(); }
+
+    foreach ($wa_match as &$row) {
+        try {
+            $st = $pdo->prepare("SELECT COUNT(*) as cnt, GROUP_CONCAT(number ORDER BY created_at DESC SEPARATOR ', ') as nums FROM quotations WHERE client_id = ? AND COALESCE(is_deleted,0) != 1");
+            $st->execute([$row['client_id']]);
+            $r = $st->fetch();
+            $row['cotizaciones_count'] = (int)$r['cnt'];
+            $row['cotizaciones_nums']  = $r['nums'] ?? '';
+        } catch (PDOException $e) { $row['cotizaciones_count'] = 0; $row['cotizaciones_nums'] = ''; }
+    }
+    unset($row);
+
+    ok(['leads_con_cliente' => $leads_match, 'wa_con_cliente' => $wa_match, 'sql_errors' => $errors]);
 }
 
 if ($action === 'bwa_pending_list') {
