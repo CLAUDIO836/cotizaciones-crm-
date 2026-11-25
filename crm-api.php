@@ -3303,15 +3303,15 @@ if ($action === 'cruce_solicitudes_vs_negocios') {
             FROM wa_cloud_conversations wc
             JOIN clients cl ON (
                 (COALESCE(cl.phone,'') != ''
-                 AND REPLACE(REPLACE(wc.phone,'+',''),' ','') = REPLACE(REPLACE(cl.phone,'+',''),' ',''))
+                 AND REPLACE(REPLACE(CONVERT(wc.phone USING utf8mb4) COLLATE utf8mb4_unicode_ci,'+',''),' ','') = REPLACE(REPLACE(cl.phone,'+',''),' ',''))
                 OR (COALESCE(wc.contact_email,'') != ''
                     AND COALESCE(cl.email,'') != ''
-                    AND LOWER(wc.contact_email COLLATE utf8mb4_unicode_ci) = LOWER(cl.email COLLATE utf8mb4_unicode_ci))
+                    AND LOWER(CONVERT(wc.contact_email USING utf8mb4) COLLATE utf8mb4_unicode_ci) = LOWER(cl.email))
                 OR (COALESCE(wc.contact_rut,'') != ''
                     AND COALESCE(cl.rut,'') != ''
-                    AND REPLACE(REPLACE(wc.contact_rut COLLATE utf8mb4_unicode_ci,'.',''),'-','') = REPLACE(REPLACE(cl.rut,'.',''),'-',''))
+                    AND REPLACE(REPLACE(CONVERT(wc.contact_rut USING utf8mb4) COLLATE utf8mb4_unicode_ci,'.',''),'-','') = REPLACE(REPLACE(cl.rut,'.',''),'-',''))
                 OR (COALESCE(wc.contact_name,'') != ''
-                    AND LOWER(wc.contact_name COLLATE utf8mb4_unicode_ci) = LOWER(cl.name COLLATE utf8mb4_unicode_ci))
+                    AND LOWER(CONVERT(wc.contact_name USING utf8mb4) COLLATE utf8mb4_unicode_ci) = LOWER(cl.name))
             )
             WHERE wc.stage NOT IN ('spam')
             ORDER BY wc.last_msg_at DESC
