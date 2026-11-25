@@ -49,7 +49,7 @@ export default function SolicitudesTabs({
         <LeadRequestsPanel leads={leads} sellers={sellers as Seller[]} />
       )}
       {tab === 'wa' && (
-        <WaConversacionesSinFormulario convs={waConvs} />
+        <WaConversacionesSinFormulario convs={waConvs} sellers={sellers} />
       )}
     </div>
   )

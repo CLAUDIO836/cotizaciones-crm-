@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Phone, MapPin, Users, Calendar, Clock, MessageCircle, Timer, UserCheck, ArrowRightCircle, X } from 'lucide-react'
+import { Phone, MapPin, Users, Calendar, Clock, MessageCircle, Timer, UserCheck, ArrowRightCircle, X, UserPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import type { WaSolicitud } from '@/lib/api'
+import type { WaSolicitud, UserSession } from '@/lib/api'
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('es-CL', {
@@ -114,10 +114,27 @@ async function promoteToLead(convId: string): Promise<{ lead_id?: string; error?
   } catch { return { error: 'Error de red' } }
 }
 
-function WaConvCard({ conv, onPromoted }: { conv: WaSolicitud; onPromoted: (id: string) => void }) {
+async function assignConv(convId: string, assignedTo: string | null): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const r = await fetch('/api/whatsapp/cloud/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conv_id: convId, assigned_to: assignedTo }),
+    })
+    return r.ok ? { ok: true } : { ok: false, error: 'Error del servidor' }
+  } catch { return { ok: false, error: 'Error de red' } }
+}
+
+function WaConvCard({ conv, sellers, onPromoted, onAssigned }: {
+  conv: WaSolicitud
+  sellers: UserSession[]
+  onPromoted: (id: string) => void
+  onAssigned: (id: string, userId: string | null, userName: string | null) => void
+}) {
   const [expanded, setExpanded] = useState(false)
   const [promoting, setPromoting] = useState(false)
   const [promoteError, setPromoteError] = useState('')
+  const [assigning, setAssigning] = useState(false)
   const router = useRouter()
 
   const hasData = conv.service_origin || conv.service_destination || conv.service_date || conv.service_passengers
@@ -134,6 +151,15 @@ function WaConvCard({ conv, onPromoted }: { conv: WaSolicitud; onPromoted: (id: 
       setPromoteError(res.error || 'Error desconocido')
       setPromoting(false)
     }
+  }
+
+  async function handleAssign(e: React.ChangeEvent<HTMLSelectElement>) {
+    const userId = e.target.value || null
+    const seller = sellers.find(s => s.id === userId)
+    setAssigning(true)
+    const res = await assignConv(conv.id, userId)
+    if (res.ok) onAssigned(conv.id, userId, seller?.name ?? null)
+    setAssigning(false)
   }
 
   return (
@@ -159,10 +185,19 @@ function WaConvCard({ conv, onPromoted }: { conv: WaSolicitud; onPromoted: (id: 
               </span>
             )}
           </div>
-          <div className="text-right flex-shrink-0">
-            {conv.assigned_name && (
-              <p className="text-xs text-gray-500 mb-0.5">→ {conv.assigned_name}</p>
-            )}
+          <div className="flex-shrink-0">
+            <select
+              value={conv.assigned_name ? (sellers.find(s => s.name === conv.assigned_name)?.id ?? '') : ''}
+              onChange={handleAssign}
+              disabled={assigning}
+              className="text-xs border rounded-lg px-2 py-1 transition-colors disabled:opacity-50"
+              style={{ color: conv.assigned_name ? '#374151' : '#9ca3af', borderColor: '#e5e7eb', background: conv.assigned_name ? '#f9fafb' : '#fff7ed' }}
+            >
+              <option value="">Sin asignar</option>
+              {sellers.map(s => (
+                <option key={s.id} value={s.id}>{s.name.split(' ')[0]}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -267,21 +302,30 @@ function WaConvCard({ conv, onPromoted }: { conv: WaSolicitud; onPromoted: (id: 
 
 type WaSubTab = 'espera' | 'pipeline' | 'todos'
 
-export default function WaConversacionesSinFormulario({ convs }: { convs: WaSolicitud[] }) {
+export default function WaConversacionesSinFormulario({ convs, sellers }: { convs: WaSolicitud[]; sellers: UserSession[] }) {
   const [filterEjecutivo, setFilterEjecutivo] = useState('')
   const [subTab, setSubTab] = useState<WaSubTab>('espera')
   const [showTodos, setShowTodos] = useState(false)
-  const [promotedIds, setPromotedIds] = useState<Map<string, string>>(new Map()) // id → lead_id ficticio para mover a pipeline tab
+  const [promotedIds, setPromotedIds] = useState<Map<string, string>>(new Map())
+  const [assignOverrides, setAssignOverrides] = useState<Map<string, { userId: string | null; name: string | null }>>(new Map())
 
   function handlePromoted(id: string) {
     setPromotedIds(prev => new Map([...prev, [id, 'promoted']]))
   }
 
-  // Enriquecer convs con promociones locales
-  const enriched = convs.map(c => ({
-    ...c,
-    has_lead: (Number(c.has_lead) === 1 || promotedIds.has(c.id)) ? 1 : 0,
-  } as WaSolicitud))
+  function handleAssigned(id: string, userId: string | null, userName: string | null) {
+    setAssignOverrides(prev => new Map([...prev, [id, { userId, name: userName }]]))
+  }
+
+  // Enriquecer convs con cambios locales (promoción + asignación)
+  const enriched = convs.map(c => {
+    const override = assignOverrides.get(c.id)
+    return {
+      ...c,
+      has_lead: (Number(c.has_lead) === 1 || promotedIds.has(c.id)) ? 1 : 0,
+      assigned_name: override !== undefined ? override.name : c.assigned_name,
+    } as WaSolicitud
+  })
 
   const sinLead = enriched.filter(c => Number(c.has_lead) !== 1)
   const conLead = enriched.filter(c => Number(c.has_lead) === 1)
@@ -392,7 +436,7 @@ export default function WaConversacionesSinFormulario({ convs }: { convs: WaSoli
         </div>
       ) : (
         filtered.map(conv => (
-          <WaConvCard key={conv.id} conv={conv} onPromoted={handlePromoted} />
+          <WaConvCard key={conv.id} conv={conv} sellers={sellers} onPromoted={handlePromoted} onAssigned={handleAssigned} />
         ))
       )}
     </div>
