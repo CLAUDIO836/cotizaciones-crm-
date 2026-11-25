@@ -265,37 +265,76 @@ function WaConvCard({ conv, onPromoted }: { conv: WaSolicitud; onPromoted: (id: 
   )
 }
 
+type WaSubTab = 'espera' | 'pipeline' | 'todos'
+
 export default function WaConversacionesSinFormulario({ convs }: { convs: WaSolicitud[] }) {
   const [filterEjecutivo, setFilterEjecutivo] = useState('')
-  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set())
+  const [subTab, setSubTab] = useState<WaSubTab>('espera')
+  const [showTodos, setShowTodos] = useState(false)
+  const [promotedIds, setPromotedIds] = useState<Map<string, string>>(new Map()) // id → lead_id ficticio para mover a pipeline tab
 
   function handlePromoted(id: string) {
-    setRemovedIds(prev => new Set([...prev, id]))
+    setPromotedIds(prev => new Map([...prev, [id, 'promoted']]))
   }
 
-  const activeConvs = convs.filter(c => !removedIds.has(c.id))
+  // Enriquecer convs con promociones locales
+  const enriched = convs.map(c => ({
+    ...c,
+    has_lead: (c.has_lead || promotedIds.has(c.id)) ? 1 : 0,
+  } as WaSolicitud))
 
-  // Ejecutivos únicos que tienen al menos una conversación
+  const sinLead = enriched.filter(c => !c.has_lead)
+  const conLead = enriched.filter(c => c.has_lead)
+
+  const baseList = subTab === 'espera' ? sinLead : subTab === 'pipeline' ? conLead : enriched
+
+  // Ejecutivos únicos en la lista actual
   const ejecutivosConConvs = Array.from(
     new Map(
-      activeConvs
-        .filter(c => c.assigned_name)
-        .map(c => [c.assigned_name!, c.assigned_name!])
+      baseList.filter(c => c.assigned_name).map(c => [c.assigned_name!, c.assigned_name!])
     ).entries()
   ).map(([name]) => name).sort()
 
-  const filtered = activeConvs
+  const filtered = baseList
     .filter(c => filterEjecutivo === '' || c.assigned_name === filterEjecutivo)
-    .sort((a, b) => {
-      const ta = new Date(a.last_msg_at || a.created_at).getTime()
-      const tb = new Date(b.last_msg_at || b.created_at).getTime()
-      return tb - ta
-    })
+    .sort((a, b) => new Date(b.last_msg_at || b.created_at).getTime() - new Date(a.last_msg_at || a.created_at).getTime())
+
+  function SubTabBtn({ value, label, count, color }: { value: WaSubTab; label: string; count: number; color: string }) {
+    const active = subTab === value
+    return (
+      <button
+        onClick={() => { setSubTab(value); setFilterEjecutivo('') }}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all border"
+        style={active
+          ? { background: color, color: 'white', borderColor: color }
+          : { background: 'transparent', color: '#6b7280', borderColor: '#e5e7eb' }}
+      >
+        {label}
+        <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none"
+          style={active ? { background: 'rgba(255,255,255,0.3)', color: 'white' } : { background: '#f3f4f6', color: '#374151' }}>
+          {count}
+        </span>
+      </button>
+    )
+  }
 
   return (
     <div className="space-y-3">
+      {/* Sub-tabs */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <SubTabBtn value="espera" label="Espera de datos" count={sinLead.length} color="#25D366" />
+        <SubTabBtn value="pipeline" label="Movidos al pipeline" count={conLead.length} color="#1e40af" />
+        <button
+          onClick={() => { setShowTodos(v => !v); if (!showTodos) setSubTab('todos'); else setSubTab('espera') }}
+          className="text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors ml-auto"
+          style={{ color: '#9ca3af', borderColor: '#e5e7eb', background: 'transparent' }}
+        >
+          Ver todo {enriched.length}
+        </button>
+      </div>
+
       {/* Filtro por ejecutivo */}
-      {ejecutivosConConvs.length > 0 && (
+      {ejecutivosConConvs.length > 1 && (
         <div className="flex gap-2 flex-wrap items-center pb-1">
           <span className="text-xs text-gray-400 font-medium flex items-center gap-1">
             <UserCheck className="w-3.5 h-3.5" />Ejecutivo:
@@ -304,23 +343,22 @@ export default function WaConversacionesSinFormulario({ convs }: { convs: WaSoli
             onClick={() => setFilterEjecutivo('')}
             className="text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors"
             style={filterEjecutivo === ''
-              ? { background: '#1e40af', color: 'white', borderColor: '#1e40af' }
-              : { background: '#eff6ff', color: '#1e40af', borderColor: '#bfdbfe' }}
+              ? { background: '#374151', color: 'white', borderColor: '#374151' }
+              : { background: '#f9fafb', color: '#6b7280', borderColor: '#e5e7eb' }}
           >
-            Todos <span className="ml-1 opacity-80">{activeConvs.length}</span>
+            Todos <span className="ml-1 opacity-80">{baseList.length}</span>
           </button>
           {ejecutivosConConvs.map(name => {
-            const count = convs.filter(c => c.assigned_name === name).length
+            const count = baseList.filter(c => c.assigned_name === name).length
             const isActive = filterEjecutivo === name
             const firstName = name.split(' ')[0]
             return (
-              <button
-                key={name}
+              <button key={name}
                 onClick={() => setFilterEjecutivo(isActive ? '' : name)}
                 className="text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors"
                 style={isActive
-                  ? { background: '#1e40af', color: 'white', borderColor: '#1e40af' }
-                  : { background: '#eff6ff', color: '#1e40af', borderColor: '#bfdbfe' }}
+                  ? { background: '#374151', color: 'white', borderColor: '#374151' }
+                  : { background: '#f9fafb', color: '#6b7280', borderColor: '#e5e7eb' }}
               >
                 {firstName} <span className="opacity-80">{count}</span>
               </button>
@@ -331,11 +369,10 @@ export default function WaConversacionesSinFormulario({ convs }: { convs: WaSoli
 
       {filtered.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
-          <p className="text-lg font-medium">Sin conversaciones WA pendientes</p>
-          <p className="text-sm mt-1">
-            {filterEjecutivo
-              ? `${filterEjecutivo} no tiene conversaciones activas.`
-              : 'Cuando llegue un contacto de WhatsApp sin formulario aparecerá aquí.'}
+          <p className="text-lg font-medium">
+            {subTab === 'espera' ? 'Sin conversaciones en espera de datos' :
+             subTab === 'pipeline' ? 'Ninguna conversación movida al pipeline aún' :
+             'Sin conversaciones WA'}
           </p>
         </div>
       ) : (

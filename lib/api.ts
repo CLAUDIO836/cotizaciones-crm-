@@ -236,6 +236,9 @@ export interface WaSolicitud {
   contact_email: string | null
   contact_phone: string | null
   assigned_name: string | null
+  has_lead: 0 | 1
+  lead_status: string | null
+  lead_id: string | null
 }
 
 export async function fetchWaSolicitudes(): Promise<WaSolicitud[]> {
