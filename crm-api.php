@@ -3289,28 +3289,30 @@ if ($action === 'cruce_solicitudes_vs_negocios') {
     try {
         $wa_match = $pdo->query("
             SELECT
-                wc.id                           AS conv_id,
-                wc.phone                        AS wa_phone,
-                COALESCE(wc.contact_name,'')    AS wa_nombre,
-                COALESCE(wc.contact_email,'')   AS wa_email,
-                COALESCE(wc.contact_rut,'')     AS wa_rut,
-                wc.stage                        AS wa_stage,
-                wc.last_msg_at                  AS wa_ultima,
-                cl.id                           AS client_id,
-                cl.name                         AS client_name,
-                COALESCE(cl.rut,'')             AS client_rut,
-                COALESCE(cl.phone,'')           AS client_phone,
-                COALESCE(cl.email,'')           AS client_email
+                wc.id                                                        AS conv_id,
+                wc.phone                                                     AS wa_phone,
+                COALESCE(wc.contact_name  COLLATE utf8mb4_general_ci,'')    AS wa_nombre,
+                COALESCE(wc.contact_email COLLATE utf8mb4_general_ci,'')    AS wa_email,
+                COALESCE(wc.contact_rut   COLLATE utf8mb4_general_ci,'')    AS wa_rut,
+                wc.stage                                                     AS wa_stage,
+                wc.last_msg_at                                               AS wa_ultima,
+                cl.id                                                        AS client_id,
+                cl.name                                                      AS client_name,
+                COALESCE(cl.rut,'')                                          AS client_rut,
+                COALESCE(cl.phone,'')                                        AS client_phone,
+                COALESCE(cl.email,'')                                        AS client_email
             FROM wa_cloud_conversations wc
             JOIN clients cl ON (
                 (COALESCE(cl.phone,'') != ''
                  AND REPLACE(REPLACE(wc.phone,'+',''),' ','') = REPLACE(REPLACE(cl.phone,'+',''),' ',''))
-                OR (COALESCE(wc.contact_email,'') != '' AND COALESCE(cl.email,'') != ''
-                    AND LOWER(wc.contact_email) = LOWER(cl.email))
-                OR (COALESCE(wc.contact_rut,'') != '' AND COALESCE(cl.rut,'') != ''
-                    AND REPLACE(REPLACE(wc.contact_rut,'.',''),'-','') = REPLACE(REPLACE(cl.rut,'.',''),'-',''))
-                OR (COALESCE(wc.contact_name,'') != ''
-                    AND LOWER(wc.contact_name) = LOWER(cl.name))
+                OR (COALESCE(wc.contact_email COLLATE utf8mb4_general_ci,'') != ''
+                    AND COALESCE(cl.email,'') != ''
+                    AND LOWER(wc.contact_email COLLATE utf8mb4_general_ci) = LOWER(cl.email))
+                OR (COALESCE(wc.contact_rut COLLATE utf8mb4_general_ci,'') != ''
+                    AND COALESCE(cl.rut,'') != ''
+                    AND REPLACE(REPLACE(wc.contact_rut COLLATE utf8mb4_general_ci,'.',''),'-','') = REPLACE(REPLACE(cl.rut,'.',''),'-',''))
+                OR (COALESCE(wc.contact_name COLLATE utf8mb4_general_ci,'') != ''
+                    AND LOWER(wc.contact_name COLLATE utf8mb4_general_ci) = LOWER(cl.name))
             )
             WHERE wc.stage NOT IN ('ganado','perdido','spam')
               AND wc.last_msg_at >= NOW() - INTERVAL 60 DAY
