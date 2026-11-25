@@ -468,7 +468,7 @@ export default function LeadRequestsPanel({
   leads: Lead[]
   sellers: Seller[]
 }) {
-  const [filterStatus,  setFilterStatus]  = useState('')
+  const [filterStatus,  setFilterStatus]  = useState('pendiente')
   const [filterCompany, setFilterCompany] = useState('')
 
   const companyFiltered = leads.filter(l =>
@@ -529,8 +529,14 @@ export default function LeadRequestsPanel({
       {/* Lista */}
       {filtered.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
-          <p className="text-lg font-medium">Sin solicitudes</p>
-          <p className="text-sm mt-1">Cuando llegue una solicitud desde el formulario público aparecerá aquí.</p>
+          <p className="text-lg font-medium">
+            {filterStatus === 'pendiente' ? '¡Todo al día!' : 'Sin solicitudes en este estado'}
+          </p>
+          <p className="text-sm mt-1">
+            {filterStatus === 'pendiente'
+              ? 'No hay solicitudes pendientes por atender.'
+              : 'Usa el botón "Todos" para ver el pipeline completo.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
