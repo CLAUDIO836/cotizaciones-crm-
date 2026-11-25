@@ -182,8 +182,8 @@ function StatusIcon({ status, direction }: { status: string; direction: 'in' | '
   if (direction !== 'out') return null
   if (status === 'read')      return <span style={{ color: '#34b7f1', fontSize: 11, marginLeft: 3 }}>✓✓</span>
   if (status === 'delivered') return <span style={{ color: '#aaa',    fontSize: 11, marginLeft: 3 }}>✓✓</span>
-  if (status === 'sent')      return <span style={{ color: '#aaa',    fontSize: 11, marginLeft: 3 }}>✓</span>
-  return null
+  // 'sent', 'received' (default DB), o cualquier otro = al menos un check
+  return <span style={{ color: '#aaa', fontSize: 11, marginLeft: 3 }}>✓</span>
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
