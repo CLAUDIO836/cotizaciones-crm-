@@ -3290,9 +3290,9 @@ if ($action === 'cruce_solicitudes_vs_negocios') {
             SELECT
                 wc.id                                                        AS conv_id,
                 wc.phone                                                     AS wa_phone,
-                COALESCE(wc.contact_name  COLLATE utf8mb4_general_ci,'')    AS wa_nombre,
-                COALESCE(wc.contact_email COLLATE utf8mb4_general_ci,'')    AS wa_email,
-                COALESCE(wc.contact_rut   COLLATE utf8mb4_general_ci,'')    AS wa_rut,
+                COALESCE(CONVERT(wc.contact_name  USING utf8mb4),'')         AS wa_nombre,
+                COALESCE(CONVERT(wc.contact_email USING utf8mb4),'')        AS wa_email,
+                COALESCE(CONVERT(wc.contact_rut   USING utf8mb4),'')        AS wa_rut,
                 wc.stage                                                     AS wa_stage,
                 wc.last_msg_at                                               AS wa_ultima,
                 cl.id                                                        AS client_id,
@@ -3304,14 +3304,14 @@ if ($action === 'cruce_solicitudes_vs_negocios') {
             JOIN clients cl ON (
                 (COALESCE(cl.phone,'') != ''
                  AND REPLACE(REPLACE(wc.phone,'+',''),' ','') = REPLACE(REPLACE(cl.phone,'+',''),' ',''))
-                OR (COALESCE(wc.contact_email COLLATE utf8mb4_general_ci,'') != ''
+                OR (COALESCE(CONVERT(wc.contact_email USING utf8mb4),'') != ''
                     AND COALESCE(cl.email,'') != ''
-                    AND LOWER(wc.contact_email COLLATE utf8mb4_general_ci) = LOWER(cl.email))
-                OR (COALESCE(wc.contact_rut COLLATE utf8mb4_general_ci,'') != ''
+                    AND LOWER(CONVERT(wc.contact_email USING utf8mb4)) = LOWER(CONVERT(cl.email USING utf8mb4)))
+                OR (COALESCE(CONVERT(wc.contact_rut USING utf8mb4),'') != ''
                     AND COALESCE(cl.rut,'') != ''
-                    AND REPLACE(REPLACE(wc.contact_rut COLLATE utf8mb4_general_ci,'.',''),'-','') = REPLACE(REPLACE(cl.rut,'.',''),'-',''))
-                OR (COALESCE(wc.contact_name COLLATE utf8mb4_general_ci,'') != ''
-                    AND LOWER(wc.contact_name COLLATE utf8mb4_general_ci) = LOWER(cl.name))
+                    AND REPLACE(REPLACE(CONVERT(wc.contact_rut USING utf8mb4),'.',''),'-','') = REPLACE(REPLACE(CONVERT(cl.rut USING utf8mb4),'.',''),'-',''))
+                OR (COALESCE(CONVERT(wc.contact_name USING utf8mb4),'') != ''
+                    AND LOWER(CONVERT(wc.contact_name USING utf8mb4)) = LOWER(CONVERT(cl.name USING utf8mb4)))
             )
             WHERE wc.stage NOT IN ('spam')
             ORDER BY wc.last_msg_at DESC
