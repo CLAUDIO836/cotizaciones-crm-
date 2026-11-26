@@ -16,13 +16,14 @@ interface EmailRecord {
 }
 
 interface EmailTemplate {
-  id?:        string
-  label:      string
-  subject:    string
-  body:       string
-  scope?:     'team' | 'personal'
-  created_by?: string
-  isOfficial?: boolean
+  id?:          string
+  label:        string
+  subject:      string
+  body:         string
+  scope?:       'team' | 'personal'
+  created_by?:  string
+  isOfficial?:  boolean
+  isSeguimiento?: boolean
 }
 
 const DEFAULT_TEMPLATES: EmailTemplate[] = [
@@ -33,9 +34,10 @@ const DEFAULT_TEMPLATES: EmailTemplate[] = [
     isOfficial: true,
   },
   {
-    label:   '🔁 Seguimiento de propuesta',
-    subject: 'Seguimiento cotización TransCCL',
-    body:    'Estimado/a {{nombre}},\n\nQuisiera consultar si ha tenido la oportunidad de revisar nuestra propuesta. Estamos disponibles para resolver cualquier duda o coordinar una reunión si lo prefiere.\n\n¿Tiene alguna consulta sobre la cotización?\n\nSaludos cordiales,',
+    label:          '🔁 Seguimiento de propuesta',
+    subject:        'Seguimiento cotización TransCCL',
+    body:           '',
+    isSeguimiento:  true,
   },
   {
     label:   '✅ Confirmación de servicio',
@@ -278,6 +280,7 @@ export default function EmailsPanel({
   const [officialMsg,      setOfficialMsg]      = useState('')
   const [htmlPreview,      setHtmlPreview]      = useState<string | null>(null)
   const [previewLoading,   setPreviewLoading]   = useState(false)
+  const [isSeguimientoMode, setIsSeguimientoMode] = useState(false)
   const [syncing,          setSyncing]          = useState(false)
   const [syncMsg,          setSyncMsg]          = useState('')
   const [expanded,         setExpanded]         = useState<string | null>(null)
@@ -411,14 +414,18 @@ export default function EmailsPanel({
 
   async function applyTemplate(tpl: EmailTemplate) {
     setTplOpen(false)
-    if (tpl.isOfficial) {
+    if (tpl.isOfficial || tpl.isSeguimiento) {
       setHtmlPreview(null)
       setSubject('')
       setBody('')
       setComposing(true)
       setPreviewLoading(true)
+      setIsSeguimientoMode(!!tpl.isSeguimiento)
+      const endpoint = tpl.isSeguimiento
+        ? `/api/quotations/${quotationId}/preview-seguimiento`
+        : `/api/quotations/${quotationId}/preview-email`
       try {
-        const r = await fetch(`/api/quotations/${quotationId}/preview-email`)
+        const r = await fetch(endpoint)
         const d = await r.json()
         if (!r.ok) throw new Error(d.error ?? 'Error al cargar preview')
         setTo(d.to || clientEmail)
@@ -435,6 +442,7 @@ export default function EmailsPanel({
     setSubject(tpl.subject)
     setBody(tpl.body.replace(/\{\{nombre\}\}/g, nombre))
     setHtmlPreview(null)
+    setIsSeguimientoMode(false)
     setComposing(true)
   }
 
@@ -455,6 +463,34 @@ export default function EmailsPanel({
   }
 
   async function handleSend() {
+    // Modo seguimiento: envía el HTML via compose-email (sin PDF adjunto)
+    if (htmlPreview && isSeguimientoMode) {
+      if (!to.trim()) { setError('El cliente no tiene email registrado'); return }
+      setSending(true)
+      setError('')
+      try {
+        const prevThread = emails.find(e => e.to_email === to.trim())?.gmail_thread_id
+        const r = await fetch(`/api/quotations/${quotationId}/compose-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: to.trim(), subject: subject.trim(), html: htmlPreview, thread_id: prevThread, attachPdf: false }),
+        })
+        const d = await r.json()
+        if (!r.ok) throw new Error(d.error ?? 'Error al enviar')
+        setComposing(false)
+        setHtmlPreview(null)
+        setIsSeguimientoMode(false)
+        setTo(clientEmail)
+        setSubject('')
+        await load()
+      } catch (e) {
+        setError(String(e))
+      } finally {
+        setSending(false)
+      }
+      return
+    }
+
     // Modo plantilla oficial: llama a send-email (mismo flujo que el botón azul)
     if (htmlPreview) {
       setSending(true)
@@ -548,7 +584,7 @@ export default function EmailsPanel({
             size="sm"
             className="text-xs h-7 px-3 text-white"
             style={{ background: '#1B8A4B' }}
-            onClick={() => { if (composing) { setComposing(false); setHtmlPreview(null) } else openCompose() }}
+            onClick={() => { if (composing) { setComposing(false); setHtmlPreview(null); setIsSeguimientoMode(false) } else openCompose() }}
           >
             {composing ? <X className="w-3 h-3 mr-1" /> : <Plus className="w-3 h-3 mr-1" />}
             {composing ? 'Cancelar' : 'Nuevo correo'}
@@ -602,7 +638,11 @@ export default function EmailsPanel({
                         )}
                       </div>
                       <p className="text-xs text-gray-400 truncate mt-0.5">
-                        {tpl.isOfficial ? 'Plantilla branded TransCCL con link de aprobación y PDF' : tpl.subject}
+                        {tpl.isOfficial
+                          ? 'Plantilla branded TransCCL con link de aprobación y PDF'
+                          : tpl.isSeguimiento
+                            ? 'Plantilla corporativa TransCCL con videos y botón de cotización'
+                            : tpl.subject}
                       </p>
                     </button>
                   ))}
