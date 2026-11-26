@@ -38,8 +38,9 @@ function pdo(): PDO {
     return $pdo;
 }
 
-function sendTemplate(string $phone, string $nombre): bool {
-    if (!_WA_TOKEN || !_WA_PHONE) return false;
+// Retorna wamid en éxito, null en fallo
+function sendTemplate(string $phone, string $nombre): ?string {
+    if (!_WA_TOKEN || !_WA_PHONE) return null;
 
     $firstName = $nombre ? explode(' ', trim($nombre))[0] : 'hola';
 
@@ -86,9 +87,10 @@ function sendTemplate(string $phone, string $nombre): bool {
 
     if ($status >= 400) {
         error_log('[reactivacion_cron] WA error ' . $status . ': ' . substr($resp, 0, 300));
-        return false;
+        return null;
     }
-    return true;
+    $data = json_decode($resp, true);
+    return $data['messages'][0]['id'] ?? null;
 }
 
 try {
@@ -110,15 +112,27 @@ try {
 
     $sent = 0; $fail = 0;
     foreach ($rows->fetchAll() as $row) {
-        $ok = sendTemplate($row['phone'], $row['contact_name'] ?? '');
+        $wamid = sendTemplate($row['phone'], $row['contact_name'] ?? '');
 
-        if ($ok) {
+        if ($wamid) {
             pdo()->prepare(
                 "UPDATE wa_cloud_conversations
                  SET reactivacion_at = NOW(), last_msg_at = NOW()
                  WHERE id = ?"
             )->execute([$row['id']]);
-            error_log("[reactivacion_cron] SENT phone={$row['phone']}");
+
+            // Guardar mensaje saliente con wamid real para que delivery receipts funcionen
+            try {
+                pdo()->prepare(
+                    "INSERT IGNORE INTO wa_cloud_messages
+                     (id, conversation_id, wamid, direction, msg_type, content, status, sender_type, created_at)
+                     VALUES (UUID(), ?, ?, 'out', 'template', 'template:reactivacion', 'sent', 'bot', NOW())"
+                )->execute([$row['id'], $wamid]);
+            } catch (Throwable $e) {
+                error_log("[reactivacion_cron] DB_ERR wamid={$wamid}: " . $e->getMessage());
+            }
+
+            error_log("[reactivacion_cron] SENT phone={$row['phone']} wamid={$wamid}");
             $sent++;
         } else {
             $fail++;

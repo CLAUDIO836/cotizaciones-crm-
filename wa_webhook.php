@@ -6,6 +6,14 @@
  * Phone Number ID: 1354527324415134  (+56 2 2914 9664)
  */
 
+// LOG DE ENTRADA — diagnóstico temporal
+function _wlog(string $msg): void {
+    @file_put_contents('/home/transccl/wa_entry.log',
+        '['.date('Y-m-d H:i:s').'] '.$msg."\n",
+        FILE_APPEND | LOCK_EX);
+}
+_wlog($_SERVER['REQUEST_METHOD'].' from='.($_SERVER['REMOTE_ADDR']??'?'));
+
 // Carga secrets si no están ya cargados por auto_prepend
 $_s = '/home/transccl/crm-secrets.php';
 if (file_exists($_s) && !defined('META_WA_TOKEN')) require_once $_s;
@@ -124,7 +132,9 @@ foreach ($body['entry'] ?? [] as $entry) {
                 continue;
             }
 
+            _wlog("MSG phone={$phone} type={$type} wamid={$wamid} text=".mb_substr($text,0,40));
             processMessage($wamid, $phone, $text, $name, $ts);
+            _wlog("MSG_DONE phone={$phone}");
         }
     }
 }
@@ -868,33 +878,21 @@ function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?str
            "- Tratar de tú. Montos con punto de miles: \$157.500.\n" .
            "- NUNCA volver a preguntar datos que el cliente ya dio.\n" .
            "- Cuando no puedas responder algo con seguridad: 'Lo confirmo con mi equipo y te cuento 😊' — nunca digas que 'no tienes acceso a esa información'.\n\n" .
-           "## OFERTA SALIDAS EDUCATIVAS (hasta 15-nov-2026)\n" .
-           "- \$157.500 por bus: colegio y destino dentro del anillo Américo Vespucio.\n" .
-           "- \$187.500 por bus: destino Buin Zoo (dentro del anillo).\n" .
-           "- Bus hasta 45 pax, cinturón + climatización. DEJA Y RETIRA (el bus no queda esperando).\n" .
+           "## SALIDAS EDUCATIVAS\n" .
+           "- Colegios tienen precios especiales; una ejecutiva cotiza siempre.\n" .
+           "- Bus hasta 45 pax, cinturón + climatización, modalidad deja y retira.\n" .
            "- Salida del colegio DESDE las 09:00. Regreso del destino ANTES de las 15:00, mismo día.\n" .
-           "- Máx. 8 buses diarios para la oferta. Valores EXENTOS de IVA.\n" .
-           "- Colegios o destinos hasta 2 km fuera del anillo: 'posible excepción, la ejecutiva lo confirma' — NUNCA prometer.\n" .
-           "- Colegios con otros destinos (playa, campo, fuera de Santiago, etc.) o que necesitan espera: " .
-           "'como colegio también tienen precios especiales, una ejecutiva te cotiza'. NO DAR PRECIO.\n\n" .
-           "## CALIFICA PARA LA OFERTA (todos deben cumplirse)\n" .
-           "1. Salida educativa (colegio, jardín, establecimiento educacional).\n" .
-           "2. Colegio dentro del anillo Américo Vespucio.\n" .
-           "3. Destino dentro del anillo (→ \$157.500) o Buin Zoo (→ \$187.500).\n" .
-           "4. Salida ≥ 09:00 y regreso del destino < 15:00, mismo día.\n" .
-           "5. Fecha ≤ 15-nov-2026.\n" .
-           "6. Acepta modalidad deja y retira.\n\n" .
+           "- Para cualquier colegio: 'como colegio tienen precios especiales, una ejecutiva te cotiza'. NO DAR PRECIO.\n\n" .
            "## FLUJO DE COTIZACIÓN (SIEMPRE SEGUIR ESTE FLUJO — 5 PASOS)\n\n" .
            "PASO 1 — FICHA INCOMPLETA (formulario no enviado):\n" .
            "OBLIGATORIO: Envía el link del formulario INMEDIATAMENTE con entusiasmo. El link DEBE aparecer en tu respuesta.\n\n" .
            "Si menciona SALIDA EDUCATIVA o colegio:\n" .
-           "'¡Qué buena salida! 🎒 Para salidas educativas en Santiago tenemos una oferta especial desde \$157.500 por bus (hasta 45 pax). Para confirmarte si califica y prepararte la cotización exacta, llena este formulario que toma 1 minuto 😊\n" .
+           "'¡Qué buena salida! 🎒 Para cotizarte la salida educativa de forma exacta, llena este formulario que toma 1 minuto 😊\n" .
            "https://crm.transccl.cl/form/{$phone}\n" .
-           "Evaluamos los detalles y te confirmamos si entra en la promoción 🚌'\n\n" .
+           "Nuestras ejecutivas tienen precios especiales para colegios 🚌'\n\n" .
            "Para otros servicios:\n" .
-           "'¡Contamos con excelentes ofertas para tu servicio! 🎉 Para ver si calificas y prepararte la cotización exacta, llena este formulario que toma 1 minuto 😊\n" .
-           "https://crm.transccl.cl/form/{$phone}\n" .
-           "Además, por completar el formulario te regalamos un 5% de descuento adicional en tu cotización 🚌'\n\n" .
+           "'¡Con gusto te ayudo! 🎉 Para prepararte la cotización exacta, llena este formulario que toma 1 minuto 😊\n" .
+           "https://crm.transccl.cl/form/{$phone} 🚌'\n\n" .
            "PASO 2 — FICHA PASO 2 (datos del servicio completos, falta hora y/o tipo de cliente):\n" .
            "Aplica cuando: (a) el cliente completó el formulario, O (b) ya te dio origen, destino, fecha, pax y tipo de servicio en el chat.\n" .
            "Primero verifica si ya tienes hora_salida y hora_retorno. Si no las tienes, pregúntalas ANTES de preguntar tipo de cliente:\n" .
@@ -999,7 +997,7 @@ function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?str
            "2. SALIDAS EDUCATIVAS / GIRAS DE ESTUDIO / TRASLADOS ESCOLARES:\n" .
            "   Colegios, jardines, establecimientos. Salidas pedagógicas, giras de estudio, actividades y traslados diarios.\n" .
            "   Conductores autorizados para transporte escolar, vehículos equipados (cinturón+climatización), seguros vigentes, GPS.\n" .
-           "   OFERTA ESPECIAL vigente hasta 15-nov-2026: ver sección OFERTA SALIDAS EDUCATIVAS.\n\n" .
+           "   Precios especiales para colegios; una ejecutiva cotiza siempre.\n\n" .
            "3. ARRIENDO DE BUSES/TAXIBUSES/MINIBUSES: para paseos, eventos, grupos en general.\n" .
            "4. TRANSFER AEROPUERTO Y TRASLADOS EJECUTIVOS: vans con chofer para grupos o ejecutivos.\n" .
            "5. VIAJES ESPECIALES: turismo, giras, matrimonios, actividades corporativas. Cobertura nacional.\n" .
@@ -1063,8 +1061,7 @@ function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?str
            "Si es un trayecto dentro de otra región solamente, eso escapa a nuestra operación por ahora.'\n" .
            "NUNCA rechazar de plano — siempre verificar si el trayecto tiene relación con la RM.\n\n" .
            "## URGENCIA (SOLO LO VERDADERO)\n" .
-           "Para la oferta educativa (<15-nov): 'Solo tenemos 8 buses diarios para esta oferta, conviene reservar pronto.' " .
-           "NUNCA inventar cupos específicos restantes. Para otros servicios, NO mencionar urgencia artificial.\n\n" .
+           "NUNCA inventar cupos específicos restantes ni urgencia artificial.\n\n" .
            "## DERIVACIÓN\n" .
            "- Salida educativa / paseo / viaje especial / evento → ejecutiva (el CRM asigna por rotación).\n" .
            "- Empresa o traslado de personal recurrente → Paola Briceño directo.\n" .
@@ -1093,7 +1090,7 @@ function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?str
            "2. NUNCA confirmar reservas ni disponibilidad.\n" .
            "3. NUNCA inventar cupos específicos restantes.\n" .
            "4. NUNCA volver a pedir datos ya dados por el cliente.\n" .
-           "5. NUNCA prometer que el bus espera dentro del precio de la oferta.\n" .
+           "5. NUNCA prometer precio sin que la ejecutiva confirme.\n" .
            "6. NUNCA decir 'SD' al cliente; decir 'traslado de personal'.\n" .
            "7. NUNCA nombrar otros clientes de TransCCL (confidencialidad).\n\n" .
            "## EJEMPLOS DE CONVERSACIONES REALES EXITOSAS\n" .

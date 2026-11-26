@@ -81,8 +81,8 @@ function pdo(): PDO {
     return $pdo;
 }
 
-function sendText(string $phone, string $text): bool {
-    if (!_WA_TOKEN || !_WA_PHONE) return false;
+function sendText(string $phone, string $text): ?string {
+    if (!_WA_TOKEN || !_WA_PHONE) return null;
     $payload = [
         'messaging_product' => 'whatsapp',
         'to'                => $phone,
@@ -92,8 +92,8 @@ function sendText(string $phone, string $text): bool {
     return waPost($payload);
 }
 
-function sendImage(string $phone, string $url, string $caption): bool {
-    if (!_WA_TOKEN || !_WA_PHONE) return false;
+function sendImage(string $phone, string $url, string $caption): ?string {
+    if (!_WA_TOKEN || !_WA_PHONE) return null;
     $img = ['link' => $url];
     if ($caption !== '') $img['caption'] = $caption;
     $payload = [
@@ -105,7 +105,8 @@ function sendImage(string $phone, string $url, string $caption): bool {
     return waPost($payload);
 }
 
-function waPost(array $payload): bool {
+// Retorna wamid en éxito, null en fallo
+function waPost(array $payload): ?string {
     $ch = curl_init("https://graph.facebook.com/v21.0/" . _WA_PHONE . "/messages");
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
@@ -122,13 +123,14 @@ function waPost(array $payload): bool {
     curl_close($ch);
     if ($status >= 400) {
         error_log('[followup_cron] WA error ' . $status . ': ' . substr($resp, 0, 200));
-        return false;
+        return null;
     }
-    return true;
+    $data = json_decode($resp, true);
+    return $data['messages'][0]['id'] ?? null;
 }
 
 function fill(string $tpl, string $phone, ?string $nombre): string {
-    $n = $nombre ? explode(' ', trim($nombre))[0] : 'amig@';
+    $n = $nombre ? explode(' ', trim($nombre))[0] : 'amigo';
     return str_replace(['{nombre}', '{phone}'], [$n, $phone], $tpl);
 }
 
@@ -176,22 +178,34 @@ try {
 
         $phone  = $row['phone'];
         $nombre = $row['contact_name'];
-        $sent   = false;
+        $wamid   = null;
+        $content = '';
 
         if ($step['type'] === 'text') {
-            $msg  = fill($step['msg'], $phone, $nombre);
-            $sent = sendText($phone, $msg);
+            $content = fill($step['msg'], $phone, $nombre);
+            $wamid   = sendText($phone, $content);
         } elseif ($step['type'] === 'image') {
-            $cap  = fill($step['caption'], $phone, $nombre);
-            $sent = sendImage($phone, $step['url'], $cap);
+            $content = fill($step['caption'], $phone, $nombre);
+            $wamid   = sendImage($phone, $step['url'], $content);
         }
 
-        if (!$sent) {
+        if (!$wamid) {
             error_log("[followup_cron] FAIL phone={$phone} step={$count}");
             continue;
         }
 
-        error_log("[followup_cron] SENT phone={$phone} step={$count} mins={$mins}");
+        // Guardar mensaje saliente con wamid real para que delivery receipts funcionen
+        try {
+            pdo()->prepare(
+                "INSERT IGNORE INTO wa_cloud_messages
+                 (id, conversation_id, wamid, direction, msg_type, content, status, sender_type, created_at)
+                 VALUES (UUID(), ?, ?, 'out', ?, ?, 'sent', 'bot', NOW())"
+            )->execute([$row['id'], $wamid, $step['type'], mb_substr($content, 0, 500)]);
+        } catch (Throwable $e) {
+            error_log("[followup_cron] DB_ERR wamid={$wamid}: " . $e->getMessage());
+        }
+
+        error_log("[followup_cron] SENT phone={$phone} step={$count} mins={$mins} wamid={$wamid}");
 
         // Actualizar contador, timestamp y cerrar si corresponde
         $updates = ['followup_count = followup_count + 1', 'last_followup_at = NOW()'];
