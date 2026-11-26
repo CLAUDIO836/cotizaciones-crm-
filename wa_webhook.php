@@ -45,10 +45,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// ── Bifurcación staging: teléfonos autorizados van a wa_webhook_stg.php ───────
-define('STG_TEST_PHONES', []);
-// Token de autenticación para wa_webhook_stg.php (mismo que E2E_STAGING_TOKEN)
-define('_STG_FWD_TOKEN', '70eb01dd57fbf935a94499f5a32997f2088460da781ae58aa675fe12bb1dd7e0');
+// ── Bifurcación staging desactivada en producción ────────────────────────────
+// NOTA: STG_TEST_PHONES puede venir definida en crm-secrets.php; usamos variable local para forzar vacío.
+$_stgPhones = [];
+if (!defined('_STG_FWD_TOKEN')) define('_STG_FWD_TOKEN', '');
 
 $body = json_decode(file_get_contents('php://input'), true) ?? [];
 
@@ -118,11 +118,8 @@ foreach ($body['entry'] ?? [] as $entry) {
                 }
             }
 
-            // Bifurcación: si es teléfono de prueba staging, reenviar y no procesar en producción
-            if (STG_TEST_PHONES && in_array($phone, STG_TEST_PHONES)) {
-                file_put_contents('/home/transccl/logs/wa_stg_forward.log',
-                    '[' . date('Y-m-d H:i:s') . '] BIFURC_MATCH phone=' . $phone . ' wamid=' . $wamid . "\n",
-                    FILE_APPEND | LOCK_EX);
+            // Bifurcación staging desactivada; $_stgPhones siempre vacío en producción
+            if ($_stgPhones && in_array($phone, $_stgPhones)) {
                 stgForward($body);
                 continue;
             }
