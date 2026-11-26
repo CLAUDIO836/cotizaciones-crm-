@@ -188,20 +188,28 @@ function StatusIcon({ status, direction }: { status: string; direction: 'in' | '
   return <span style={{ color: '#aaa', fontSize: 11, marginLeft: 3 }}>✓</span>
 }
 
-// ── Notification sound ────────────────────────────────────────────────────────
+// ── Notification sound (WhatsApp-style two-note chime) ───────────────────────
 function playNotifSound() {
   try {
     const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.frequency.setValueAtTime(880, ctx.currentTime)
-    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.15)
-    gain.gain.setValueAtTime(0.3, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
-    osc.start(ctx.currentTime)
-    osc.stop(ctx.currentTime + 0.4)
+
+    function playNote(freq: number, start: number, duration: number) {
+      const osc  = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + start)
+      gain.gain.setValueAtTime(0, ctx.currentTime + start)
+      gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + start + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration)
+      osc.start(ctx.currentTime + start)
+      osc.stop(ctx.currentTime + start + duration)
+    }
+
+    // Dos notas: Mi5 (659Hz) → Sol#5 (830Hz), parecido al ding de WhatsApp
+    playNote(659, 0,    0.18)
+    playNote(830, 0.18, 0.28)
   } catch { /* ignore if blocked */ }
 }
 

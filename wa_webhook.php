@@ -236,6 +236,7 @@ function ensureTables(): void {
         "ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour TIME NULL",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN service_hour_return TIME NULL",
         "ALTER TABLE wa_cloud_conversations ADD COLUMN utm_source VARCHAR(30) NULL",
+        "ALTER TABLE wa_cloud_conversations ADD COLUMN reactivacion_at DATETIME NULL",
     ] as $sql) {
         try { $pdo->exec($sql); } catch (PDOException $e) {
             if ($e->getCode() !== '42S21') throw $e;
@@ -279,8 +280,7 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         if ($conv) {
             $convId    = $conv['id'];
             $botActive = (bool)(int)$conv['bot_active'];
-            $pdo->prepare("UPDATE wa_cloud_conversations SET last_msg_at = NOW(), last_message = ?, contact_name = COALESCE(?, contact_name), utm_source = COALESCE(utm_source, ?) WHERE id = ?")
-                ->execute([mb_substr($text, 0, 500), $name ?: null, $msgOrigin, $convId]);
+            // last_msg_at se actualiza SOLO si el mensaje es nuevo (ver más abajo tras INSERT IGNORE)
         } else {
             $convId    = dbUuid();
             $botActive = true;
@@ -301,11 +301,13 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         $isNew = $stmt->rowCount() > 0;
 
         if ($isNew) {
-            $pdo->prepare("UPDATE wa_cloud_conversations SET last_customer_msg_at = NOW(), unread_count = unread_count + 1 WHERE id = ?")
-                ->execute([$convId]);
+            // Actualizar conversación solo cuando el mensaje es genuinamente nuevo
+            $pdo->prepare("UPDATE wa_cloud_conversations SET last_msg_at = NOW(), last_message = ?, contact_name = COALESCE(?, contact_name), utm_source = COALESCE(utm_source, ?), last_customer_msg_at = NOW(), unread_count = unread_count + 1 WHERE id = ?")
+                ->execute([mb_substr($text, 0, 500), $name ?: null, $msgOrigin, $convId]);
+        } else {
+            error_log("[wa_webhook] SKIP dup wamid={$wamid} phone={$phone}");
+            return;
         }
-
-        if (!$isNew) { error_log("[wa_webhook] SKIP dup wamid={$wamid} phone={$phone}"); return; }
 
         // ── Quick reply "No me interesa" del template de reactivación ────────────
         // Se procesa ANTES del guard de handoff: aunque una ejecutiva tenga el control,
