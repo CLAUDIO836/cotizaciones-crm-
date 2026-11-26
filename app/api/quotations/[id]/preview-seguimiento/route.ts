@@ -6,7 +6,7 @@ import path from 'path'
 const CRM_API = (process.env.CRM_API_URL ?? 'https://www.transccl.cl/crm-api.php').replace('://transccl.cl', '://www.transccl.cl')
 
 const LOGO_URL       = 'https://crm.transccl.cl/logo-transccl.png'
-const BUS_IMG_URL    = 'https://www.transccl.cl/wa_cotizacion.webp'
+const BUS_IMG_URL    = 'https://www.transccl.cl/img/bus-email.jpg'
 
 function formatPhone(raw: string): string {
   const digits = raw.replace(/[^0-9]/g, '')
