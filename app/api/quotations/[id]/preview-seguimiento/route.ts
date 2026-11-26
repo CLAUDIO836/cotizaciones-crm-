@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getToken } from '@/lib/api'
+import { getToken, fetchPipelines } from '@/lib/api'
 import fs from 'fs'
 import path from 'path'
 
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? req.nextUrl.origin
 
   try {
-    // 1. Carta (URL de cotización para el cliente)
+    // 1. Carta (URL de cotización para el cliente) — misma lógica que preview-email
     const lettersRes = await fetch(
       `${CRM_API}?action=letters_by_quotation&quotation_id=${encodeURIComponent(quotationId)}&token=${encodeURIComponent(token)}`,
       { cache: 'no-store' }
@@ -47,6 +47,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     // 2. Datos del vendedor
+
     const gtRes = await fetch(
       `${CRM_API}?action=quotation_vendor_gmail_token&quotation_id=${encodeURIComponent(quotationId)}&token=${encodeURIComponent(token)}`,
       { cache: 'no-store' }
@@ -83,8 +84,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Plantilla de seguimiento no encontrada en lib/email-templates/seguimiento.html' }, { status: 500 })
     }
 
-    // 5. Reemplazar placeholders
-    const cotizacionUrl = cartaUrl ?? `${baseUrl}/cotizaciones/${quotationId}`
+    // 5. Determinar URL del botón (misma lógica que preview-email)
+    const cartaToken = letters.length > 0 ? (letters[0] as Record<string, string>).token : (cartaUrl?.split('/firmar/')[1] ?? '')
+    const pipelines = await fetchPipelines()
+    const pipeline = pipelines.find(p => p.id === String(q.pipeline_id ?? '')) ?? null
+    const pipelineName = ((pipeline?.name ?? q.pipeline_name ?? '') as string).toLowerCase()
+    const isDiario = pipelineName.includes('diario')
+
+    let cotizacionUrl: string
+    if (isDiario) {
+      cotizacionUrl = cartaToken
+        ? `${baseUrl}/api/cotizaciones/${quotationId}/propuesta?token=${cartaToken}`
+        : `${baseUrl}/api/cotizaciones/${quotationId}/propuesta`
+    } else {
+      cotizacionUrl = cartaUrl ?? `${baseUrl}/cotizaciones/${quotationId}`
+    }
+
+    // 6. Reemplazar placeholders
     const firstName = clientName ? clientName.split(' ')[0] : 'Cliente'
 
     html = html
