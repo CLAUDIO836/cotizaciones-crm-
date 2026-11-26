@@ -693,6 +693,7 @@ export default function EmailsPanel({
                     className="w-full"
                     style={{ height: 383, border: 'none', display: 'block' }}
                     title="Preview correo"
+                    sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
                   />
                 </div>
 
