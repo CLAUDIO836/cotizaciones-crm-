@@ -454,7 +454,7 @@ export default async function CotizacionDetailPage({
             notesCount={notes.length}
             emailsCount={emails.length}
             historialCount={0}
-            showComprobantes={q.status === 'won'}
+            showComprobantes={true}
           />
 
           {/* Tab content */}
@@ -606,7 +606,7 @@ export default async function CotizacionDetailPage({
               </div>
             )}
 
-            {tab === 'comprobantes' && q.status === 'won' && (
+            {tab === 'comprobantes' && (
               <div className="max-w-2xl">
                 <ComprobantesPanel quotationId={id} userRole={user?.role ?? ''} quotationStatus={q.status} />
               </div>
