@@ -437,13 +437,11 @@ function ComprobanteUploadSection({ comprobantes, tiposDisponibles, total, token
           {isFullyPaid
             ? <>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#166534' }}>✅ PAGADO AL 100% — {formatCLP(total)}</p>
-                {totalPaid !== total && (
-                  <p style={{ margin: '3px 0 0', fontSize: 12, color: '#6b7280' }}>Suma comprobantes: {formatCLP(totalPaid)}</p>
-                )}
+                <p style={{ margin: '3px 0 0', fontSize: 12, color: '#6b7280' }}>Suma comprobantes ingresada: {formatCLP(totalPaid)}{totalPaid !== total ? ' ⚠️ difiere del total acordado' : ''}</p>
               </>
             : <>
                 <p style={{ margin: 0, fontSize: 13, color: '#78350f' }}>Valor acordado: <strong>{formatCLP(total)}</strong></p>
-                <p style={{ margin: '3px 0 0', fontSize: 13, color: '#78350f' }}>Total recibido: <strong>{formatCLP(totalPaid)}</strong></p>
+                <p style={{ margin: '3px 0 0', fontSize: 13, color: '#78350f' }}>Suma comprobantes ingresada: <strong>{formatCLP(totalPaid)}</strong></p>
                 <p style={{ margin: '3px 0 0', fontSize: 13, fontWeight: 700, color: '#b45309' }}>Pendiente por pagar: {formatCLP(pending)}</p>
               </>
           }
