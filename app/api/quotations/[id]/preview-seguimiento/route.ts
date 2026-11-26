@@ -97,7 +97,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         ? `${baseUrl}/api/cotizaciones/${quotationId}/propuesta?token=${cartaToken}`
         : `${baseUrl}/api/cotizaciones/${quotationId}/propuesta`
     } else {
-      cotizacionUrl = cartaUrl ?? `${baseUrl}/cotizaciones/${quotationId}`
+      // Mismo URL que "Ver / Imprimir": el HTML completo de la cotización
+      cotizacionUrl = cartaToken
+        ? `${baseUrl}/api/cotizaciones/${quotationId}/html?token=${cartaToken}`
+        : `${baseUrl}/api/cotizaciones/${quotationId}/html`
     }
 
     // 6. Reemplazar placeholders
