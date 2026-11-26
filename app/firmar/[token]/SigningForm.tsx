@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 const CLAUSES = [
   { title: '1. Objeto del Contrato', text: 'El prestador se obliga a proporcionar el servicio de transporte indicado en la presente carta, en las fechas, horarios y lugares especificados, con medios de transporte y conductores idóneos.' },
@@ -88,6 +88,73 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
+  const [declaro1, setDeclaro1] = useState(false)
+  const [declaro2, setDeclaro2] = useState(false)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const drawing = useRef(false)
+  const [canvasEmpty, setCanvasEmpty] = useState(true)
+
+  const getPos = (e: MouseEvent | TouchEvent, canvas: HTMLCanvasElement) => {
+    const rect = canvas.getBoundingClientRect()
+    const src = 'touches' in e ? e.touches[0] : e
+    return { x: src.clientX - rect.left, y: src.clientY - rect.top }
+  }
+
+  const startDraw = useCallback((e: MouseEvent | TouchEvent) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    e.preventDefault()
+    drawing.current = true
+    const ctx = canvas.getContext('2d')!
+    const { x, y } = getPos(e, canvas)
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+  }, [])
+
+  const draw = useCallback((e: MouseEvent | TouchEvent) => {
+    if (!drawing.current) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    e.preventDefault()
+    const ctx = canvas.getContext('2d')!
+    ctx.lineWidth = 2.5
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = '#1a1a2e'
+    const { x, y } = getPos(e, canvas)
+    ctx.lineTo(x, y)
+    ctx.stroke()
+    setCanvasEmpty(false)
+  }, [])
+
+  const stopDraw = useCallback(() => { drawing.current = false }, [])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    canvas.addEventListener('mousedown', startDraw)
+    canvas.addEventListener('mousemove', draw)
+    canvas.addEventListener('mouseup', stopDraw)
+    canvas.addEventListener('mouseleave', stopDraw)
+    canvas.addEventListener('touchstart', startDraw, { passive: false })
+    canvas.addEventListener('touchmove', draw, { passive: false })
+    canvas.addEventListener('touchend', stopDraw)
+    return () => {
+      canvas.removeEventListener('mousedown', startDraw)
+      canvas.removeEventListener('mousemove', draw)
+      canvas.removeEventListener('mouseup', stopDraw)
+      canvas.removeEventListener('mouseleave', stopDraw)
+      canvas.removeEventListener('touchstart', startDraw)
+      canvas.removeEventListener('touchmove', draw)
+      canvas.removeEventListener('touchend', stopDraw)
+    }
+  }, [startDraw, draw, stopDraw])
+
+  function clearCanvas() {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height)
+    setCanvasEmpty(true)
+  }
 
   const formaPago = (letter.forma_pago as string) ?? 'cincuenta_cincuenta'
   const tiposComprobante = getTiposComprobante(formaPago)
@@ -113,8 +180,16 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
   }, [token, showComprobantes])
 
   async function handleSign() {
+    if (!declaro1 || !declaro2) {
+      setError('Debes marcar ambas declaraciones para continuar.')
+      return
+    }
     if (!signedName.trim() || !signedRut.trim()) {
       setError('Debes ingresar tu nombre y RUT para firmar.')
+      return
+    }
+    if (canvasEmpty) {
+      setError('Debes dibujar tu firma en el espacio habilitado.')
       return
     }
     setLoading(true)
@@ -263,16 +338,70 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
       {/* Firma — solo si no es readOnly */}
       {!readOnly && (
         <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: 24 }}>
-          <h2 style={{ fontSize: 17, fontWeight: 700, color: '#082e62', margin: '0 0 6px', borderBottom: '2px solid #e52832', paddingBottom: 10 }}>
-            Firma Digital
+          <h2 style={{ fontSize: 17, fontWeight: 700, color: '#082e62', margin: '0 0 10px', borderBottom: '2px solid #e52832', paddingBottom: 10 }}>
+            Aceptación contractual
           </h2>
-          <p style={{ margin: '12px 0 16px', fontSize: 13, color: '#6b7280' }}>
-            Al firmar, declara haber leído y aceptado todos los términos y condiciones. Válido según Ley 19.799.
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+          {/* Checkboxes de declaración */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '16px 0' }}>
+            {[
+              { key: 'd1', checked: declaro1, set: setDeclaro1, text: 'Declaro haber revisado y aceptado la cotización, los itinerarios y las condiciones comerciales y operacionales del servicio.' },
+              { key: 'd2', checked: declaro2, set: setDeclaro2, text: 'Declaro contar con facultades suficientes para contratar en representación de la institución indicada, cuando corresponda.' },
+            ].map(({ key, checked, set, text }) => (
+              <label key={key} style={{ display: 'flex', gap: 10, cursor: 'pointer', alignItems: 'flex-start' }}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={e => set(e.target.checked)}
+                  style={{ marginTop: 2, width: 16, height: 16, accentColor: '#082e62', flexShrink: 0, cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{text}</span>
+              </label>
+            ))}
+          </div>
+
+          {/* Datos del firmante */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
             <Field label="Nombre completo del representante *" value={signedName} onChange={setSignedName} />
             <Field label="RUT del representante *" value={signedRut} onChange={setSignedRut} placeholder="12.345.678-9" />
           </div>
+
+          {/* Canvas de firma */}
+          <div style={{ position: 'relative' }}>
+            <canvas
+              ref={canvasRef}
+              width={560}
+              height={130}
+              style={{
+                width: '100%', height: 130, border: '1px solid #d1d5db', borderRadius: 10,
+                background: '#fafafa', cursor: 'crosshair', display: 'block', touchAction: 'none',
+              }}
+            />
+            {canvasEmpty && (
+              <div style={{
+                position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
+              }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                </svg>
+                <span style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>Espacio de firma electrónica</span>
+              </div>
+            )}
+            {!canvasEmpty && (
+              <button
+                onClick={clearCanvas}
+                style={{
+                  position: 'absolute', top: 8, right: 8, padding: '3px 10px',
+                  fontSize: 11, color: '#6b7280', background: 'white',
+                  border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer',
+                }}
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+
           {error && (
             <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca' }}>
               <p style={{ margin: 0, color: '#991b1b', fontSize: 13 }}>{error}</p>
@@ -282,7 +411,7 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
             onClick={handleSign}
             disabled={loading}
             style={{
-              marginTop: 20, width: '100%', padding: '16px 24px', borderRadius: 10,
+              marginTop: 16, width: '100%', padding: '16px 24px', borderRadius: 10,
               background: loading ? '#9ca3af' : '#082e62', color: 'white', border: 'none',
               fontSize: 16, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
               transition: 'background 0.15s',
