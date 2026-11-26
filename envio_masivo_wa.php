@@ -1,39 +1,52 @@
-<?php
-// Script: envío masivo plantilla ccl_reactivacion_formulario a las 318 en espera
-// Ejecutar UNA SOLA VEZ. Neutralizar después.
+<?php http_response_code(404); exit;
+// Script: envío masivo ccl_reactivacion_formulario a 273 cerrado sin formulario
+// EJECUTADO 2026-11-26. NEUTRALIZADO.
+/**
+ * envio_masivo_wa.php — Campaña 26-nov-2026
+ * Envía ccl_reactivacion_formulario a conversaciones stage=cerrado sin lead_request
+ * Acceso: ?clave=transccl2026
+ */
 
-$host = 'localhost';
-$db   = 'transccl_crm';
-$user = 'transccl_crm_user';
-$pass = getenv('CRM_DB_PASSWORD');
+if (($_GET['clave'] ?? '') !== 'transccl2026') { http_response_code(403); exit("403\n"); }
+
+header('Content-Type: text/plain; charset=utf-8');
+set_time_limit(600);
 
 $_s = '/home/transccl/crm-secrets.php';
-if (file_exists($_s)) require_once $_s;
+if (file_exists($_s) && !defined('META_WA_TOKEN')) require_once $_s;
 
-$pdo = new PDO("mysql:host=$host;dbname=$db;charset=utf8mb4", $user, $pass);
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
+$pass       = getenv('CRM_DB_PASSWORD');
 $token      = defined('META_WA_TOKEN') ? META_WA_TOKEN : (getenv('META_WA_TOKEN') ?: '');
-$phoneNumId = '1354527324415134'; // Sofía +56 2 2914 9664
+$phoneNumId = defined('META_WA_PHONE_NUMBER_ID') ? META_WA_PHONE_NUMBER_ID : '1354527324415134';
 
-if (!$token) die("❌ META_WA_TOKEN no encontrado\n");
+if (!$token) { echo "❌ META_WA_TOKEN no encontrado\n"; exit; }
 
-// Obtener las 318 conversaciones en espera (sin lead_request vinculado)
+$pdo = new PDO(
+    "mysql:host=localhost;dbname=transccl_crm;charset=utf8mb4",
+    'transccl_crm_user', $pass,
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+);
+
+// Asegurar columna reactivacion_at
+try { $pdo->exec("ALTER TABLE wa_cloud_conversations ADD COLUMN reactivacion_at DATETIME NULL"); } catch (PDOException $e) {}
+
+// 288 contactos: cerrado, sin lead_request, últimos 30 días
 $convs = $pdo->query("
     SELECT c.id, c.phone, c.contact_name
     FROM wa_cloud_conversations c
-    LEFT JOIN lead_requests lr
-        ON lr.wa_conv_phone IS NOT NULL
+    LEFT JOIN lead_requests lr ON lr.wa_conv_phone IS NOT NULL
         AND REPLACE(lr.wa_conv_phone,'+','') = REPLACE(c.phone,'+','')
-    WHERE c.stage NOT IN ('ganado','perdido','spam')
+    WHERE c.stage = 'cerrado'
       AND c.last_msg_at >= NOW() - INTERVAL 30 DAY
       AND lr.id IS NULL
+      AND c.reactivacion_at IS NULL
     ORDER BY c.last_msg_at DESC
-    LIMIT 1000
-")->fetchAll(PDO::FETCH_ASSOC);
+    LIMIT 60
+")->fetchAll();
 
 $total = count($convs);
-echo "Total a enviar: $total\n\n";
+echo "Contactos a enviar: $total\n\n";
+if ($total === 0) { echo "✅ Nada que enviar.\n"; exit; }
 
 $ok = 0; $err = 0; $errList = [];
 
@@ -50,19 +63,27 @@ foreach ($convs as $i => $conv) {
         'template' => [
             'name'     => 'ccl_reactivacion_formulario',
             'language' => ['code' => 'es'],
-            'components' => [[
-                'type'       => 'body',
-                'parameters' => [['type' => 'text', 'text' => $nombre]],
-            ]],
+            'components' => [
+                [
+                    'type'       => 'body',
+                    'parameters' => [['type' => 'text', 'text' => $nombre]],
+                ],
+                [
+                    'type'     => 'button',
+                    'sub_type' => 'url',
+                    'index'    => '0',
+                    'parameters' => [['type' => 'text', 'text' => $phone]],
+                ],
+            ],
         ],
     ]);
 
-    $ch = curl_init("https://graph.facebook.com/v19.0/{$phoneNumId}/messages");
+    $ch = curl_init("https://graph.facebook.com/v21.0/{$phoneNumId}/messages");
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => $payload,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 10,
+        CURLOPT_TIMEOUT        => 15,
         CURLOPT_HTTPHEADER     => [
             'Authorization: Bearer ' . $token,
             'Content-Type: application/json',
@@ -72,9 +93,23 @@ foreach ($convs as $i => $conv) {
     curl_close($ch);
 
     $data = json_decode($resp, true);
-    if (isset($data['messages'][0]['id'])) {
+    $wamid = $data['messages'][0]['id'] ?? null;
+
+    if ($wamid) {
+        $pdo->prepare(
+            "UPDATE wa_cloud_conversations SET reactivacion_at = NOW() WHERE id = ?"
+        )->execute([$conv['id']]);
+
+        try {
+            $pdo->prepare(
+                "INSERT IGNORE INTO wa_cloud_messages
+                 (id, conversation_id, wamid, direction, msg_type, content, status, sender_type, created_at)
+                 VALUES (UUID(), ?, ?, 'out', 'template', 'template:reactivacion', 'sent', 'bot', NOW())"
+            )->execute([$conv['id'], $wamid]);
+        } catch (Throwable $e) {}
+
         $ok++;
-        if ($i < 5 || $i % 50 === 0) echo "✅ [{$i}] {$nombre} ({$phone})\n";
+        echo "✅ [{$i}] {$nombre} ({$phone})\n";
     } else {
         $err++;
         $errMsg = $data['error']['message'] ?? 'Error desconocido';
@@ -82,8 +117,8 @@ foreach ($convs as $i => $conv) {
         echo "❌ [{$i}] {$nombre} ({$phone}): {$errMsg}\n";
     }
 
-    // Pausa cada 10 mensajes para respetar rate limits
-    if (($i + 1) % 10 === 0) usleep(200000); // 200ms
+    // 100ms entre envíos
+    usleep(100000);
 }
 
 echo "\n══════════════════════════\n";
@@ -93,4 +128,4 @@ if ($errList) {
     echo "\nDetalle errores:\n";
     foreach ($errList as $e) echo "  - $e\n";
 }
-echo "\n✅ Script completado.\n";
+echo "\n¡Campaña 26-nov completada!\n";
