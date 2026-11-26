@@ -92,7 +92,8 @@ export default function SigningForm({ letter, readOnly }: { letter: Letter; read
   // Comprobantes
   const [comprobantes, setComprobantes] = useState<Comprobante[]>([])
   const token = letter.token as string
-  const letterTotal = Number(letter.total ?? 0)
+  // Usar el total ACTUAL de la cotización si está disponible (evita descuadres cuando se edita la cotización después de crear la carta)
+  const letterTotal = Number(letter.quotation_total ?? letter.total ?? 0)
 
   async function reloadComprobantes() {
     try {
@@ -434,9 +435,15 @@ function ComprobanteUploadSection({ comprobantes, tiposDisponibles, total, token
         <div style={{ marginTop: 16, padding: '12px 16px', borderRadius: 10,
           background: isFullyPaid ? '#dcfce7' : '#fefce8', border: `1px solid ${isFullyPaid ? '#86efac' : '#fde68a'}` }}>
           {isFullyPaid
-            ? <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#166534' }}>✅ PAGADO AL 100% — {formatCLP(totalPaid)}</p>
+            ? <>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#166534' }}>✅ PAGADO AL 100% — {formatCLP(total)}</p>
+                {totalPaid !== total && (
+                  <p style={{ margin: '3px 0 0', fontSize: 12, color: '#6b7280' }}>Suma comprobantes: {formatCLP(totalPaid)}</p>
+                )}
+              </>
             : <>
-                <p style={{ margin: 0, fontSize: 13, color: '#78350f' }}>Total recibido: <strong>{formatCLP(totalPaid)}</strong></p>
+                <p style={{ margin: 0, fontSize: 13, color: '#78350f' }}>Valor acordado: <strong>{formatCLP(total)}</strong></p>
+                <p style={{ margin: '3px 0 0', fontSize: 13, color: '#78350f' }}>Total recibido: <strong>{formatCLP(totalPaid)}</strong></p>
                 <p style={{ margin: '3px 0 0', fontSize: 13, fontWeight: 700, color: '#b45309' }}>Pendiente por pagar: {formatCLP(pending)}</p>
               </>
           }

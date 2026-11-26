@@ -2768,7 +2768,7 @@ if ($action === 'letters_get') {
     // Ensure forma_pago column exists (migration for old letters)
     try { db()->exec("ALTER TABLE approval_letters ADD COLUMN forma_pago VARCHAR(30) NULL"); } catch (Exception $e) {}
     $token = $_GET['token'] ?? '';
-    $stmt = db()->prepare('SELECT al.*, q.pipedrive_deal_id, q.number AS quotation_number FROM approval_letters al LEFT JOIN quotations q ON q.id=al.quotation_id WHERE al.token=?');
+    $stmt = db()->prepare('SELECT al.*, q.pipedrive_deal_id, q.number AS quotation_number, q.total AS quotation_total FROM approval_letters al LEFT JOIN quotations q ON q.id=al.quotation_id WHERE al.token=?');
     $stmt->execute([$token]);
     $row = $stmt->fetch();
     if (!$row) err('No encontrada', 404);
@@ -5286,7 +5286,7 @@ if ($action === 'wa_cloud_send') {
     $conv = $convStmt->fetch();
     if ($conv && $wamid) {
         $msgId = uuid();
-        db()->prepare("INSERT IGNORE INTO wa_cloud_messages (id, conversation_id, wamid, direction, content, sender_type) VALUES (?,?,?,'out',?,'human')")
+        db()->prepare("INSERT IGNORE INTO wa_cloud_messages (id, conversation_id, wamid, direction, content, status, sender_type) VALUES (?,?,?,'out',?,'sent','human')")
             ->execute([$msgId, $conv['id'], $wamid, $text ?? json_encode($template)]);
     }
 
@@ -5363,7 +5363,9 @@ if ($action === 'wa_cloud_list') {
                c.contact_email, c.service_origin, c.service_destination, c.service_passengers, c.service_type, c.service_vehicle,
                c.wa_draft_quote_id,
                p.name AS assigned_name,
-               m.content AS last_message
+               m.content AS last_message,
+               m.direction AS last_msg_direction,
+               m.status AS last_msg_status
         FROM wa_cloud_conversations c
         LEFT JOIN profiles p ON p.id = c.assigned_to
         LEFT JOIN wa_cloud_messages m ON m.id = (
@@ -5640,14 +5642,22 @@ if ($action === 'wa_send_template') {
         'template' => [
             'name'     => 'ccl_reactivacion_formulario',
             'language' => ['code' => 'es'],
-            'components' => [[
-                'type'       => 'body',
-                'parameters' => [['type' => 'text', 'text' => $nombre]],
-            ]],
+            'components' => [
+                [
+                    'type'       => 'body',
+                    'parameters' => [['type' => 'text', 'text' => $nombre]],
+                ],
+                [
+                    'type'     => 'button',
+                    'sub_type' => 'url',
+                    'index'    => '0',
+                    'parameters' => [['type' => 'text', 'text' => $phone]],
+                ],
+            ],
         ],
     ]);
 
-    $ch = curl_init("https://graph.facebook.com/v19.0/{$phoneNumId}/messages");
+    $ch = curl_init("https://graph.facebook.com/v21.0/{$phoneNumId}/messages");
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => $payload,
@@ -5663,7 +5673,46 @@ if ($action === 'wa_send_template') {
     $data = json_decode($resp, true);
     if (isset($data['error'])) err($data['error']['message'] ?? 'Error Meta API');
 
-    ok(['message_id' => $data['messages'][0]['id'] ?? null, 'phone' => $phone]);
+    $wamid = $data['messages'][0]['id'] ?? null;
+
+    // Guardar mensaje saliente en wa_cloud_messages para mostrarlo en bandeja
+    $templateText = "Hola {$nombre} 👋 Hace un tiempo iniciaste una consulta de transporte con nosotros, pero no alcanzamos a prepararte la cotización.\n\n¿Sigues necesitando transporte? Completa tus datos (1 minuto) y te cotizamos de inmediato 🚌\n\n👉 https://crm.transccl.cl/form/{$phone}";
+    $msgId = \Ramsey\Uuid\Uuid::uuid4()->toString();
+    // UUID simple sin librería
+    $msgId = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+        mt_rand(0,0xffff),mt_rand(0,0xffff),mt_rand(0,0xffff),
+        mt_rand(0,0x0fff)|0x4000,mt_rand(0,0x3fff)|0x8000,
+        mt_rand(0,0xffff),mt_rand(0,0xffff),mt_rand(0,0xffff));
+
+    try {
+        db()->prepare("INSERT IGNORE INTO wa_cloud_messages
+            (id, conversation_id, wamid, direction, msg_type, content, status, sender_type)
+            VALUES (?,?,?,'out','template',?,  'sent','system')")
+            ->execute([$msgId, $convId, $wamid ?: 'tpl_'.$msgId, $templateText]);
+
+        // Actualizar conversación: stage y last_msg_at
+        db()->prepare("UPDATE wa_cloud_conversations
+            SET stage = CASE WHEN stage IN ('nuevo','cotizando') THEN 'formulario_enviado' ELSE stage END,
+                form_link_sent_at = COALESCE(form_link_sent_at, NOW()),
+                last_msg_at = NOW()
+            WHERE id = ?")
+            ->execute([$convId]);
+    } catch (\Exception $e) { /* no bloquear si falla el registro */ }
+
+    ok(['message_id' => $wamid, 'phone' => $phone]);
+}
+
+// ── Diagnóstico temporal: ver componentes de plantilla ───────────────────────
+if ($action === 'wa_check_template') {
+    requireAuth();
+    $token  = getenv('META_WA_TOKEN') ?: (defined('META_WA_TOKEN') ? META_WA_TOKEN : '');
+    $wabaId = '4375239466026414';
+    if (!$token) err('META_WA_TOKEN no encontrado');
+    $ch = curl_init("https://graph.facebook.com/v21.0/{$wabaId}/message_templates?name=ccl_reactivacion_formulario&fields=name,status,components");
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true,CURLOPT_HTTPHEADER=>['Authorization: Bearer '.$token]]);
+    $resp = curl_exec($ch); curl_close($ch);
+    $data = json_decode($resp, true);
+    ok($data);
 }
 
 // ── Bot: historial de conversación (autenticado con X-Internal-Secret) ───────
@@ -5719,7 +5768,7 @@ if ($action === 'wa_cloud_bot_send') {
     $conv = $convStmt->fetch();
     if ($conv && $wamid) {
         $msgId = uuid();
-        db()->prepare("INSERT IGNORE INTO wa_cloud_messages (id, conversation_id, wamid, direction, content) VALUES (?,?,?,'out',?)")
+        db()->prepare("INSERT IGNORE INTO wa_cloud_messages (id, conversation_id, wamid, direction, content, status) VALUES (?,?,?,'out',?,'sent')")
             ->execute([$msgId, $conv['id'], $wamid, $text]);
     }
 
