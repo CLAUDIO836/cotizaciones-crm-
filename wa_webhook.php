@@ -46,9 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // ── Bifurcación staging: teléfonos autorizados van a wa_webhook_stg.php ───────
-define('STG_TEST_PHONES', [
-    '56974270657',  // Claudio — teléfono de prueba autorizado
-]);
+define('STG_TEST_PHONES', []);
 // Token de autenticación para wa_webhook_stg.php (mismo que E2E_STAGING_TOKEN)
 define('_STG_FWD_TOKEN', '70eb01dd57fbf935a94499f5a32997f2088460da781ae58aa675fe12bb1dd7e0');
 
