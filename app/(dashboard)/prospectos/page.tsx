@@ -10,7 +10,13 @@ export default async function ProspectosPage() {
   const user = await getSession()
   if (!user) redirect('/login')
 
-  const campaigns = await fetchCampaigns()
+  let campaigns: Awaited<ReturnType<typeof fetchCampaigns>> = []
+  try {
+    campaigns = await fetchCampaigns()
+  } catch (err) {
+    console.error('[ProspectosPage] fetchCampaigns error:', err)
+    throw err
+  }
   const isAdmin = user.role === 'admin'
 
   return (
