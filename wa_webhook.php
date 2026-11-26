@@ -302,6 +302,22 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
 
         if (!$isNew) { error_log("[wa_webhook] SKIP dup wamid={$wamid} phone={$phone}"); return; }
 
+        // ── Quick reply "No me interesa" del template de reactivación ────────────
+        // Se procesa ANTES del guard de handoff: aunque una ejecutiva tenga el control,
+        // si el cliente dice "No me interesa" se cierra la conversación.
+        $textNorm = mb_strtolower(trim($text));
+        if ($textNorm === 'no me interesa') {
+            $pdo->prepare(
+                "UPDATE wa_cloud_conversations SET bot_active = 0, stage = 'perdido', handoff_requested_at = NULL WHERE id = ?"
+            )->execute([$convId]);
+            sendWA($phone,
+                "¡Sin problema! 😊 Si en algún momento necesitas transporte, aquí estaremos en TransCCL.\n" .
+                "¡Que todo te vaya muy bien! 🚌"
+            );
+            error_log("[wa_webhook] NO_INTERESA phone={$phone} conv={$convId}");
+            return;
+        }
+
         // Si la conversación estaba cerrada y el cliente escribe de nuevo → reactivar
         // G-1 FIX: si hay handoff activo (ejecutiva tomó el control), no reactivar automáticamente.
         // La reactivación debe ser expresa desde la bandeja CRM ("liberar a bot").
@@ -327,22 +343,6 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             $conv['form_submitted_at']   = null;
             $conv['handoff_requested_at']= null;
             error_log("[wa_webhook] REACTIVATE phone={$phone} conv={$convId}");
-        }
-
-        // ── Quick reply "No me interesa" del template de reactivación ────────────
-        // Cuando el cliente toca ese botón la ventana ya está cerrada:
-        // cerramos la conversación con un despido amable y NO llamamos al bot.
-        $textNorm = mb_strtolower(trim($text));
-        if ($textNorm === 'no me interesa') {
-            $pdo->prepare(
-                "UPDATE wa_cloud_conversations SET bot_active = 0, stage = 'perdido' WHERE id = ?"
-            )->execute([$convId]);
-            sendWA($phone,
-                "¡Sin problema! 😊 Si en algún momento necesitas transporte, aquí estaremos en TransCCL.\n" .
-                "¡Que todo te vaya muy bien! 🚌"
-            );
-            error_log("[wa_webhook] NO_INTERESA phone={$phone} conv={$convId}");
-            return;
         }
 
         error_log("[wa_webhook] PROC phone={$phone} wamid={$wamid} ai=" . (bool)_AI_KEY . " wa=" . (bool)_WA_TOKEN);
