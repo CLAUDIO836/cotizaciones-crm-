@@ -5245,7 +5245,7 @@ if ($action === 'wa_cloud_receive') {
 
 // Envía mensaje saliente via Meta Cloud API
 if ($action === 'wa_cloud_send') {
-    requireAuth();
+    $user = requireAuth();
     $b = body();
     $phone    = $b['phone']    ?? null;
     $text     = $b['text']     ?? null;
@@ -5279,7 +5279,7 @@ if ($action === 'wa_cloud_send') {
     $respData = json_decode($resp, true) ?? [];
     if ($status >= 400) err($respData['error']['message'] ?? "Meta API error $status", $status);
 
-    // Guardar mensaje saliente en DB
+    // Guardar mensaje saliente en DB y pausar bot (ejecutiva toma el control)
     $wamid = $respData['messages'][0]['id'] ?? null;
     $convStmt = db()->prepare("SELECT id FROM wa_cloud_conversations WHERE phone = ?");
     $convStmt->execute([$phone]);
@@ -5288,6 +5288,9 @@ if ($action === 'wa_cloud_send') {
         $msgId = uuid();
         db()->prepare("INSERT IGNORE INTO wa_cloud_messages (id, conversation_id, wamid, direction, content, status, sender_type) VALUES (?,?,?,'out',?,'sent','human')")
             ->execute([$msgId, $conv['id'], $wamid, $text ?? json_encode($template)]);
+        // Pausar bot y registrar handoff; ejecutiva sigue teniendo el control hasta que lo libere o pasen 6h
+        db()->prepare("UPDATE wa_cloud_conversations SET bot_active = 0, handoff_requested_at = COALESCE(handoff_requested_at, NOW()), assigned_to = ? WHERE id = ?")
+            ->execute([$user['id'], $conv['id']]);
     }
 
     ok($respData);

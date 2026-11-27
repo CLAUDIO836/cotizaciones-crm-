@@ -326,12 +326,26 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         }
 
         // Si la conversación estaba cerrada y el cliente escribe de nuevo → reactivar
-        // G-1 FIX: si hay handoff activo (ejecutiva tomó el control), no reactivar automáticamente.
-        // La reactivación debe ser expresa desde la bandeja CRM ("liberar a bot").
+        // Si hay handoff activo: bloquear salvo que hayan pasado 6h sin respuesta de la ejecutiva.
         if (!$botActive) {
             if (!empty($conv['handoff_requested_at'])) {
-                error_log("[wa_webhook] HANDOFF_HOLD phone={$phone} conv={$convId} handoff_at={$conv['handoff_requested_at']} — reactivación bloqueada, ejecutiva mantiene control");
-                return; // mensaje ya guardado; ejecutiva responde desde la bandeja CRM
+                // Comprobar si pasaron 6h desde el último mensaje humano saliente
+                $lastHumanStmt = $pdo->prepare(
+                    "SELECT created_at FROM wa_cloud_messages
+                     WHERE conversation_id = ? AND direction = 'out' AND sender_type = 'human'
+                     ORDER BY created_at DESC LIMIT 1"
+                );
+                $lastHumanStmt->execute([$convId]);
+                $lastHumanRow = $lastHumanStmt->fetch();
+                $sixHoursAgo  = date('Y-m-d H:i:s', strtotime('-6 hours'));
+                $autoReactivar = !$lastHumanRow || $lastHumanRow['created_at'] < $sixHoursAgo;
+
+                if (!$autoReactivar) {
+                    error_log("[wa_webhook] HANDOFF_HOLD phone={$phone} conv={$convId} last_human={$lastHumanRow['created_at']} — ejecutiva mantiene control");
+                    return; // mensaje ya guardado; ejecutiva responde desde la bandeja CRM
+                }
+                // 6h sin respuesta → bot retoma automáticamente
+                error_log("[wa_webhook] AUTO_REACTIVATE_6H phone={$phone} conv={$convId} last_human=" . ($lastHumanRow['created_at'] ?? 'nunca'));
             }
             $pdo->prepare(
                 "UPDATE wa_cloud_conversations
