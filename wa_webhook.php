@@ -309,6 +309,19 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
             return;
         }
 
+        // ── Debounce: evita múltiples respuestas cuando el cliente envía mensajes rápidos ──
+        // Si ya hay una respuesta del bot en los últimos 90 segundos, guardar el mensaje pero no responder.
+        $recentBotStmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM wa_cloud_messages
+             WHERE conversation_id = ? AND direction = 'out' AND sender_type = 'bot'
+               AND created_at > DATE_SUB(NOW(), INTERVAL 90 SECOND)"
+        );
+        $recentBotStmt->execute([$convId]);
+        if ((int)$recentBotStmt->fetchColumn() > 0) {
+            error_log("[wa_webhook] DEBOUNCE phone={$phone} — bot ya respondió en últimos 90s");
+            return;
+        }
+
         // ── Quick reply "No me interesa" del template de reactivación ────────────
         // Se procesa ANTES del guard de handoff: aunque una ejecutiva tenga el control,
         // si el cliente dice "No me interesa" se cierra la conversación.
@@ -328,6 +341,10 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         // Si la conversación estaba cerrada y el cliente escribe de nuevo → reactivar
         // Si hay handoff activo: bloquear salvo que hayan pasado 6h sin respuesta de la ejecutiva.
         if (!$botActive) {
+            if (($conv['stage'] ?? '') === 'bloqueado') {
+                error_log("[wa_webhook] BLOQUEADO_HOLD phone={$phone} conv={$convId} — contacto no-cliente, ignorando");
+                return; // conversación bloqueada (spam / no-cliente), no reactivar nunca
+            }
             if (!empty($conv['handoff_requested_at'])) {
                 // Comprobar si pasaron 6h desde el último mensaje humano saliente
                 $lastHumanStmt = $pdo->prepare(
@@ -430,9 +447,10 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         if (!$botReply) { error_log("[wa_webhook] EMPTY_REPLY phone={$phone}"); return; }
 
         // Detectar y extraer etiquetas de control
+        $shouldBlock          = str_contains($botReply, '[BLOQUEAR]');
         $shouldEscalate       = str_contains($botReply, '[ESCALAR_A_HUMANO]');
         $clientePideEjecutiva = str_contains($botReply, '[CLIENTE_PIDE_EJECUTIVA]');
-        $botReply = trim(str_replace(['[ESCALAR_A_HUMANO]', '[CLIENTE_PIDE_EJECUTIVA]'], '', $botReply));
+        $botReply = trim(str_replace(['[ESCALAR_A_HUMANO]', '[CLIENTE_PIDE_EJECUTIVA]', '[BLOQUEAR]'], '', $botReply));
 
         // Parsear FICHA_JSON y guardar campos de cotización en la conversación
         if (preg_match('/\[FICHA_JSON:(\{[^\]]+\})\]/', $botReply, $fichaMatch)) {
@@ -480,7 +498,12 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
                         && !empty($conv['service_date'])   && !empty($conv['service_passengers'])
                         && !empty($conv['service_type'])
                         && ($conv['stage'] !== 'nuevo'); // datos históricos no aplican a conversación nueva
-        if (!$formYaEnviado && !$formSubmitado && !$serviceDatosOk && $botReply && !str_contains($botReply, 'crm.transccl.cl/form/')) {
+        $stageActual = $conv['stage'] ?? 'nuevo';
+        // Safety net: solo inyectar form si es un prospecto real (no spam/bloqueado/perdido y no escalando)
+        if (!$shouldBlock && !$shouldEscalate
+            && !in_array($stageActual, ['bloqueado', 'perdido'])
+            && !$formYaEnviado && !$formSubmitado && !$serviceDatosOk
+            && $botReply && !str_contains($botReply, 'crm.transccl.cl/form/')) {
             $botReply .= "\n\nhttps://crm.transccl.cl/form/{$phone}";
             error_log("[wa_webhook] SAFETY_NET_FORM_INJECT phone={$phone}");
         }
@@ -502,11 +525,11 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         }
 
         // Registrar envío del link del formulario + enviar imagen según tipo de servicio (primera vez)
+        // UPDATE atómico: solo el proceso que realmente setea form_link_sent_at envía la imagen (evita race condition)
         if ($botReply && str_contains($botReply, 'crm.transccl.cl/form/')) {
-            $yaEnvioLink = !empty($conv['form_link_sent_at']);
-            $pdo->prepare("UPDATE wa_cloud_conversations SET form_link_sent_at = COALESCE(form_link_sent_at, NOW()) WHERE id = ?")
-                ->execute([$convId]);
-            if (!$yaEnvioLink) {
+            $imgUpd = $pdo->prepare("UPDATE wa_cloud_conversations SET form_link_sent_at = NOW() WHERE id = ? AND form_link_sent_at IS NULL");
+            $imgUpd->execute([$convId]);
+            if ($imgUpd->rowCount() > 0) {
                 // Imagen según tipo: salida educativa → flyer oferta; resto → imagen de marca
                 $esEducativa = stripos($botReply, 'salida educativa') !== false
                             || stripos($botReply, '157.500') !== false
@@ -523,6 +546,13 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
                         ->execute([$imgId, $convId, $imgWamid, $imgLabel]);
                 }
             }
+        }
+
+        // Bloquear conversación (spam / no-cliente / oferta de servicios a TransCCL)
+        if ($shouldBlock) {
+            $pdo->prepare("UPDATE wa_cloud_conversations SET bot_active = 0, stage = 'bloqueado' WHERE id = ?")
+                ->execute([$convId]);
+            error_log("[wa_webhook] BLOQUEADO phone={$phone} conv={$convId}");
         }
 
         // Cliente solicita hablar con ejecutiva → handoff + desactivar bot
@@ -1093,6 +1123,15 @@ function buildSystemPrompt(string $phone, ?string $name, array $ficha = [], ?str
            "'¡Con gusto! Puedes llamarnos al 22 945 5713" . ($execName ? " y pedir por {$execName}" : "") . ". Una ejecutiva te atenderá personalmente 😊\n" .
            "También puedes seguir escribiendo aquí y te contactamos pronto.'\n" .
            "Luego añade [CLIENTE_PIDE_EJECUTIVA] y [ESCALAR_A_HUMANO] al final (en líneas aparte).\n\n" .
+           "## CUANDO NO ES UN CLIENTE (BLOQUEAR INMEDIATAMENTE)\n" .
+           "Si quien escribe NO viene a cotizar transporte sino a:\n" .
+           "- Ofrecer servicios a TransCCL (estudios jurídicos, publicidad, seguros, contabilidad, tecnología, consultoría, etc.)\n" .
+           "- Enviar spam o mensajes masivos comerciales\n" .
+           "- Gestiones judiciales o legales (demandas, audiencias, deudas) en representación de un estudio o empresa externa\n" .
+           "- Cobranzas o recuperación de deudas en nombre de terceros\n" .
+           "Responde UNA SOLA VEZ, breve y amable, explica que este canal es exclusivo para clientes de transporte y sugiere ventas@transccl.cl. Luego añade [BLOQUEAR] en línea aparte al final.\n" .
+           "Ejemplo: '¡Hola! Este WhatsApp es exclusivo para cotizar servicios de transporte de pasajeros, así que no podemos atender propuestas o consultas de este tipo por acá. Si lo deseas, escríbenos a ventas@transccl.cl 😊'\n" .
+           "CRÍTICO: Solo responde UNA vez, NO reenvíes formularios ni imágenes, NO sigas conversando.\n\n" .
            "## CUÁNDO ESCALAR A HUMANO\n" .
            "Incluye la etiqueta [ESCALAR_A_HUMANO] al final de tu respuesta si:\n" .
            "- La ficha está completa y el cliente confirmó el resumen.\n" .
