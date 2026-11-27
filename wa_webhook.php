@@ -549,10 +549,17 @@ function processMessage(string $wamid, string $phone, string $text, ?string $nam
         }
 
         // Bloquear conversación (spam / no-cliente / oferta de servicios a TransCCL)
+        // La conversación queda asignada al admin (claudio@transccl.cl), no al pool de ejecutivas
         if ($shouldBlock) {
-            $pdo->prepare("UPDATE wa_cloud_conversations SET bot_active = 0, stage = 'bloqueado' WHERE id = ?")
-                ->execute([$convId]);
-            error_log("[wa_webhook] BLOQUEADO phone={$phone} conv={$convId}");
+            $adminStmt = $pdo->prepare("SELECT id FROM profiles WHERE email = 'claudio@transccl.cl' LIMIT 1");
+            $adminStmt->execute();
+            $adminId = $adminStmt->fetch()['id'] ?? null;
+            $pdo->prepare(
+                "UPDATE wa_cloud_conversations
+                 SET bot_active = 0, stage = 'bloqueado', assigned_to = ?
+                 WHERE id = ?"
+            )->execute([$adminId, $convId]);
+            error_log("[wa_webhook] BLOQUEADO phone={$phone} conv={$convId} assigned_to=" . ($adminId ?? 'NULL'));
         }
 
         // Cliente solicita hablar con ejecutiva → handoff + desactivar bot
