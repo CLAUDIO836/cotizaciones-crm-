@@ -558,8 +558,17 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
         }
       }
       const cubre = autz?.status === 'aprobada' && (autz.precio_solicitado === null || item.unit_price >= autz.precio_solicitado)
-      if (!cubre) return `${nombre}: el precio queda bajo el mínimo del tarifario. Solicita la aprobación desde el Cotizador.`
+      if (!cubre) {
+        setErrorPrecio({
+          msg: `${nombre}: el precio queda bajo el mínimo del tarifario.`,
+          precioLista: r.precioLista ?? 0,
+          precioMinimo: r.precioMinimo ?? 0,
+          precioSolicitado: item.unit_price,
+        })
+        return `${nombre}: el precio queda bajo el mínimo del tarifario. Usa el botón "Solicitar aprobación" para pedirla.`
+      }
     }
+    setErrorPrecio(null)
     return null
   }
 
@@ -567,6 +576,45 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
   const [loadingPdf, setLoadingPdf] = useState(false)
   const [loadingAprobar, setLoadingAprobar] = useState(false)
   const [motivo, setMotivo] = useState('')
+
+  // Aprobación de precio bajo el mínimo
+  const [errorPrecio, setErrorPrecio] = useState<{
+    msg: string; precioLista: number; precioMinimo: number; precioSolicitado: number
+  } | null>(null)
+  const [solicitandoAprobacion, setSolicitandoAprobacion] = useState(false)
+
+  async function solicitarAprobacion() {
+    if (!errorPrecio) return
+    setSolicitandoAprobacion(true)
+    try {
+      const clientName = quotation?.client_name ?? (newClientEmpresaNombre || newClientName || 'Cliente')
+      const vehiculo = vehicleType ? vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1) : 'Vehículo'
+      const referencia = `${clientName} · ${vehiculo} · $${errorPrecio.precioSolicitado.toLocaleString('es-CL')}`
+      const detalle = desde && hasta ? `Ruta: ${desde} → ${hasta}` : ''
+      const res = await fetch('/api/autorizaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          _action: 'create',
+          tipo: 'descuento',
+          referencia,
+          detalle,
+          precio_lista: errorPrecio.precioLista,
+          precio_minimo: errorPrecio.precioMinimo,
+          precio_solicitado: errorPrecio.precioSolicitado,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
+      setAutorizacionId(json.data?.id)
+      setErrorPrecio(null)
+      toast.success('✅ Solicitud enviada — espera la aprobación de Paola o Claudio.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al solicitar aprobación')
+    } finally {
+      setSolicitandoAprobacion(false)
+    }
+  }
 
   const [loadingCarta, setLoadingCarta] = useState(false)
   const [cartaUrl, setCartaUrl] = useState<string | null>(null)
@@ -1579,6 +1627,28 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
           Cancelar
         </Button>
       </div>
+
+      {/* Panel de aprobación de precio */}
+      {errorPrecio && (
+        <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-2">
+          <p className="text-sm font-semibold text-amber-900">⚠️ {errorPrecio.msg}</p>
+          <p className="text-xs text-amber-800">
+            Lista: <strong>${errorPrecio.precioLista.toLocaleString('es-CL')}</strong> ·
+            Mínimo: <strong>${errorPrecio.precioMinimo.toLocaleString('es-CL')}</strong> ·
+            Propuesto: <strong>${errorPrecio.precioSolicitado.toLocaleString('es-CL')}</strong>
+          </p>
+          {autorizacionId
+            ? <p className="text-xs text-green-700 font-medium">✅ Solicitud enviada — espera que sea aprobada para guardar.</p>
+            : (
+              <Button type="button" size="sm" disabled={solicitandoAprobacion}
+                onClick={solicitarAprobacion}
+                className="bg-amber-600 hover:bg-amber-700 text-white">
+                {solicitandoAprobacion ? 'Enviando...' : '📩 Solicitar aprobación a Paola / Claudio'}
+              </Button>
+            )
+          }
+        </div>
+      )}
     </form>
   )
 }
