@@ -14,6 +14,19 @@ import ClientRutSearch from '@/components/clients/ClientRutSearch'
 import TarifaPanel from '@/components/quotations/TarifaPanel'
 import { tomarHandoff, formatoPorCodigo, CODIGO_FORMATO, type TarifaRef } from '@/lib/cotizador-handoff'
 
+const DIAS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+
+function diaSemana(isoDatetime: string): string {
+  if (!isoDatetime) return ''
+  const d = new Date(isoDatetime)
+  if (isNaN(d.getTime())) return ''
+  // parse local date without timezone shift
+  const [datePart] = isoDatetime.split('T')
+  const [y, m, day] = datePart.split('-').map(Number)
+  const local = new Date(y, m - 1, day)
+  return DIAS_ES[local.getDay()]
+}
+
 // ── Google Places autocomplete (via server proxy) ────────────────────────────
 interface PlacePrediction { description: string; place_id: string }
 
@@ -1061,10 +1074,12 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
             <div className="space-y-1.5">
               <Label>Fecha salida</Label>
               <Input type="datetime-local" value={fechaSalida} onChange={e => setFechaSalida(e.target.value)} />
+              {fechaSalida && <p className="text-xs font-semibold text-green-700">{diaSemana(fechaSalida)}</p>}
             </div>
             <div className="space-y-1.5">
               <Label>Fecha destino / retorno</Label>
               <Input type="datetime-local" value={fechaDestino} onChange={e => setFechaDestino(e.target.value)} />
+              {fechaDestino && <p className="text-xs font-semibold text-green-700">{diaSemana(fechaDestino)}</p>}
             </div>
           </div>
         </div>
