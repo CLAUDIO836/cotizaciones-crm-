@@ -716,11 +716,130 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
     }
   }
 
-  async function saveQuotation(withPdf: boolean) {
+  const [loadingConsulta, setLoadingConsulta] = useState(false)
+
+  async function consultarValor() {
     if (!clientId) { toast.error('Busca y selecciona un cliente por RUT'); return }
     if (!selectedUserId) { toast.error('Selecciona un vendedor'); return }
     if (items.some(i => i.ruta_nombre !== undefined ? !i.ruta_nombre?.trim() : !i.description.trim())) { toast.error('Completa la descripción de todos los ítems'); return }
     if (!isDiario && items.some(i => !i.pasajeros || i.pasajeros <= 0)) { toast.error('Indica la cantidad de pasajeros en cada ítem'); return }
+
+    setLoadingConsulta(true)
+    try {
+      // 1. Guardar la cotización (sin validar precio mínimo)
+      const finalClientId = clientId
+      const qRes = await fetch('/api/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(isEditing ? { id: quotation.id } : {}),
+          client_id: finalClientId,
+          user_id: selectedUserId,
+          pipeline_id: pipelineId || null,
+          etapa,
+          vehicle_type: vehicleType || null,
+          issue_date: issueDate,
+          expiry_date: expiryDate || null,
+          company_id: companyId || null,
+          company: companies.find(c => c.id === companyId)?.name ?? null,
+          contact_id: contactId || null,
+          desde: desde || null,
+          hasta: hasta || null,
+          ...(distanciaKm !== null ? { distancia_km: distanciaKm } : {}),
+          fecha_salida: fechaSalida ? fechaSalida.slice(0, 10) : null,
+          hora_salida: fechaSalida ? fechaSalida.slice(11, 16) : null,
+          fecha_retorno: fechaDestino ? fechaDestino.slice(0, 10) : null,
+          hora_retorno: fechaDestino ? fechaDestino.slice(11, 16) : null,
+          descuento_pct: descuentoPct,
+          observaciones: observaciones || null,
+          subtotal: baseConDescuento,
+          tax_pct: taxPct,
+          total,
+          notes: notes || null,
+          terms: terms || null,
+          items: items.map((item, idx) => ({
+            codigo: item.codigo || null,
+            description: serializeItemDescription(item),
+            pasajeros: item.pasajeros || null,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            sort_order: idx,
+          })),
+        }),
+      })
+      if (!qRes.ok) {
+        const errJson = await qRes.json().catch(() => ({}))
+        throw new Error(errJson.error ?? `HTTP ${qRes.status}`)
+      }
+      const qData = await qRes.json()
+      const quotationId = isEditing ? quotation.id : qData.id
+      const quotationNumber = isEditing ? quotation.number : qData.number
+
+      // 2. Obtener precios del tarifario para el primer ítem con tarifa
+      let precioLista: number | null = null
+      let precioMinimo: number | null = null
+      const itemConTarifa = items.find(i => i.tarifa)
+      if (itemConTarifa?.tarifa) {
+        try {
+          const tr = await fetch('/api/tarifa', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(itemConTarifa.tarifa),
+          })
+          if (tr.ok) {
+            const td = (await tr.json()).data
+            precioLista = td?.precioLista ?? null
+            precioMinimo = td?.precioMinimo ?? null
+          }
+        } catch { /* sin datos de tarifa, se omiten */ }
+      }
+
+      // 3. Crear solicitud de aprobación con todos los detalles del servicio
+      const clientName = quotation?.client_name ?? (newClientEmpresaNombre || newClientName || 'Cliente')
+      const vehiculo = vehicleType ? vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1) : 'Vehículo'
+      const precioSolicitado = items.reduce((s, i) => s + i.unit_price, 0) / (items.length || 1)
+      const detalle = JSON.stringify({
+        quotation_id: quotationId,
+        quotation_number: quotationNumber,
+        desde: desde || null,
+        hasta: hasta || null,
+        fecha_salida: fechaSalida ? fechaSalida.slice(0, 10) : null,
+        hora_salida: fechaSalida ? fechaSalida.slice(11, 16) : null,
+        fecha_retorno: fechaDestino ? fechaDestino.slice(0, 10) : null,
+        hora_retorno: fechaDestino ? fechaDestino.slice(11, 16) : null,
+        vehiculo,
+        pax: items[0]?.pasajeros ?? null,
+        total,
+      })
+
+      await fetch('/api/autorizaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          _action: 'create',
+          tipo: 'a_medida',
+          referencia: `${clientName} · #${quotationNumber ?? '?'} · ${vehiculo}`,
+          detalle,
+          precio_lista: precioLista,
+          precio_minimo: precioMinimo,
+          precio_solicitado: precioSolicitado,
+        }),
+      })
+
+      toast.success(`✅ Cotización #${quotationNumber ?? ''} creada y enviada a Paola / Claudio para aprobación.`, { duration: 6000 })
+      router.push(`/cotizaciones/${quotationId}`)
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Error al enviar consulta')
+    } finally {
+      setLoadingConsulta(false)
+    }
+  }
+
+  async function saveQuotation(withPdf: boolean) {
+    if (!clientId) { toast.error('Busca y selecciona un cliente por RUT'); return }
+    if (!selectedUserId) { toast.error('Selecciona un vendedor'); return }
+    if (items.some(i => i.ruta_nombre !== undefined ? !i.ruta_nombre?.trim() : !i.description.trim())) { toast.error('Completa la descripción de todos los ítems'); return }
+    if (!isDiario && items.some(i => !i.pasajeros || i.pasajeros <= 0)) { toast.error('Indica la cantidad de pasajeros en cada ídem'); return }
 
     const problemaPrecio = await revisarPrecios()
     if (problemaPrecio) { toast.error(problemaPrecio, { duration: 8000 }); return }
@@ -1619,11 +1738,18 @@ export default function QuotationForm({ clients, pipelines = [], sellers = [], c
             )}
           </>
         ) : (
-          <Button type="submit" disabled={loading} style={{ background: '#1B8A4B' }} className="text-white">
+          <Button type="submit" disabled={loading || loadingConsulta} style={{ background: '#1B8A4B' }} className="text-white">
             {loading ? 'Guardando...' : 'Crear cotización'}
           </Button>
         )}
-        <Button type="button" variant="outline" onClick={() => router.back()} disabled={loading || loadingPdf || loadingAprobar}>
+        {!isStaging && (
+          <Button type="button" disabled={loading || loadingPdf || loadingConsulta || loadingAprobar}
+            onClick={consultarValor}
+            className="bg-amber-500 hover:bg-amber-600 text-white">
+            {loadingConsulta ? 'Enviando...' : '📋 Consultar valor'}
+          </Button>
+        )}
+        <Button type="button" variant="outline" onClick={() => router.back()} disabled={loading || loadingPdf || loadingAprobar || loadingConsulta}>
           Cancelar
         </Button>
       </div>

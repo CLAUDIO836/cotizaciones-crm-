@@ -6,7 +6,63 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { formatCLP } from '@/lib/utils'
-import { CheckCircle2, XCircle, Clock, Ban } from 'lucide-react'
+import { CheckCircle2, XCircle, Clock, Ban, ExternalLink } from 'lucide-react'
+
+interface DetalleJSON {
+  quotation_id?: string
+  quotation_number?: string | number
+  desde?: string
+  hasta?: string
+  fecha_salida?: string
+  hora_salida?: string
+  fecha_retorno?: string
+  hora_retorno?: string
+  vehiculo?: string
+  pax?: number | null
+  total?: number | null
+}
+
+const DIAS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+
+function formatFechaHora(fecha?: string, hora?: string): string {
+  if (!fecha) return ''
+  const [y, m, d] = fecha.split('-').map(Number)
+  const dia = DIAS_ES[new Date(y, m - 1, d).getDay()]
+  return `${dia} ${d}/${m}/${y}${hora ? ` ${hora}h` : ''}`
+}
+
+function DetalleServicio({ detalle }: { detalle: string }) {
+  let parsed: DetalleJSON | null = null
+  try { parsed = JSON.parse(detalle) } catch { /* texto plano */ }
+
+  if (!parsed?.quotation_id) {
+    return <pre className="whitespace-pre-wrap text-xs text-gray-600 font-sans bg-gray-50 rounded-lg p-2">{detalle}</pre>
+  }
+
+  return (
+    <div className="rounded-lg bg-gray-50 border border-gray-100 p-3 space-y-2 text-sm">
+      <a href={`/cotizaciones/${parsed.quotation_id}`} target="_blank" rel="noreferrer"
+        className="inline-flex items-center gap-1 font-semibold text-green-700 hover:underline">
+        <ExternalLink className="h-3.5 w-3.5" />
+        Ver cotización #{parsed.quotation_number}
+      </a>
+      <div className="grid grid-cols-1 gap-1 text-xs text-gray-700">
+        {parsed.desde && <p><span className="text-gray-400">Desde:</span> {parsed.desde}</p>}
+        {parsed.hasta && <p><span className="text-gray-400">Hasta:</span> {parsed.hasta}</p>}
+        {parsed.fecha_salida && (
+          <p><span className="text-gray-400">Salida:</span> {formatFechaHora(parsed.fecha_salida, parsed.hora_salida)}</p>
+        )}
+        {parsed.fecha_retorno && (
+          <p><span className="text-gray-400">Retorno:</span> {formatFechaHora(parsed.fecha_retorno, parsed.hora_retorno)}</p>
+        )}
+        {parsed.vehiculo && <p><span className="text-gray-400">Vehículo:</span> {parsed.vehiculo}{parsed.pax ? ` · ${parsed.pax} pax` : ''}</p>}
+        {parsed.total != null && (
+          <p><span className="text-gray-400">Total cotizado:</span> <strong>{parsed.total.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })}</strong></p>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export interface Autorizacion {
   id: string
@@ -95,7 +151,7 @@ function Tarjeta({ a, esAprobador, miId, onCambio }: {
           {a.recargos.map(r => <li key={r.tipo}>• {r.mensaje}{r.sugerido && <span className="text-gray-500"> Sugerido: {r.sugerido}.</span>}</li>)}
         </ul>
       )}
-      {a.detalle && <pre className="whitespace-pre-wrap text-xs text-gray-600 font-sans bg-gray-50 rounded-lg p-2">{a.detalle}</pre>}
+      {a.detalle && <DetalleServicio detalle={a.detalle} />}
 
       {a.status !== 'pendiente' && (
         <div className="space-y-2">
